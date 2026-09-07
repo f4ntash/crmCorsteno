@@ -9,5 +9,5 @@ APP_VERSION = "0.0.1"
 [[d1_databases]]
 binding = "DB"
 database_name = "corsteno-db"
-database_id = "local-placeholder"
+database_id = "e028adf0-ed6c-4e20-b74d-59b94910639f"
 migrations_dir = "src/db/migrations"
