@@ -1,0 +1,2 @@
+CREATE TABLE `application_credentials` (`id` text PRIMARY KEY NOT NULL, `application_id` text NOT NULL REFERENCES `applications`(`id`), `key_prefix` text NOT NULL, `secret_hash` text NOT NULL, `status` text NOT NULL, `created_at` integer NOT NULL, `last_used_at` integer, CONSTRAINT `application_credentials_hash` UNIQUE(`secret_hash`));
+CREATE INDEX `application_credentials_application` ON `application_credentials` (`application_id`);

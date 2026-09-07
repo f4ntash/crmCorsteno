@@ -1,0 +1,7 @@
+const encoder = new TextEncoder();
+function bytesToBase64(bytes: Uint8Array) { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+function base64ToBytes(value: string) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
+export async function hashPassword(password: string, salt = crypto.getRandomValues(new Uint8Array(16))) { const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']); const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' }, key, 256); return `pbkdf2$100000$${bytesToBase64(salt)}$${bytesToBase64(new Uint8Array(bits))}`; }
+export async function verifyPassword(password: string, stored: string) { const [, iterations, salt, expected] = stored.split('$'); if (!iterations || !salt || !expected) return false; const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']); const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: base64ToBytes(salt), iterations: Number(iterations), hash: 'SHA-256' }, key, 256); return bytesToBase64(new Uint8Array(bits)) === expected; }
+export async function hashToken(token: string) { const digest = await crypto.subtle.digest('SHA-256', encoder.encode(token)); return bytesToBase64(new Uint8Array(digest)); }
+export function randomToken() { return bytesToBase64(crypto.getRandomValues(new Uint8Array(32))); }
