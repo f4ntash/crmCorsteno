@@ -12,4 +12,12 @@ flowchart LR
  D --> E[CRM dashboard]
 ```
 
-Endpoints: `/analytics/summary` y `/analytics/activity`; ambos requieren sesión, membership y organización activa. Antes de producción faltan rate limiting distribuido, rotación/revocación operativa y evaluación de Analytics Engine para volumen alto.
+## Analytics por tipo de aplicación
+
+Las aplicaciones tienen `application_type` como texto: `generic`, `webar`, `game`, `website` o `configurator`. Cosquín está configurada como `webar`. El resumen agrega usuarios únicos, sesiones, aperturas, eventos totales, eventos por usuario y última actividad, manteniendo las métricas de juegos existentes.
+
+`/analytics/breakdown?dimension=event` devuelve los eventos principales ordenados por cantidad y respeta rango y filtros de proyecto/aplicación. La UI usa KPIs WebAR para aplicaciones `webar`, KPIs de juegos para `game` y el conjunto genérico como fallback.
+
+En desarrollo, `/dev/events` requiere sesión CRM y organización activa y permite inspeccionar hasta 100 eventos crudos con `projectId`, `applicationId` y `limit`. En producción responde 404.
+
+Endpoints: `/analytics/summary`, `/analytics/activity`, `/analytics/breakdown` y `/dev/events`; requieren sesión, membership y organización activa.

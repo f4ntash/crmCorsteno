@@ -1,6 +1,7 @@
 {
   "name": "corsteno-crm",
   "private": true,
+  "version": "0.0.1",
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm --parallel --filter @corsteno/api --filter @corsteno/web dev",
@@ -12,7 +13,10 @@
     "db:generate": "pnpm --filter @corsteno/api db:generate",
     "db:migrate:local": "pnpm --filter @corsteno/api db:migrate:local",
     "db:seed:local": "pnpm --filter @corsteno/api db:seed:local",
-    "analytics:demo": "tsx scripts/generate-demo-events.ts"
+    "analytics:demo": "tsx scripts/generate-demo-events.ts",
+    "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",
+    "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
+    "credentials:create-production": "tsx scripts/create-production-credential.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -4,7 +4,7 @@ compatibility_date = "2024-12-30"
 
 [vars]
 ENVIRONMENT = "development"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.0.1"
 
 [[d1_databases]]
 binding = "DB"

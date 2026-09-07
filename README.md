@@ -1,5 +1,13 @@
 # Corsteno CRM
 
+## Corsteno CRM v0.0.1
+
+Release candidate funcional congelado para Cloudflare Workers + D1. Incluye autenticación, sesiones HttpOnly, multi-tenancy, organizations, memberships, proyectos, applications con `application_type`, Event API, analytics genérico/WebAR y dashboard. No se despliega ni se crean recursos Cloudflare desde este repositorio automáticamente.
+
+Producción requiere configurar `VITE_API_URL=https://api.corsteno.com`, `VITE_CORSTENO_ANALYTICS_URL=https://api.corsteno.com`, `WEB_ORIGIN=https://crm.corsteno.com,https://<dominio-real-cosquin>` y las variables secretas de bootstrap: `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_COSQUIN_EMAIL`, `BOOTSTRAP_COSQUIN_PASSWORD`.
+
+El seed versionado es únicamente local. El bootstrap productivo genera organizaciones Corsteno y Cosquín Rock, usuario admin `owner`, usuario Cosquín `viewer`, proyecto Cosquín Rock y aplicación Cosquín Web `webar`, sin eventos ni credenciales. Ejecutar primero en preview con `pnpm db:bootstrap:production`; solo un operador con `ENVIRONMENT=production` y `--execute` puede enviarlo a D1 remota.
+
 Fundación técnica del futuro CRM interno y portal de clientes de Corsteno. Esta etapa mantiene el alcance deliberadamente pequeño: una web React que verifica la disponibilidad de una API Cloudflare Worker.
 
 ## Arquitectura

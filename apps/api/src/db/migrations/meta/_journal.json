@@ -20,7 +20,14 @@
       "idx": 2,
       "version": "6",
       "when": 1788548206957,
-      "tag": "0002_tan_wrecker",
+      "tag": "0002_application_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788549000000,
+      "tag": "0003_application_type",
       "breakpoints": true
     }
   ]

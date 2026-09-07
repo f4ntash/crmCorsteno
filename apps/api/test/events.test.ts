@@ -56,6 +56,29 @@ describe('Event API credentials and ingestion', () => {
     expect(inserted).toMatchObject({ event, userId: webArEvent.userId, sessionId: webArEvent.sessionId, occurredAt: webArEvent.occurredAt });
     expect(JSON.parse(inserted.properties ?? '{}')).toEqual(webArEvent.properties);
   });
+  it.each([
+    'camera_permission_granted',
+    'camera_permission_denied',
+    'current_shows_viewed',
+    'ar_target_lost',
+    'favorite_added',
+    'favorite_removed',
+    'go_to_show_clicked',
+    'offline_mode_used',
+    'navigation_started',
+    'direction_viewed',
+    'navigation_stopped',
+    'schedule_viewed',
+    'my_schedule_viewed',
+    'map_viewed',
+  ])('accepts Cosquín event %s with flexible properties', async event => {
+    const state = fixture();
+    const properties = { surface: 'schedule', experience: 'cosquin_real', show_id: 'show-42', direction: 'north', source: 'map' };
+    const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: JSON.stringify({ ...webArEvent, event, properties }) }, environment(state));
+    expect(response.status).toBe(201);
+    expect(state.inserted[0]?.event).toBe(event);
+    expect(JSON.parse(state.inserted[0]?.properties ?? '{}')).toEqual(properties);
+  });
   it('rejects an invalid key without inserting', async () => { const state = fixture({ credential: null }); const response = await app.request('/v1/events', { method: 'POST', headers: headers('invalid-key'), body: JSON.stringify(validEvent) }, environment(state)); expect(response.status).toBe(401); expect(state.inserted).toHaveLength(0); });
   it.each([['revoked credential', { credentialStatus: 'revoked' as const }], ['inactive application', { applicationStatus: 'inactive' as const }]])('rejects ingestion for an %s', async (_label, override) => { const state = fixture(override); const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: JSON.stringify(validEvent) }, environment(state)); expect(response.status).toBe(401); expect(state.inserted).toHaveLength(0); });
   it.each([['empty event', { ...validEvent, event: '' }], ['unknown event', { ...validEvent, event: 'not_a_real_event' }], ['invalid JSON body', null], ['invalid occurredAt', { ...validEvent, occurredAt: Number.NaN }], ['oversized user id', { ...validEvent, userId: 'x'.repeat(201) }]])('returns 400 for %s', async (_label, body) => { const state = fixture(); const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: body === null ? '{' : JSON.stringify(body) }, environment(state)); expect(response.status).toBe(400); expect(state.inserted).toHaveLength(0); });
