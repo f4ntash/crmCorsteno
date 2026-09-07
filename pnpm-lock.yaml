@@ -88,6 +88,9 @@ importers:
       '@vitejs/plugin-basic-ssl':
         specifier: ^2.3.0
         version: 2.3.0(vite@6.4.3(tsx@4.23.13))
+      wrangler:
+        specifier: ^3.99.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
 
   packages/analytics-client:
     dependencies:

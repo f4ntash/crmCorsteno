@@ -22,8 +22,8 @@ async function main() {
     return;
   }
   execSync(
-    `wrangler d1 execute corsteno-db --remote --command ${JSON.stringify(sql)}`,
-    { cwd: 'apps/api', stdio: 'inherit', shell: true },
+    `pnpm --filter @corsteno/api exec wrangler d1 execute corsteno-db --remote --command ${JSON.stringify(sql)}`,
+    { stdio: 'inherit', shell: true },
   );
   console.log(
     `Secret productivo (mostrar/guardar ahora; no volverá a mostrarse): ${secret}`,

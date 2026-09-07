@@ -3,8 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2024-12-30"
 
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 APP_VERSION = "0.0.1"
+WEB_ORIGIN = "https://crm.corsteno.com"
 
 [[d1_databases]]
 binding = "DB"
