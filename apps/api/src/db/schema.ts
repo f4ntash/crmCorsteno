@@ -272,3 +272,28 @@ export const crmNotes = sqliteTable(
     index('crm_notes_entity').on(t.organizationId, t.entityType, t.entityId),
   ],
 );
+
+export const commercialPayments = sqliteTable(
+  'commercial_payments',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull(),
+    subscriptionId: text('subscription_id').notNull(),
+    provider: text('provider').notNull(),
+    providerPaymentId: text('provider_payment_id'),
+    providerCheckoutId: text('provider_checkout_id'),
+    status: text('status').notNull(),
+    providerStatus: text('provider_status'),
+    amountMinor: integer('amount_minor').notNull(),
+    currency: text('currency').notNull(),
+    metadata: text('metadata'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    paidAt: text('paid_at'),
+  },
+  (t) => [
+    uniqueIndex('commercial_payments_provider_payment').on(t.provider, t.providerPaymentId),
+    uniqueIndex('commercial_payments_provider_checkout').on(t.provider, t.providerCheckoutId),
+    index('commercial_payments_org').on(t.organizationId, t.createdAt),
+  ],
+);

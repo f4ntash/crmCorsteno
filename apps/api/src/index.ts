@@ -11,6 +11,7 @@ import { experienceRoutes } from './routes/experiences';
 import { requireAuth, requireOrganization } from './auth/middleware';
 import { publicExperienceRoutes } from './routes/public-experiences';
 import { commercialRoutes } from './routes/commercial';
+import { paymentWebhookRoutes } from './routes/payment-webhooks';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -20,6 +21,13 @@ export interface Env {
   PUBLIC_ORIGINS?: string;
   DB: D1Database;
   EXPERIENCE_ASSETS?: R2Bucket;
+  MERCADO_PAGO_ACCESS_TOKEN?: string;
+  MERCADO_PAGO_WEBHOOK_SECRET?: string;
+  MERCADO_PAGO_API_URL?: string;
+  PUBLIC_WEBHOOK_URL?: string;
+  PAYMENT_SUCCESS_URL?: string;
+  PAYMENT_FAILURE_URL?: string;
+  PAYMENT_PENDING_URL?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -59,6 +67,7 @@ app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
 app.route('/experiences', experienceRoutes);
 app.route('/public', publicExperienceRoutes);
+app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);

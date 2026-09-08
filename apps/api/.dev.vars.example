@@ -1,0 +1,8 @@
+# Copy to .dev.vars locally and fill secrets; never commit real values.
+MERCADO_PAGO_ACCESS_TOKEN=
+MERCADO_PAGO_WEBHOOK_SECRET=
+MERCADO_PAGO_API_URL=https://api.mercadopago.com
+PUBLIC_WEBHOOK_URL=https://api.example.com/webhooks/mercado-pago
+PAYMENT_SUCCESS_URL=https://crm.example.com/app/subscriptions?payment=success
+PAYMENT_FAILURE_URL=https://crm.example.com/app/subscriptions?payment=failure
+PAYMENT_PENDING_URL=https://crm.example.com/app/subscriptions?payment=pending

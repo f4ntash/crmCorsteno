@@ -3,6 +3,8 @@ import type { MiddlewareHandler } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 import { addBillingInterval, getEffectiveSubscriptionStatus, type BillingInterval } from '../services/subscription-periods';
+import { renewSubscription } from '../services/commercial-renewal';
+import { createMercadoPagoProvider } from '../payments/mercado-pago';
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -96,19 +98,31 @@ commercialRoutes.post('/subscriptions/:id/renew', async (c) => {
   if (subscription.status === 'cancelled' || subscription.cancelAtPeriodEnd) return c.json({ error: { code: 'CONFLICT', message: 'Cancelled subscriptions cannot be renewed' } }, 409);
   const key = c.req.header('Idempotency-Key')?.trim();
   if (!key || key.length > 200) return c.json(bad('Idempotency-Key is required for renewal'), 400);
-  const existing = await c.env.DB.prepare('SELECT id FROM subscription_periods WHERE subscription_id=? AND organization_id=? AND idempotency_key=?').bind(subscription.id, organizationId, key).first<{ id: string }>();
-  if (existing) return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
-  const currentEnd = new Date(subscription.currentPeriodEnd);
-  const startsAt = currentEnd.getTime() < Date.now() ? new Date() : currentEnd;
-  const endsAt = addBillingInterval(startsAt, subscription.billingInterval, subscription.billingIntervalCount, subscription.includedAccessDays);
-  const periodId = crypto.randomUUID();
-  const statements: D1PreparedStatement[] = [
-    c.env.DB.prepare('INSERT OR IGNORE INTO subscription_periods (id,subscription_id,organization_id,starts_at,ends_at,status,idempotency_key) VALUES (?,?,?,?,?,?,?)').bind(periodId, subscription.id, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'active', key),
-    c.env.DB.prepare('UPDATE subscriptions SET status=\'active\',current_period_start=?,current_period_end=?,cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(startsAt.toISOString(), endsAt.toISOString(), subscription.id, organizationId),
-  ];
-  for (const experience of subscription.experiences) statements.push(c.env.DB.prepare('INSERT OR IGNORE INTO experience_access_periods (id,experience_id,organization_id,starts_at,ends_at,source,created_by,note,subscription_period_id) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), experience.id, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'subscription', c.get('user').id, `Subscription ${subscription.id}`, periodId));
-  await c.env.DB.batch(statements);
+  await renewSubscription(c.env.DB, subscription, c.get('user').id, key);
   return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
+});
+
+commercialRoutes.post('/subscriptions/:id/checkout', async (c) => {
+  const organizationId = c.get('organization').id;
+  const subscription = await getSubscription(c.env.DB, c.req.param('id'), organizationId);
+  if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
+  if (subscription.status === 'cancelled' || subscription.cancelAtPeriodEnd) return c.json({ error: { code: 'CONFLICT', message: 'Cancelled subscriptions cannot be renewed' } }, 409);
+  if (!Number.isInteger(subscription.priceAmountMinor) || subscription.priceAmountMinor <= 0) return c.json({ error: { code: 'PRICE_NOT_CONFIGURED', message: 'Este plan todavía no tiene un precio comercial configurado.' } }, 400);
+  const paymentId = crypto.randomUUID();
+  try {
+    const checkout = await createMercadoPagoProvider(c.env).createCheckout({ paymentId, subscriptionId: subscription.id, title: `${subscription.planName} - renovación`, amountMinor: subscription.priceAmountMinor, currency: subscription.currency });
+    await c.env.DB.prepare('INSERT INTO commercial_payments (id,organization_id,subscription_id,provider,provider_checkout_id,status,amount_minor,currency) VALUES (?,?,?,?,?,?,?,?)').bind(paymentId, organizationId, subscription.id, 'mercado_pago', checkout.checkoutId, 'pending', subscription.priceAmountMinor, subscription.currency).run();
+    return c.json({ id: paymentId, provider: 'mercado_pago', checkoutId: checkout.checkoutId, checkoutUrl: checkout.checkoutUrl, status: 'pending' }, 201);
+  } catch (error) {
+    return c.json({ error: { code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: error instanceof Error ? error.message : 'Payment provider unavailable' } }, 502);
+  }
+});
+
+commercialRoutes.get('/subscriptions/:id/payments', async (c) => {
+  const subscription = await getSubscription(c.env.DB, c.req.param('id'), c.get('organization').id);
+  if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
+  const rows = await c.env.DB.prepare('SELECT id,provider,provider_payment_id providerPaymentId,status,amount_minor amountMinor,currency,created_at createdAt,paid_at paidAt FROM commercial_payments WHERE subscription_id=? AND organization_id=? ORDER BY created_at DESC, id DESC').bind(subscription.id, c.get('organization').id).all<Record<string, unknown>>();
+  return c.json(rows.results.map((row) => ({ id: String(row.id), provider: String(row.provider), providerPaymentId: row.providerPaymentId as string | null, status: String(row.status), amountMinor: Number(row.amountMinor), currency: String(row.currency), createdAt: String(row.createdAt), paidAt: row.paidAt as string | null })));
 });
 
 commercialRoutes.post('/subscriptions/:id/cancel', async (c) => {
