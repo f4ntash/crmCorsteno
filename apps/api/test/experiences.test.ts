@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import app from '../src';
 import { validDraftConfig } from '../src/routes/experiences';
 
-type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
-function fixture() {
+type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
+function fixture(initialDraft = '{"segments":[]}') {
   const experiences: E[] = [
-    { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{"segments":[]}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
+    { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: 'draft', schema_version: 1, draft_config: initialDraft, published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },
   ];
   const db = { prepare(sql: string) { return { bind(...args: any[]) {
@@ -18,7 +18,7 @@ function fixture() {
         return null as T;
       },
       async all<T>() { return { results: experiences.filter((e) => e.organization_id === args[0]).map((e) => ({ ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at })) as T[] }; },
-      async run() { const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
+      async run() { if (sql.includes('published_config')) { const experience = experiences.find((e) => e.id === args[args.length - 2] && e.organization_id === args[args.length - 1]); if (experience) { experience.published_config = args[0] as string; experience.status = 'published'; } } const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
     };
   } }; } };
   const objects = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
@@ -71,6 +71,24 @@ describe('experience prize assets', () => {
     const base = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() };
     expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: '/assets/organizations/org-a/experiences/a/123e4567-e89b-12d3-a456-426614174000.png' }] })).toBe(true);
     expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: 'javascript:alert(1)' }] })).toBe(false);
+  });
+});
+
+describe('experience publishing', () => {
+  const validDraft = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() });
+  it('publishes a snapshot and keeps it stable while draft changes', async () => {
+    const env = fixture(validDraft);
+    const published = await request('/experiences/a/publish', env, { method: 'POST' });
+    expect(published.status).toBe(200);
+    expect(await published.json()).toEqual(expect.objectContaining({ status: 'published', draftConfig: JSON.parse(validDraft), publishedConfig: JSON.parse(validDraft) }));
+    const changed = JSON.stringify({ schemaVersion: 1, backgroundColor: '#222222', prizes: [{ id: 'prize-1', name: 'Gorra' }], segments: sixSegments() });
+    expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ draft_config: JSON.parse(changed) }) })).status).toBe(200);
+    const detail = await request('/experiences/a', env);
+    expect((await detail.json() as { publishedConfig: unknown }).publishedConfig).toEqual(JSON.parse(validDraft));
+  });
+  it('rejects invalid drafts and experiences from another organization', async () => {
+    expect((await request('/experiences/b/publish', fixture(validDraft), { method: 'POST' })).status).toBe(404);
+    expect((await request('/experiences/a/publish', fixture('{"segments":[]}'), { method: 'POST' })).status).toBe(400);
   });
 });
 

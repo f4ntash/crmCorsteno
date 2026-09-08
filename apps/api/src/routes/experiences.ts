@@ -123,6 +123,19 @@ experienceRoutes.post('/:id/assets', async (c) => {
   return c.json({ url: `${new URL(c.req.url).origin}/assets/${key}`, key }, 201);
 });
 
+experienceRoutes.post('/:id/publish', async (c) => {
+  const id = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const draft = parseJson(row.draftConfig as string | null);
+  if (!validDraftConfig(draft)) return c.json(bad('Invalid roulette draft_config'), 400);
+  const snapshot = JSON.stringify(draft);
+  await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
+  const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
+});
+
 experienceRoutes.post('/', async (c) => {
   let body: Record<string, unknown>;
   try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }

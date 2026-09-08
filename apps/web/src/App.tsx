@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -134,6 +134,29 @@ function PrizeEditor({ prize, uploading, onChange }: { prize: Prize; uploading: 
     } catch (e) { setError((e as Error).message); } finally { setIsUploading(false); }
   }
   return <div className="prize-editor"><input value={prize.name} onChange={(e) => onChange({ ...prize, name: e.target.value })} />{prize.iconUrl && <img src={prize.iconUrl} alt="Ícono actual" width="32" height="32" />}<label className="secondary">{uploading || isUploading ? 'Subiendo…' : 'Subir ícono'}<input type="file" accept="image/png,image/svg+xml" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); e.currentTarget.value = ''; }} /></label>{error && <span className="error">{error}</span>}{success && <span className="success">{success}</span>}</div>;
+}
+
+function PublishControl() {
+  const location = useLocation();
+  const [state, setState] = useState<{ draft: unknown; published: unknown; status: string }>();
+  const [message, setMessage] = useState('');
+  const [publishing, setPublishing] = useState(false);
+  const match = location.pathname.match(/^\/app\/experiences\/([^/]+)$/);
+  const id = match?.[1];
+  const organizationId = (document.querySelector('header select') as HTMLSelectElement | null)?.value ?? '';
+  useEffect(() => {
+    if (!id || !organizationId) return;
+    get(`/experiences/${id}`, organizationId).then((experience: { draftConfig: unknown; publishedConfig: unknown; status: string }) => setState({ draft: experience.draftConfig, published: experience.publishedConfig, status: experience.status })).catch(() => setState(undefined));
+  }, [id, organizationId]);
+  if (!id || !state) return null;
+  const currentState = state;
+  const hasUnpublishedChanges = JSON.stringify(currentState.draft) !== JSON.stringify(currentState.published);
+  async function publish() {
+    if (!window.confirm('¿Publicar la configuración actual?')) return;
+    setPublishing(true); setMessage('');
+    try { await get(`/experiences/${id}/publish`, organizationId, { method: 'POST' }); setMessage('Publicado correctamente.'); setState({ draft: currentState.draft, published: currentState.draft, status: 'published' }); } catch (error) { setMessage((error as Error).message); } finally { setPublishing(false); }
+  }
+  return <div className="publish-control"><span>{state.status === 'published' ? (hasUnpublishedChanges ? 'Cambios sin publicar' : 'Publicado') : 'Borrador'}</span><button disabled={!hasUnpublishedChanges || publishing} onClick={() => void publish()}>{publishing ? 'Publicando…' : 'Publicar'}</button>{message && <small>{message}</small>}</div>;
 }
 function Login() {
   const n = useNavigate();
@@ -692,6 +715,7 @@ function Shell() {
             </button>
           </span>
         </header>
+        <PublishControl />
         <Routes>
           <Route index element={<Home org={o} />} />
           <Route path="analytics" element={<Analytics org={o} />} />
