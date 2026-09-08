@@ -8,4 +8,5 @@ export const experiencesApi = {
   update: (id: string, organizationId: string, body: unknown) => apiRequest(`/experiences/${id}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   publish: (id: string, organizationId: string) => apiRequest(`/experiences/${id}/publish`, organizationId, { method: 'POST' }),
   uploadAsset: (id: string, organizationId: string, file: File) => { const body = new FormData(); body.append('file', file); return apiRequest(`/experiences/${id}/assets`, organizationId, { method: 'POST', body }); },
+  inventory: (id: string, organizationId: string) => apiRequest<Array<{ prizeId: string; stockLimit: number | null; stockUsed: number; stockRemaining: number | null }>>(`/experiences/${id}/inventory`, organizationId),
 };

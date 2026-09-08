@@ -23,8 +23,8 @@ export type Experience = {
   updatedAt: string;
 };
 
-export type PrizeConfig = { id: string; name: string; iconUrl?: string | null };
-export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null }> };
+export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockLimit?: number | null };
+export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }> };
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -81,9 +81,22 @@ export function validDraftConfig(value: unknown): value is DraftConfig {
   const config = value as Record<string, unknown>;
   if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
   const ids = new Set<string>();
-  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl))) return false; ids.add(item.id); }
+  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl)) || (item.enabled !== undefined && typeof item.enabled !== 'boolean') || (item.weight !== undefined && (!Number.isInteger(item.weight) || Number(item.weight) < 1 || Number(item.weight) > 1000)) || (item.stockLimit !== undefined && item.stockLimit !== null && (!Number.isInteger(item.stockLimit) || Number(item.stockLimit) < 0 || Number(item.stockLimit) > 1_000_000_000))) return false; ids.add(item.id); }
   const segmentIds = new Set<string>();
-  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))); });
+  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))) && (item.weight === undefined || (item.prizeId === null && Number.isInteger(item.weight) && Number(item.weight) >= 1 && Number(item.weight) <= 1000)); });
+}
+
+export function normalizePrizeConfig(prize: PrizeConfig): Required<Pick<PrizeConfig, 'id' | 'name' | 'enabled' | 'weight' | 'stockLimit'>> & Pick<PrizeConfig, 'iconUrl'> {
+  return { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: prize.enabled ?? true, weight: prize.weight ?? 1, stockLimit: prize.stockLimit ?? null };
+}
+
+async function syncPrizeInventory(db: D1Database, experienceId: string, config: DraftConfig) {
+  for (const prize of config.prizes) {
+    const normalized = normalizePrizeConfig(prize);
+    await db.prepare(`INSERT INTO experience_prize_inventory (experience_id, prize_id, stock_limit, stock_used) VALUES (?, ?, ?, 0)
+      ON CONFLICT(experience_id, prize_id) DO UPDATE SET stock_limit=excluded.stock_limit, updated_at=CURRENT_TIMESTAMP`)
+      .bind(experienceId, normalized.id, normalized.stockLimit).run();
+  }
 }
 
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
@@ -132,8 +145,22 @@ experienceRoutes.post('/:id/publish', async (c) => {
   if (!validDraftConfig(draft)) return c.json(bad('Invalid roulette draft_config'), 400);
   const snapshot = JSON.stringify(draft);
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
+  await syncPrizeInventory(c.env.DB, id, draft);
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
+});
+
+experienceRoutes.get('/:id/inventory', async (c) => {
+  const id = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  let config: DraftConfig | null;
+  try { config = parseJson(row.publishedConfig as string | null) as DraftConfig | null; } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
+  if (!config || !validDraftConfig(config)) return c.json({ error: { code: 'NOT_FOUND', message: 'Published inventory not found' } }, 404);
+  const inventory = await c.env.DB.prepare('SELECT prize_id prizeId, stock_limit stockLimit, stock_used stockUsed FROM experience_prize_inventory WHERE experience_id=?').bind(id).all<{ prizeId: string; stockLimit: number | null; stockUsed: number }>();
+  const byPrize = new Map(inventory.results.map((item) => [item.prizeId, item]));
+  return c.json(config.prizes.map((prize) => { const normalized = normalizePrizeConfig(prize); const item = byPrize.get(prize.id); const stockLimit = item?.stockLimit ?? normalized.stockLimit; const stockUsed = item?.stockUsed ?? 0; return { prizeId: prize.id, stockLimit, stockUsed, stockRemaining: stockLimit === null ? null : Math.max(0, stockLimit - stockUsed) }; }));
 });
 
 experienceRoutes.post('/', async (c) => {
@@ -190,7 +217,11 @@ experienceRoutes.patch('/:id', async (c) => {
 });
 
 experienceRoutes.delete('/:id', async (c) => {
-  const result = await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(c.req.param('id'), c.get('organization').id).run();
-  if (!result.meta?.changes) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const id = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
+  if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  await c.env.DB.prepare('DELETE FROM experience_prize_inventory WHERE experience_id=?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).run();
   return c.body(null, 204);
 });
