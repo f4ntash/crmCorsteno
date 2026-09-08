@@ -52,7 +52,10 @@ async function get(path: string, org?: string, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
-  if (!r.ok) throw new Error('No se pudo cargar la información');
+  if (!r.ok) {
+    const payload = await r.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(payload?.error?.message ?? 'No se pudo cargar la información');
+  }
   return r.json();
 }
 function formatMetricValue(value: number | string | null | undefined): string {
@@ -89,7 +92,7 @@ type Prize = { id: string; name: string; iconUrl?: string | null };
 type Segment = { id: string; color: string; prizeId: string | null };
 type Draft = { schemaVersion: 1; backgroundColor: string; prizes: Prize[]; segments: Segment[] };
 function defaultDraft(count = 6): Draft { const prizes = [{ id: `prize-${crypto.randomUUID()}`, name: 'Premio 1' }]; return { schemaVersion: 1, backgroundColor: '#111111', prizes, segments: Array.from({ length: count }, (_, i) => ({ id: `seg-${crypto.randomUUID()}`, prizeId: prizes[0].id, color: palette[i] })) }; }
-function normalizeDraft(value: unknown): Draft { const x = value as Partial<Draft> | null; const old = Array.isArray(x?.segments) ? x.segments : []; const prizes = Array.isArray(x?.prizes) ? x.prizes.filter((p): p is Prize => !!p && typeof p === 'object' && typeof (p as Prize).id === 'string' && typeof (p as Prize).name === 'string' && !!(p as Prize).name.trim()).map((p) => ({ id: p.id, name: p.name })) : []; const oldPrizes = [...new Set(old.map((s) => typeof s === 'object' && s ? String((s as { label?: string }).label ?? '') : '').filter(Boolean))].map((name) => ({ id: `prize-${crypto.randomUUID()}`, name })); const finalPrizes = prizes.length ? prizes.slice(0, 5) : oldPrizes.length ? oldPrizes : defaultDraft().prizes; const byName = new Map(finalPrizes.map((p) => [p.name, p.id])); const segments = old.length >= 6 && old.length <= 10 ? old.filter((s): s is Segment => !!s && typeof s === 'object' && typeof (s as Segment).color === 'string').map((s) => ({ id: s.id || `seg-${crypto.randomUUID()}`, color: s.color, prizeId: s.prizeId ?? byName.get((s as unknown as { label?: string }).label ?? '') ?? null })) : []; const base = defaultDraft(Math.max(6, Math.min(10, segments.length || 6))); return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : base.segments }; }
+function normalizeDraft(value: unknown): Draft { const x = value as Partial<Draft> | null; const old = Array.isArray(x?.segments) ? x.segments : []; const prizes = Array.isArray(x?.prizes) ? x.prizes.filter((p): p is Prize => !!p && typeof p === 'object' && typeof (p as Prize).id === 'string' && typeof (p as Prize).name === 'string' && !!(p as Prize).name.trim()).map((p) => ({ id: p.id, name: p.name })) : []; const oldPrizes = [...new Set(old.map((s) => typeof s === 'object' && s ? String((s as { label?: string }).label ?? '') : '').filter(Boolean))].map((name) => ({ id: `prize-${crypto.randomUUID()}`, name })); const finalPrizes = prizes.length ? prizes.slice(0, 5) : oldPrizes.length ? oldPrizes : defaultDraft().prizes; const byName = new Map(finalPrizes.map((p) => [p.name, p.id])); const segments = old.length >= 6 && old.length <= 10 ? old.filter((s): s is Segment => !!s && typeof s === 'object' && typeof (s as Segment).color === 'string').map((s) => ({ id: s.id || `seg-${crypto.randomUUID()}`, color: s.color, prizeId: s.prizeId ?? byName.get((s as unknown as { label?: string }).label ?? '') ?? null })) : []; const base = defaultDraft(Math.max(6, Math.min(10, segments.length || 6))); const fallbackSegments = base.segments.map((s) => ({ ...s, prizeId: finalPrizes[0]?.id ?? null })); return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments }; }
 function validDraft(d: Draft) { return /^#[0-9a-f]{6}$/i.test(d.backgroundColor) && d.prizes.length >= 1 && d.prizes.length <= 5 && new Set(d.prizes.map((p) => p.id)).size === d.prizes.length && d.prizes.every((p) => p.name.trim()) && d.segments.length >= 6 && d.segments.length <= 10 && d.segments.every((s) => /^#[0-9a-f]{6}$/i.test(s.color) && (s.prizeId === null || d.prizes.some((p) => p.id === s.prizeId))); }
 function resizeDraft(d: Draft, count: number) { const segments = d.segments.slice(0, count); while (segments.length < count) segments.push({ id: `seg-${crypto.randomUUID()}`, prizeId: d.prizes[0]?.id ?? null, color: palette[segments.length] }); return { ...d, segments }; }
 function RouletteEditor({ org, id }: { org: string; id: string }) {
@@ -106,7 +109,7 @@ function RouletteEditor({ org, id }: { org: string; id: string }) {
     if (!org) return;
     get(`/experiences/${id}`, org).then((x: Experience & { draftConfig: unknown }) => {
       const d = normalizeDraft(x.draftConfig);
-      setItem(x); setDraft(d); setOriginal(JSON.stringify(d));
+      setItem(x); setDraft(d); setOriginal(JSON.stringify(x.draftConfig));
     }).catch(() => setError('No se pudo cargar la experiencia.')).finally(() => setLoading(false));
   }, [org, id]);
 
