@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
 import app from '../src';
+import { validDraftConfig } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
 function fixture() {
@@ -27,4 +28,12 @@ function request(path: string, env: any, init?: RequestInit) { return app.fetch(
 describe('experiences tenant isolation and validation', () => {
   it('lists and reads only the current organization, parsing JSON', async () => { const env = fixture(); const list = await request('/experiences', env); expect(list.status).toBe(200); expect(await list.json()).toEqual([expect.objectContaining({ id: 'a', draftConfig: { segments: [] } })]); expect((await request('/experiences/b', env)).status).toBe(404); });
   it('rejects invalid dates/status and foreign mutations', async () => { const env = fixture(); const badDates = await request('/experiences', env, { method: 'POST', body: JSON.stringify({ name: 'x', starts_at: '2026-01-02', ends_at: '2026-01-01' }) }); expect(badDates.status).toBe(400); for (const status of ['nope', 'active', 'scheduled', 'expired']) { const badStatus = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ status }) }); expect(badStatus.status).toBe(400); } expect((await request('/experiences/b', env, { method: 'PATCH', body: JSON.stringify({ name: 'x' }) })).status).toBe(404); expect((await request('/experiences/b', env, { method: 'DELETE' })).status).toBe(404); });
+});
+
+describe('roulette draft_config validation', () => {
+  const segment = (i: number, color = '#D6B25E', label = `Premio ${i}`) => ({ id: `seg-${i}`, label, color });
+  const six = () => [0, 1, 2, 3, 4, 5].map((i) => segment(i));
+  it('accepts a valid six-segment config', () => expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', segments: six() })).toBe(true));
+  it('rejects fewer or more than ten segments', () => { const values = six(); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', segments: values.slice(0, 5) })).toBe(false); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', segments: [...values, ...[6, 7, 8, 9, 10].map((i) => segment(i))] })).toBe(false); });
+  it('rejects invalid colors and empty labels', () => { const values = six(); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: 'black', segments: values })).toBe(false); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', segments: values.map((s, i) => i === 0 ? { ...s, color: '#12' } : s) })).toBe(false); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', segments: values.map((s, i) => i === 0 ? { ...s, label: ' ' } : s) })).toBe(false); });
 });

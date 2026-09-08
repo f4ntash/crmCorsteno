@@ -66,6 +66,13 @@ function datesValid(startsAt: string | null | undefined, endsAt: string | null |
 function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
+const HEX = /^#[0-9a-f]{6}$/i;
+export function validDraftConfig(value: unknown): value is { schemaVersion: 1; backgroundColor: string; segments: Array<{ id: string; label: string; color: string }> } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const config = value as Record<string, unknown>;
+  if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
+  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && typeof item.label === 'string' && !!item.label.trim() && typeof item.color === 'string' && HEX.test(item.color); });
+}
 
 experienceRoutes.post('/', async (c) => {
   let body: Record<string, unknown>;
@@ -107,7 +114,7 @@ experienceRoutes.patch('/:id', async (c) => {
   for (const [key, column] of allowed) if (key in body) {
     if (key === 'name' && (typeof body[key] !== 'string' || !(body[key] as string).trim())) return c.json(bad('name must be a non-empty string'), 400);
     if (key === 'status' && (typeof body[key] !== 'string' || !STATUSES.includes(body[key] as ExperienceStatus))) return c.json(bad('Invalid status'), 400);
-    if (key === 'draft_config') { if (typeof body[key] !== 'object' || body[key] === null || Array.isArray(body[key])) return c.json(bad('draft_config must be a JSON object'), 400); values.push(JSON.stringify(body[key])); } else values.push(body[key]);
+    if (key === 'draft_config') { if (!validDraftConfig(body[key])) return c.json(bad('Invalid roulette draft_config'), 400); values.push(JSON.stringify(body[key])); } else values.push(body[key]);
     fields.push(`${column}=?`);
   }
   const starts = ('starts_at' in body ? body.starts_at : current.startsAt) as string | null;
