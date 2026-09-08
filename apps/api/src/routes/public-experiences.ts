@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus } from '../services/experience-status';
+import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { normalizeParticipationConfig, parseJson, validDraftConfig, type DraftConfig } from './experiences';
 import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectRouletteOutcome } from '../services/roulette-selector';
 import { generateClaimCode } from '../services/prize-claims';
@@ -32,6 +33,10 @@ async function recordExperienceEvent(db: D1Database, experienceId: string, organ
 }
 function trackExperienceEvent(db: D1Database, experienceId: string, organizationId: string, name: string, event: string, userId: string | null, sessionId: string | null, properties: Record<string, unknown>) {
   void recordExperienceEvent(db, experienceId, organizationId, name, event, userId, sessionId, properties).catch(() => undefined);
+}
+async function hasCommercialAccess(db: D1Database, experienceId: string, organizationId: string) {
+  const periods = await getExperienceAccessPeriods(db, experienceId, organizationId);
+  return getEffectiveExperienceAccessStatus(periods) === 'active' || !periods.length;
 }
 
 function publicParticipationError(reason: string, retryAt?: string) {
@@ -71,6 +76,7 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   if (!row) return c.json({ active: false, reason: 'not_found' }, 404);
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
+  if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
   let config: unknown;
   try { config = parseJson(row.published_config); } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
@@ -84,6 +90,7 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   if (!row) return c.json({ active: false, reason: 'not_found' }, 404);
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
+  if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
   if (row.type !== 'roulette') return c.json({ active: false, reason: 'unavailable' }, 503);
   let config: DraftConfig | null;
   try { config = parseJson(row.published_config) as DraftConfig | null; } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
@@ -149,8 +156,9 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
 });
 
 publicExperienceRoutes.post('/experiences/:slug/events', async (c) => {
-  const row = await c.env.DB.prepare('SELECT id,organization_id,name FROM experiences WHERE slug=? AND status=\'published\'').bind(c.req.param('slug')).first<{ id: string; organization_id: string; name: string }>();
+  const row = await c.env.DB.prepare('SELECT id,organization_id,name,starts_at,ends_at FROM experiences WHERE slug=? AND status=\'published\'').bind(c.req.param('slug')).first<{ id: string; organization_id: string; name: string; starts_at: string | null; ends_at: string | null }>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  if (getEffectiveExperienceStatus('published', row.starts_at, row.ends_at) !== 'active' || !await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   const body = await c.req.json().catch(() => ({} as { event?: string; userId?: string; sessionId?: string; properties?: Record<string, unknown> }));
   const event = body.event as AnalyticsEvent;
   if (!['experience_view', 'roulette_spin_click', 'roulette_spin_started', 'roulette_spin_completed', 'roulette_result_cta_click', 'roulette_ar_open_click', 'roulette_ar_session_started', 'roulette_ar_placed', 'roulette_ar_session_ended'].includes(event)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid experience event' } }, 400);

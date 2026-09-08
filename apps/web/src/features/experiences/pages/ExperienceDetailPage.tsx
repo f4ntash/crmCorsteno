@@ -7,6 +7,7 @@ import { ExperienceQrModal } from '../components/ExperienceQrModal';
 import { PublishControls } from '../components/PublishControls';
 import { SpinHistory } from '../components/SpinHistory';
 import { ClaimsPanel } from '../components/ClaimsPanel';
+import { AccessPeriodPanel } from '../components/AccessPeriodPanel';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(
   path: string,
@@ -60,6 +61,7 @@ export function ExperienceDetailPage({
         organizationId={org}
         canPublish={permissions.includes('crm.manage')}
       />
+      <AccessPeriodPanel experienceId={id} organizationId={org} canManage={permissions.includes('crm.manage')} />
       <div className="route-qr">
         <ExperienceQrModal slug={experience.slug} runtimeBaseUrl={runtime} />
       </div>

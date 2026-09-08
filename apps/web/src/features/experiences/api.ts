@@ -36,6 +36,10 @@ export const experiencesApi = {
     apiRequest<Experience>(`/experiences/${id}/clone`, organizationId, {
       method: 'POST',
     }),
+  accessPeriods: (id: string, organizationId: string) =>
+    apiRequest<{ items: Array<{ id: string; startsAt: string; endsAt: string; source: string; note: string | null }>; status: 'legacy_unrestricted' | 'scheduled' | 'active' | 'expired' | 'no_access' }>(`/experiences/${id}/access-periods`, organizationId),
+  createAccessPeriod: (id: string, organizationId: string, body: unknown) =>
+    apiRequest(`/experiences/${id}/access-periods`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
   update: (id: string, organizationId: string, body: unknown) =>
     apiRequest(`/experiences/${id}`, organizationId, {
       method: 'PATCH',

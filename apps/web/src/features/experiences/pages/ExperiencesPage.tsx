@@ -19,6 +19,7 @@ const experienceStatuses: Record<string, string> = {
   paused: 'Pausada',
   expired: 'Vencida',
 };
+const accessStatuses: Record<string, string> = { legacy_unrestricted: 'Sin restricciones', scheduled: 'Vigencia programada', active: 'Vigencia activa', expired: 'Vigencia vencida', no_access: 'Sin acceso' };
 function experienceDate(value: string | null, empty: string) {
   if (!value) return empty;
   const date = new Date(value);
@@ -115,6 +116,9 @@ export function ExperiencesPage({
               <span className={`status status-${item.effective_status}`}>
                 {experienceStatuses[item.effective_status] ??
                   item.effective_status}
+              </span>
+              <span className={`status access-status status-${item.access_status ?? 'legacy_unrestricted'}`}>
+                {accessStatuses[item.access_status ?? 'legacy_unrestricted']}
               </span>
               <div className="experience-dates">
                 <span>

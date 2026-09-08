@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
+import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -21,6 +22,7 @@ export type Experience = {
   endsAt: string | null;
   createdAt: string;
   updatedAt: string;
+  access_status?: string;
 };
 
 export type ExperienceSpin = {
@@ -123,6 +125,12 @@ function present(row: Record<string, unknown>): Experience {
     publishedConfig: parseJson(row.publishedConfig as string | null),
     effective_status: getEffectiveExperienceStatus(row.status as ExperienceStatus, startsAt, endsAt),
   } as Experience;
+}
+
+async function presentWithAccess(db: D1Database, row: Record<string, unknown>, organizationId: string) {
+  const experience = present(row);
+  const periods = await getExperienceAccessPeriods(db, String(row.id), organizationId);
+  return { ...experience, access_status: getEffectiveExperienceAccessStatus(periods) };
 }
 
 function datesValid(startsAt: string | null | undefined, endsAt: string | null | undefined) {
@@ -280,6 +288,40 @@ experienceRoutes.post('/:id/clone', async (c) => {
   try { return c.json(present(cloned ?? {}), 201); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid cloned experience JSON' } }, 500); }
 });
 
+experienceRoutes.get('/:id/access-periods', async (c) => {
+  const organizationId = c.get('organization').id;
+  const id = c.req.param('id');
+  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
+  if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const periods = await getExperienceAccessPeriods(c.env.DB, id, organizationId);
+  return c.json({ items: periods, status: getEffectiveExperienceAccessStatus(periods) });
+});
+
+experienceRoutes.post('/:id/access-periods', async (c) => {
+  const organizationId = c.get('organization').id;
+  const id = c.req.param('id');
+  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
+  if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const startsAt = body.starts_at;
+  const endsAt = body.ends_at;
+  if (typeof startsAt !== 'string' || typeof endsAt !== 'string' || !startsAt || !endsAt) return c.json(bad('starts_at and ends_at are required'), 400);
+  const starts = new Date(startsAt).getTime();
+  const ends = new Date(endsAt).getTime();
+  if (!Number.isFinite(starts) || !Number.isFinite(ends)) return c.json(bad('Invalid date'), 400);
+  if (starts >= ends) return c.json(bad('ends_at must be greater than starts_at'), 400);
+  const source = body.source === undefined ? 'manual' : body.source;
+  if (source !== 'manual') return c.json(bad('Only manual access periods are supported'), 400);
+  const note = body.note === undefined || body.note === null ? null : typeof body.note === 'string' && body.note.length <= 500 ? body.note.trim() : undefined;
+  if (note === undefined) return c.json(bad('note must be a string of at most 500 characters'), 400);
+  const periodId = crypto.randomUUID();
+  await c.env.DB.prepare('INSERT INTO experience_access_periods (id, experience_id, organization_id, starts_at, ends_at, source, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(periodId, id, organizationId, new Date(starts).toISOString(), new Date(ends).toISOString(), source, c.get('user').id, note).run();
+  const periods = await getExperienceAccessPeriods(c.env.DB, id, organizationId);
+  const period = periods.find((item) => item.id === periodId);
+  return c.json({ period, status: getEffectiveExperienceAccessStatus(periods) }, 201);
+});
+
 experienceRoutes.get('/:id/inventory', async (c) => {
   const id = c.req.param('id');
   const organizationId = c.get('organization').id;
@@ -341,7 +383,7 @@ experienceRoutes.post('/', async (c) => {
 
 experienceRoutes.get('/', async (c) => {
   const rows = await c.env.DB.prepare(`${select} WHERE organization_id=? ORDER BY created_at DESC`).bind(c.get('organization').id).all<Record<string, unknown>>();
-  try { return c.json(rows.results.map(present)); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
+  try { return c.json(await Promise.all(rows.results.map((row) => presentWithAccess(c.env.DB, row, c.get('organization').id)))); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
 });
 
 experienceRoutes.get('/:id/spins', async (c) => {
@@ -365,7 +407,7 @@ experienceRoutes.get('/:id/spins', async (c) => {
 experienceRoutes.get('/:id', async (c) => {
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(c.req.param('id'), c.get('organization').id).first<Record<string, unknown>>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
-  try { return c.json(present(row)); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
+  try { return c.json(await presentWithAccess(c.env.DB, row, c.get('organization').id)); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
 });
 
 experienceRoutes.patch('/:id', async (c) => {
@@ -396,6 +438,7 @@ experienceRoutes.delete('/:id', async (c) => {
   const organizationId = c.get('organization').id;
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  await c.env.DB.prepare('DELETE FROM experience_access_periods WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory_events WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).run();
