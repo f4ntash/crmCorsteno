@@ -18,7 +18,7 @@ export function normalizeRouletteDraft(value: unknown): RouletteConfig {
   const segments = old.length >= 6 && old.length <= 10 ? old.filter((s): s is RouletteSegment => !!s && typeof s === 'object' && typeof (s as RouletteSegment).color === 'string').map((s) => ({ id: s.id || `seg-${crypto.randomUUID()}`, color: s.color, prizeId: s.prizeId ?? byName.get((s as { label?: string }).label ?? '') ?? null })) : [];
   const base = defaultDraft(Math.max(6, Math.min(10, segments.length || 6)));
   const fallbackSegments = base.segments.map((s) => ({ ...s, prizeId: finalPrizes[0]?.id ?? null }));
-  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments };
+  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments, effects: x?.effects ?? { sound: true, vibration: true, celebration: true }, resultCta: x?.resultCta };
 }
 
 export function isValidRouletteDraft(draft: RouletteConfig) {

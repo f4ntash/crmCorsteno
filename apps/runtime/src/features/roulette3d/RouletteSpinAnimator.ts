@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type RouletteSpinCallbacks = { onSpinStart?: () => void; onSpinComplete?: (targetSegmentIndex: number) => void };
+export type RouletteSpinCallbacks = { onSpinStart?: () => void; onSpinComplete?: (targetSegmentIndex: number) => void; onTick?: (final: boolean) => void };
 
 const TAU = Math.PI * 2;
 const mod = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
@@ -75,6 +75,7 @@ export class RouletteSpinAnimator {
     while (this.wheel.rotation.z >= this.nextBoundary && this.nextBoundary <= this.targetRotation + step) {
       this.nextBoundary += step;
       this.pointerKick = 0.12;
+      this.callbacks.onTick?.(this.nextBoundary > this.targetRotation - step ? true : false);
     }
     this.previousRotation = this.wheel.rotation.z;
     this.pointerKick *= Math.max(0, 1 - deltaSeconds * 18);

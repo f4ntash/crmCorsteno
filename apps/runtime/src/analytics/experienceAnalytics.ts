@@ -1,4 +1,4 @@
-type ExperienceEvent = 'experience_view' | 'roulette_spin_click' | 'roulette_spin_started' | 'roulette_spin_completed';
+type ExperienceEvent = 'experience_view' | 'roulette_spin_click' | 'roulette_spin_started' | 'roulette_spin_completed' | 'roulette_result_cta_click';
 function identifier(storage: Storage, key: string) { const value = storage.getItem(key) ?? crypto.randomUUID(); storage.setItem(key, value); return value; }
 export function createExperienceAnalytics(apiUrl: string, slug: string) {
   const userId = identifier(localStorage, 'corsteno_anon_id'); const sessionId = identifier(sessionStorage, 'corsteno_session_id');

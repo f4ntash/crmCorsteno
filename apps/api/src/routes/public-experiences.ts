@@ -6,7 +6,7 @@ import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectR
 
 export const publicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
-type AnalyticsEvent = 'experience_view' | 'roulette_spin_click' | 'roulette_spin_started' | 'roulette_spin_completed';
+type AnalyticsEvent = 'experience_view' | 'roulette_spin_click' | 'roulette_spin_started' | 'roulette_spin_completed' | 'roulette_result_cta_click';
 async function ensureAnalyticsApplication(db: D1Database, experienceId: string, organizationId: string, name: string) {
   const existing = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
   if (existing?.applicationId) return existing.applicationId;
@@ -91,7 +91,7 @@ publicExperienceRoutes.post('/experiences/:slug/events', async (c) => {
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   const body = await c.req.json().catch(() => ({} as { event?: string; userId?: string; sessionId?: string; properties?: Record<string, unknown> }));
   const event = body.event as AnalyticsEvent;
-  if (!['experience_view', 'roulette_spin_click', 'roulette_spin_started', 'roulette_spin_completed'].includes(event)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid experience event' } }, 400);
+  if (!['experience_view', 'roulette_spin_click', 'roulette_spin_started', 'roulette_spin_completed', 'roulette_result_cta_click'].includes(event)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid experience event' } }, 400);
   if (body.userId && body.userId.length > 200 || body.sessionId && body.sessionId.length > 200) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid anonymous identifiers' } }, 400);
   await recordExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, event, body.userId ?? null, body.sessionId ?? null, body.properties ?? { experienceId: row.id });
   return c.json({ ok: true }, 201);

@@ -5,4 +5,6 @@ export type Roulette3DConfig = {
   backgroundColor: string;
   prizes: Roulette3DPrize[];
   segments: Roulette3DSegment[];
+  effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean };
+  resultCta?: { enabled?: boolean; label?: string; url?: string };
 };
