@@ -35,8 +35,13 @@ export type ExperienceSpin = {
   createdAt: string;
 };
 
+export type ParticipationConfig = {
+  maxSpinsPerDevice: number | null;
+  maxSpinsPerSession: number | null;
+  cooldownSeconds: number;
+};
 export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
-export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }>; effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean }; resultCta?: { enabled?: boolean; label?: string; url?: string } };
+export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }>; effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean }; resultCta?: { enabled?: boolean; label?: string; url?: string }; participation?: Partial<ParticipationConfig> };
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -91,6 +96,7 @@ export function validAssetUrl(value: unknown) {
 export function validDraftConfig(value: unknown): value is DraftConfig {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const config = value as Record<string, unknown>;
+  if (!validParticipationConfig(config.participation)) return false;
   if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
   const ids = new Set<string>();
   if (config.effects !== undefined && (typeof config.effects !== 'object' || config.effects === null || Object.values(config.effects as Record<string, unknown>).some((v) => typeof v !== 'boolean'))) return false;
@@ -103,6 +109,24 @@ export function validDraftConfig(value: unknown): value is DraftConfig {
 export function normalizePrizeConfig(prize: PrizeConfig) {
   const legacyLimited = prize.stockMode === undefined && prize.stockLimit !== undefined && prize.stockLimit !== null;
   return { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: prize.enabled ?? true, weight: prize.weight ?? 1, stockMode: prize.stockMode ?? (legacyLimited ? 'limited' : 'unlimited'), initialStock: prize.initialStock ?? (legacyLimited ? prize.stockLimit! : undefined) } as const;
+}
+
+export function normalizeParticipationConfig(value: unknown): ParticipationConfig {
+  const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    maxSpinsPerDevice: input.maxSpinsPerDevice === null || input.maxSpinsPerDevice === undefined ? null : Number(input.maxSpinsPerDevice),
+    maxSpinsPerSession: input.maxSpinsPerSession === null || input.maxSpinsPerSession === undefined ? null : Number(input.maxSpinsPerSession),
+    cooldownSeconds: input.cooldownSeconds === undefined ? 0 : Number(input.cooldownSeconds),
+  };
+}
+
+export function validParticipationConfig(value: unknown) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const config = value as Record<string, unknown>;
+  const validLimit = (item: unknown) => item === null || item === undefined || typeof item === 'number' && Number.isInteger(item) && item >= 1 && item <= 100;
+  return validLimit(config.maxSpinsPerDevice) && validLimit(config.maxSpinsPerSession)
+    && (config.cooldownSeconds === undefined || typeof config.cooldownSeconds === 'number' && Number.isInteger(config.cooldownSeconds) && config.cooldownSeconds >= 0 && config.cooldownSeconds <= 604800);
 }
 
 async function syncPrizeInventory(db: D1Database, experienceId: string, config: DraftConfig) {

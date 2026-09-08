@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus } from '../services/experience-status';
-import { parseJson, validDraftConfig, type DraftConfig } from './experiences';
+import { normalizeParticipationConfig, parseJson, validDraftConfig, type DraftConfig } from './experiences';
 import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectRouletteOutcome } from '../services/roulette-selector';
 
 export const publicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
 type AnalyticsEvent = 'experience_view' | 'roulette_spin_click' | 'roulette_spin_started' | 'roulette_spin_completed' | 'roulette_result_cta_click' | 'roulette_ar_open_click' | 'roulette_ar_session_started' | 'roulette_ar_placed' | 'roulette_ar_session_ended';
+type ParticipationPolicy = { maxSpinsPerDevice: number | null; maxSpinsPerSession: number | null; cooldownSeconds: number };
+type ParticipationScope = 'device' | 'session';
+type ParticipationState = { spin_count: number; last_spin_at: string | null };
 async function ensureAnalyticsApplication(db: D1Database, experienceId: string, organizationId: string, name: string) {
   const existing = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
   if (existing?.applicationId) return existing.applicationId;
@@ -28,6 +31,36 @@ async function recordExperienceEvent(db: D1Database, experienceId: string, organ
 }
 function trackExperienceEvent(db: D1Database, experienceId: string, organizationId: string, name: string, event: string, userId: string | null, sessionId: string | null, properties: Record<string, unknown>) {
   void recordExperienceEvent(db, experienceId, organizationId, name, event, userId, sessionId, properties).catch(() => undefined);
+}
+
+function publicParticipationError(reason: string, retryAt?: string) {
+  return { error: 'participation_limit_reached', reason, message: reason === 'cooldown' ? 'Podrás volver a participar más tarde.' : reason === 'identity_required' ? 'Necesitamos identificar tu sesión anónima para participar.' : 'Ya alcanzaste el límite de participaciones para esta experiencia.', ...(retryAt ? { retryAt } : {}) };
+}
+
+function validParticipantId(value: unknown) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function prepareParticipation(db: D1Database, experienceId: string, organizationId: string, policy: ParticipationPolicy, deviceId: string | null, sessionId: string | null, now: Date) {
+  const scopes: Array<{ type: ParticipationScope; id: string; limit: number | null; cooldown: number }> = [];
+  if (policy.maxSpinsPerDevice !== null || policy.cooldownSeconds > 0) scopes.push({ type: 'device', id: deviceId ?? '', limit: policy.maxSpinsPerDevice, cooldown: policy.cooldownSeconds });
+  if (policy.maxSpinsPerSession !== null) scopes.push({ type: 'session', id: sessionId ?? '', limit: policy.maxSpinsPerSession, cooldown: 0 });
+  for (const scope of scopes) {
+    if (!scope.id) return { blocked: publicParticipationError('identity_required') } as const;
+    const state = await db.prepare('SELECT spin_count, last_spin_at FROM experience_participation WHERE experience_id=? AND organization_id=? AND scope_type=? AND participant_id=?').bind(experienceId, organizationId, scope.type, scope.id).first<ParticipationState>();
+    if (scope.limit !== null && (state?.spin_count ?? 0) >= scope.limit) return { blocked: publicParticipationError(scope.type === 'device' ? 'device_limit' : 'session_limit') } as const;
+    if (scope.cooldown > 0 && state?.last_spin_at) {
+      const retryAt = new Date(new Date(state.last_spin_at).getTime() + scope.cooldown * 1000);
+      if (now < retryAt) return { blocked: publicParticipationError('cooldown', retryAt.toISOString()) } as const;
+    }
+  }
+  const statements: D1PreparedStatement[] = [];
+  const timestamp = now.toISOString();
+  for (const scope of scopes) {
+    statements.push(db.prepare('INSERT OR IGNORE INTO experience_participation (experience_id, organization_id, scope_type, participant_id) VALUES (?, ?, ?, ?)').bind(experienceId, organizationId, scope.type, scope.id));
+    statements.push(db.prepare('UPDATE experience_participation SET spin_count=spin_count+1, last_spin_at=?, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND organization_id=? AND scope_type=? AND participant_id=? AND (? IS NULL OR spin_count<?) AND (?=0 OR last_spin_at IS NULL OR last_spin_at<=?)').bind(timestamp, experienceId, organizationId, scope.type, scope.id, scope.limit, scope.limit ?? 0, scope.cooldown, new Date(now.getTime() - scope.cooldown * 1000).toISOString()));
+  }
+  return { statements, scopes } as const;
 }
 
 publicExperienceRoutes.get('/experiences/:slug', async (c) => {
@@ -54,6 +87,10 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   let config: DraftConfig | null;
   try { config = parseJson(row.published_config) as DraftConfig | null; } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const deviceId = (body.deviceId ?? c.req.header('X-Anonymous-User-Id') ?? null) as string | null;
+  const sessionId = (body.sessionId ?? c.req.header('X-Session-Id') ?? null) as string | null;
+  const policy = normalizeParticipationConfig(config.participation);
   let applicationId: string | null = null;
   try { applicationId = (await ensureAnalyticsApplication(c.env.DB, row.id, row.organization_id, row.name)) ?? null; } catch { /* analytics is secondary to the authoritative spin */ }
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -61,6 +98,17 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
     const inventory = new Map(inventoryRows.results.map((item) => [item.prizeId, item]));
     const outcomes = buildRouletteOutcomes(config, inventory);
     if (!outcomes.length) return c.json({ active: false, reason: 'unavailable' });
+    if ((deviceId !== null && !validParticipantId(deviceId)) || (sessionId !== null && !validParticipantId(sessionId))) {
+      const blocked = publicParticipationError('identity_required');
+      trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_blocked', null, null, { experienceId: row.id, reason: 'identity_required' });
+      return c.json(blocked, 400);
+    }
+    const participation = await prepareParticipation(c.env.DB, row.id, row.organization_id, policy, deviceId, sessionId, new Date());
+    if ('blocked' in participation) {
+      const blocked = participation.blocked as ReturnType<typeof publicParticipationError>;
+      trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_blocked', null, null, { experienceId: row.id, reason: blocked.reason });
+      return c.json(blocked, blocked.reason === 'identity_required' ? 400 : 429);
+    }
     const outcome = selectRouletteOutcome(outcomes, secureRandomValue());
     if (outcome.prizeId !== null) {
       const prize = config.prizes.find((item) => item.id === outcome.prizeId)!;
@@ -69,13 +117,13 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
       const spinId = crypto.randomUUID();
       const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
       const segment = config.segments[segmentIndex]!;
-      const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type) VALUES (?, ?, ?, ?, ?, ?, ?, \'prize\')').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, prize.id);
+      const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type, participant_device_id, participant_session_id) VALUES (?, ?, ?, ?, ?, ?, ?, \'prize\', ?, ?)').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, prize.id, deviceId, sessionId);
       const inventoryInsert = !stock && stockMode === 'unlimited' ? c.env.DB.prepare('INSERT OR IGNORE INTO experience_prize_inventory (experience_id, prize_id, stock_mode, stock_available, delivered_count) VALUES (?, ?, \'unlimited\', NULL, 0)').bind(row.id, prize.id) : null;
       const update = stockMode === 'limited'
         ? c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id)
         : c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id);
       const inventoryEvent = c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId);
-      const statements = inventoryInsert ? [inventoryInsert, update, spinInsert, inventoryEvent] : [update, spinInsert, inventoryEvent];
+      const statements = inventoryInsert ? [...participation.statements, inventoryInsert, update, spinInsert, inventoryEvent] : [...participation.statements, update, spinInsert, inventoryEvent];
       const results = await c.env.DB.batch(statements);
       if (!results[statements.indexOf(update)]?.meta?.changes) continue;
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_prize_won', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, prize: prize.name, prizeId: prize.id, spinId });
@@ -87,8 +135,8 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
     const segment = config.segments[segmentIndex]!;
     const prize = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
     const spinId = crypto.randomUUID();
-    const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type) VALUES (?, ?, ?, ?, ?, ?, ?, \'no_prize\')').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, null);
-    await c.env.DB.batch([spinInsert]);
+    const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type, participant_device_id, participant_session_id) VALUES (?, ?, ?, ?, ?, ?, ?, \'no_prize\', ?, ?)').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, null, deviceId, sessionId);
+    await c.env.DB.batch([...participation.statements, spinInsert]);
     trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, result: 'no_prize', prize: 'Sin premio' });
     trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_no_prize', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, organizationId: row.organization_id, spinId, prize: 'Sin premio' });
     return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prize ? { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null } : null });
