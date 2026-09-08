@@ -40,7 +40,7 @@ export type ParticipationConfig = {
   maxSpinsPerSession: number | null;
   cooldownSeconds: number;
 };
-export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
+export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null; redemption?: { enabled?: boolean } };
 export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }>; effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean }; resultCta?: { enabled?: boolean; label?: string; url?: string }; participation?: Partial<ParticipationConfig> };
 
 type Variables = {
@@ -55,6 +55,48 @@ experienceRoutes.get('*', requireOrganizationPermission('crm.read'));
 experienceRoutes.post('*', requireOrganizationPermission('crm.manage'));
 experienceRoutes.patch('*', requireOrganizationPermission('crm.manage'));
 experienceRoutes.delete('*', requireOrganizationPermission('crm.manage'));
+
+function presentClaim(row: Record<string, unknown>) {
+  return { id: row.id, code: row.code, prizeId: row.prizeId, prizeName: row.prizeName, status: row.status, createdAt: row.createdAt, redeemedAt: row.redeemedAt ?? null };
+}
+
+experienceRoutes.get('/:id/claims', async (c) => {
+  const experienceId = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const experience = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first();
+  if (!experience) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const query = c.req.query();
+  const limit = Math.min(Math.max(Number(query.limit) || 25, 1), 100);
+  const offset = Math.max(Number(query.offset) || 0, 0);
+  const values: (string | number)[] = [organizationId, experienceId];
+  let where = 'organization_id=? AND experience_id=?';
+  if (query.code) { where += ' AND code=?'; values.push(query.code.trim().toUpperCase()); }
+  if (query.status === 'active' || query.status === 'redeemed') { where += ' AND status=?'; values.push(query.status); }
+  if (query.prizeId) { where += ' AND prize_id=?'; values.push(query.prizeId); }
+  const rows = await c.env.DB.prepare(`SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset).all<Record<string, unknown>>();
+  return c.json({ items: rows.results.map(presentClaim), pagination: { limit, offset, nextOffset: rows.results.length === limit ? offset + limit : null } });
+});
+
+experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
+  const experienceId = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const userId = c.get('user').id;
+  const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND experience_id=? AND organization_id=? AND status='active'").bind(userId, c.req.param('claimId'), experienceId, organizationId).run();
+  if (!update.meta?.changes) {
+    const claim = await c.env.DB.prepare('SELECT status FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<{ status: string }>();
+    if (claim?.status === 'redeemed') return c.json({ error: { code: 'CONFLICT', message: 'Claim already redeemed' } }, 409);
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Claim not found' } }, 404);
+  }
+  void (async () => {
+    const context = await c.env.DB.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
+    if (!context?.applicationId) return;
+    const application = await c.env.DB.prepare('SELECT project_id projectId FROM applications WHERE id=? AND organization_id=?').bind(context.applicationId, organizationId).first<{ projectId: string }>();
+    if (!application) return;
+    await c.env.DB.prepare('INSERT INTO events (id,organization_id,project_id,application_id,event_name,properties,occurred_at,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, application.projectId, context.applicationId, 'roulette_prize_redeemed', JSON.stringify({ experienceId, claimId: c.req.param('claimId') }), Date.now(), Date.now()).run();
+  })().catch(() => undefined);
+  const row = await c.env.DB.prepare('SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<Record<string, unknown>>();
+  return c.json(presentClaim(row ?? {}));
+});
 
 const select = `SELECT id, organization_id organizationId, name, slug, type, status,
   schema_version schemaVersion, draft_config draftConfig, published_config publishedConfig,
@@ -104,6 +146,7 @@ export function validDraftConfig(value: unknown): value is DraftConfig {
   if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
   const ids = new Set<string>();
   if (config.effects !== undefined && (typeof config.effects !== 'object' || config.effects === null || Object.values(config.effects as Record<string, unknown>).some((v) => typeof v !== 'boolean'))) return false;
+  if (config.prizes.some((prize) => { const redemption = (prize as Record<string, unknown>).redemption; return redemption !== undefined && (typeof redemption !== 'object' || redemption === null || Array.isArray(redemption) || typeof (redemption as Record<string, unknown>).enabled !== 'boolean'); })) return false;
   if (config.resultCta !== undefined) { const cta = config.resultCta as Record<string, unknown>; if (typeof cta !== 'object' || cta === null || (cta.enabled !== undefined && typeof cta.enabled !== 'boolean') || (cta.label !== undefined && (typeof cta.label !== 'string' || cta.label.length > 80)) || (cta.url !== undefined && (typeof cta.url !== 'string' || !/^https?:\/\//i.test(cta.url) || cta.url.length > 2048))) return false; }
   for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; const legacyStock = item.stockLimit; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl)) || (item.enabled !== undefined && typeof item.enabled !== 'boolean') || (item.weight !== undefined && (!Number.isInteger(item.weight) || Number(item.weight) < 1 || Number(item.weight) > 1000)) || (item.stockMode !== undefined && item.stockMode !== 'limited' && item.stockMode !== 'unlimited') || (item.initialStock !== undefined && (!Number.isInteger(item.initialStock) || Number(item.initialStock) < 0 || Number(item.initialStock) > 1_000_000_000)) || (legacyStock !== undefined && legacyStock !== null && (!Number.isInteger(legacyStock) || Number(legacyStock) < 0 || Number(legacyStock) > 1_000_000_000))) return false; ids.add(item.id); }
   const segmentIds = new Set<string>();

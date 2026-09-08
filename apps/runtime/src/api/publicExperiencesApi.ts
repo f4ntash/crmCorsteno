@@ -2,7 +2,7 @@ import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 
 const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
 export type PublicExperienceResponse = { active: boolean; reason?: string; experience?: { type: string; config: Roulette3DConfig; startsAt: string | null; endsAt: string | null } };
-export type SpinResult = { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null };
+export type SpinResult = { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null; claim: { code: string; status: 'active' | 'redeemed' } | null };
 export type ParticipationBlocked = { error: 'participation_limit_reached'; reason: 'device_limit' | 'session_limit' | 'cooldown' | 'identity_required'; message: string; retryAt?: string };
 export class ParticipationBlockedError extends Error {
   readonly details: ParticipationBlocked;

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Roulette3DView } from './features/roulette3d/Roulette3DView';
 import { publicExperiencesApi, type PublicExperienceResponse } from './api/publicExperiencesApi';
+import './claim.css';
 
 
 function Viewer() {

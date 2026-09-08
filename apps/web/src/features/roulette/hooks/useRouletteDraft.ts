@@ -11,7 +11,7 @@ function defaultDraft(count = 6): RouletteConfig {
 export function normalizeRouletteDraft(value: unknown): RouletteConfig {
   const x = value as Partial<RouletteConfig> | null;
   const old = Array.isArray(x?.segments) ? x.segments : [];
-  const prizes = Array.isArray(x?.prizes) ? x.prizes.filter((p): p is RoulettePrize => !!p && typeof p === 'object' && typeof (p as RoulettePrize).id === 'string' && typeof (p as RoulettePrize).name === 'string' && !!(p as RoulettePrize).name.trim()).map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, enabled: p.enabled ?? true, weight: p.weight ?? 1, stockMode: p.stockMode ?? 'unlimited', initialStock: p.initialStock })) : [];
+  const prizes = Array.isArray(x?.prizes) ? x.prizes.filter((p): p is RoulettePrize => !!p && typeof p === 'object' && typeof (p as RoulettePrize).id === 'string' && typeof (p as RoulettePrize).name === 'string' && !!(p as RoulettePrize).name.trim()).map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, enabled: p.enabled ?? true, weight: p.weight ?? 1, stockMode: p.stockMode ?? 'unlimited', initialStock: p.initialStock, redemption: { enabled: p.redemption?.enabled === true } })) : [];
   const oldPrizes = [...new Set(old.map((s) => typeof s === 'object' && s ? String((s as { label?: string }).label ?? '') : '').filter(Boolean))].map((name) => ({ id: `prize-${crypto.randomUUID()}`, name, enabled: true, weight: 1, stockMode: 'unlimited' as const }));
   const finalPrizes = prizes.length ? prizes.slice(0, 5) : oldPrizes.length ? oldPrizes : defaultDraft().prizes;
   const byName = new Map(finalPrizes.map((p) => [p.name, p.id]));

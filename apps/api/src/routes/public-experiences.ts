@@ -3,6 +3,7 @@ import type { Env } from '../index';
 import { getEffectiveExperienceStatus } from '../services/experience-status';
 import { normalizeParticipationConfig, parseJson, validDraftConfig, type DraftConfig } from './experiences';
 import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectRouletteOutcome } from '../services/roulette-selector';
+import { generateClaimCode } from '../services/prize-claims';
 
 export const publicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
@@ -123,13 +124,16 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
         ? c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id)
         : c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id);
       const inventoryEvent = c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId);
-      const statements = inventoryInsert ? [...participation.statements, inventoryInsert, update, spinInsert, inventoryEvent] : [...participation.statements, update, spinInsert, inventoryEvent];
-      const results = await c.env.DB.batch(statements);
+      const claim = prize.redemption?.enabled === true ? { code: generateClaimCode(), status: 'active' as const } : null;
+      const claimInsert = claim ? c.env.DB.prepare('INSERT INTO roulette_prize_claims (id, code, organization_id, experience_id, spin_id, prize_id, prize_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), claim.code, row.organization_id, row.id, spinId, prize.id, prize.name, claim.status) : null;
+      const statements = inventoryInsert ? [...participation.statements, inventoryInsert, update, spinInsert, inventoryEvent, ...(claimInsert ? [claimInsert] : [])] : [...participation.statements, update, spinInsert, inventoryEvent, ...(claimInsert ? [claimInsert] : [])];
+      let results: D1Result<unknown>[];
+      try { results = await c.env.DB.batch(statements); } catch { continue; }
       if (!results[statements.indexOf(update)]?.meta?.changes) continue;
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_prize_won', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, prize: prize.name, prizeId: prize.id, spinId });
       const prizeResult = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, prize: prize.name, prizeId: prize.id });
-      return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null });
+      return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null, claim });
     }
     const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
     const segment = config.segments[segmentIndex]!;
@@ -139,7 +143,7 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
     await c.env.DB.batch([...participation.statements, spinInsert]);
     trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, result: 'no_prize', prize: 'Sin premio' });
     trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_no_prize', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, organizationId: row.organization_id, spinId, prize: 'Sin premio' });
-    return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prize ? { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null } : null });
+    return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prize ? { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null } : null, claim: null });
   }
   return c.json({ active: false, reason: 'unavailable' }, 503);
 });

@@ -212,6 +212,19 @@ export const prizeClaims = sqliteTable('prize_claims', {
   claimedAt: integer('claimed_at', { mode: 'timestamp_ms' }),
   ...timestamps,
 });
+export const roulettePrizeClaims = sqliteTable('roulette_prize_claims', {
+  id: id(),
+  code: text('code').notNull(),
+  organizationId: text('organization_id').notNull(),
+  experienceId: text('experience_id').notNull(),
+  spinId: text('spin_id').notNull(),
+  prizeId: text('prize_id').notNull(),
+  prizeName: text('prize_name').notNull(),
+  status: text('status').notNull(),
+  createdAt: text('created_at').notNull(),
+  redeemedAt: text('redeemed_at'),
+  redeemedBy: text('redeemed_by'),
+}, (t) => [uniqueIndex('roulette_prize_claims_code').on(t.code), uniqueIndex('roulette_prize_claims_spin').on(t.spinId), index('roulette_prize_claims_experience').on(t.experienceId, t.createdAt)]);
 export const crmLeads = sqliteTable(
   'crm_leads',
   {
