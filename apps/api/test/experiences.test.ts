@@ -4,9 +4,9 @@ import app from '../src';
 import { validDraftConfig } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
-function fixture(initialDraft = '{"segments":[]}') {
+function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null) {
   const experiences: E[] = [
-    { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: 'draft', schema_version: 1, draft_config: initialDraft, published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
+    { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: initialStatus, schema_version: 1, draft_config: initialDraft, published_config: initialPublished, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },
   ];
   const db = { prepare(sql: string) { return { bind(...args: any[]) {
@@ -14,7 +14,7 @@ function fixture(initialDraft = '{"segments":[]}') {
       async first<T>() {
         if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platform_role: 'user', expires_at: Date.now() + 10000 } as T;
         if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role: 'owner' } as T;
-        if (sql.includes('FROM experiences')) { const e = experiences.find((x) => x.id === args[0] && x.organization_id === args[1]); return e ? { ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at } as T : null as T; }
+        if (sql.includes('FROM experiences')) { const e = experiences.find((x) => sql.includes('slug=?') ? x.slug === args[0] : x.id === args[0] && x.organization_id === args[1]); return e ? { ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at } as T : null as T; }
         return null as T;
       },
       async all<T>() { return { results: experiences.filter((e) => e.organization_id === args[0]).map((e) => ({ ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at })) as T[] }; },
@@ -93,3 +93,25 @@ describe('experience publishing', () => {
 });
 
 function sixSegments() { return [0, 1, 2, 3, 4, 5].map((i) => ({ id: `seg-${i}`, color: '#D6B25E', prizeId: 'prize-1' })); }
+
+describe('public published experience', () => {
+  const published = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() });
+  it('returns only published_config for an active experience', async () => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { active: boolean; experience: Record<string, unknown> };
+    expect(body.active).toBe(true);
+    expect(body.experience.config).toEqual(JSON.parse(published));
+    expect(body.experience).not.toHaveProperty('draft_config');
+    expect(body.experience).not.toHaveProperty('organization_id');
+  });
+  it.each(['draft', 'paused'])('does not expose %s experiences', async (status) => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, status, published));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ active: false, reason: status });
+  });
+  it('returns 404 for an unknown slug', async () => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/missing'), fixture());
+    expect(response.status).toBe(404);
+  });
+});

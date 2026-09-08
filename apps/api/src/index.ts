@@ -9,12 +9,14 @@ import { eventRoutes } from './routes/events';
 import { analyticsRoutes } from './routes/analytics';
 import { experienceRoutes } from './routes/experiences';
 import { requireAuth, requireOrganization } from './auth/middleware';
+import { publicExperienceRoutes } from './routes/public-experiences';
 
 export interface Env {
   ENVIRONMENT: string;
   APP_VERSION: string;
   WEB_ORIGIN?: string;
   WEB_ORIGINS?: string;
+  PUBLIC_ORIGINS?: string;
   DB: D1Database;
   EXPERIENCE_ASSETS?: R2Bucket;
 }
@@ -25,6 +27,7 @@ const developmentOrigins = [
   'https://localhost:5175',
   'http://localhost:5173',
   'http://localhost:5175',
+  'http://localhost:5174',
 ];
 
 app.use('*', async (c, next) => {
@@ -36,8 +39,10 @@ app.use('*', async (c, next) => {
       .filter(Boolean) ?? [];
   const allowedOrigins =
     c.env.ENVIRONMENT === 'development'
-      ? [...new Set([...developmentOrigins, ...configuredOrigins])]
-      : configuredOrigins;
+      ? [...new Set([...developmentOrigins, ...configuredOrigins, ...(c.env.PUBLIC_ORIGINS?.split(',') ?? [])])]
+      : c.req.path.startsWith('/public/')
+        ? [...configuredOrigins, ...(c.env.PUBLIC_ORIGINS?.split(',') ?? [])]
+        : configuredOrigins;
   return cors({
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
     credentials: true,
@@ -52,6 +57,7 @@ app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
 app.route('/experiences', experienceRoutes);
+app.route('/public', publicExperienceRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);
   if (!/^organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/.test(key)) return c.notFound();

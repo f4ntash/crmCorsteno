@@ -40,7 +40,7 @@ const select = `SELECT id, organization_id organizationId, name, slug, type, sta
   starts_at startsAt, ends_at endsAt, created_at createdAt, updated_at updatedAt
   FROM experiences`;
 
-function parseJson(value: string | null): JsonValue | null {
+export function parseJson(value: string | null): JsonValue | null {
   if (value === null) return null;
   try {
     const parsed: unknown = JSON.parse(value);

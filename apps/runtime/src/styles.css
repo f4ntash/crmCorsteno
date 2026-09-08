@@ -1,0 +1,1 @@
+:root{font-family:system-ui,sans-serif;color:#e8eef4;background:#0d141b}body{margin:0}main{min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}main>h1,main>p{max-width:600px;text-align:center}.roulette-preview{width:min(100%,640px);min-height:600px}.roulette-preview svg{width:min(100%,560px)}
