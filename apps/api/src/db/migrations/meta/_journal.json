@@ -29,6 +29,13 @@
       "when": 1788549000000,
       "tag": "0003_application_type",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788950000000,
+      "tag": "0005_experience_persisted_status",
+      "breakpoints": true
     }
   ]
 }

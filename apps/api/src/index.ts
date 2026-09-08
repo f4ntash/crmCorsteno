@@ -7,6 +7,7 @@ import { appDataRoutes } from './routes/app-data';
 import { adminRoutes } from './routes/admin';
 import { eventRoutes } from './routes/events';
 import { analyticsRoutes } from './routes/analytics';
+import { experienceRoutes } from './routes/experiences';
 import { requireAuth, requireOrganization } from './auth/middleware';
 
 export interface Env {
@@ -46,6 +47,7 @@ app.route('/organizations', organizationRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
+app.route('/experiences', experienceRoutes);
 app.get('/dev/db-check', async (c) => {
   if (c.env.ENVIRONMENT !== 'development') return c.notFound();
   const result = await c.env.DB.prepare(
