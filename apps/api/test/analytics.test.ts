@@ -400,6 +400,19 @@ describe('Analytics deterministic summary', () => {
     expect(result.body.totals).toMatchObject({ uniqueUsers: 1, sessions: 1, rouletteSpinsStarted: 1, rouletteSpinsCompleted: 1, roulettePrizesWon: 1, rouletteNoPrize: 0 });
     expect(result.body.rates.rouletteConversion).toBe(1);
   });
+
+  it('exposes blocked participation and AR metrics for roulette applications', async () => {
+    const events = [
+      event(roulette, { event: 'roulette_spin_blocked', userId: 'u1', sessionId: 's1', occurredAt: NOW - 500, properties: { reason: 'device_limit' } }),
+      event(roulette, { event: 'roulette_ar_open_click', userId: 'u1', sessionId: 's1', occurredAt: NOW - 400 }),
+      event(roulette, { event: 'roulette_ar_session_started', userId: 'u1', sessionId: 's1', occurredAt: NOW - 300 }),
+      event(roulette, { event: 'roulette_ar_placed', userId: 'u1', sessionId: 's1', occurredAt: NOW - 200 }),
+    ];
+    const result = await request<{ totals: Record<string, number> }>('/analytics/summary?range=all&applicationId=roulette-app', state(events));
+    expect(result.body.totals).toMatchObject({ rouletteSpinBlocked: 1, rouletteArOpen: 1, rouletteArSessions: 1, rouletteArPlaced: 1 });
+    const breakdown = await request<{ items: Array<{ name: string; value: number }> }>('/analytics/breakdown?dimension=reason&range=all&applicationId=roulette-app', state(events));
+    expect(breakdown.body.items).toEqual([{ name: 'device_limit', value: 1 }]);
+  });
 });
 
 describe('Analytics ranges and timeseries', () => {

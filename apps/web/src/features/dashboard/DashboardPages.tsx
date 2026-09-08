@@ -14,7 +14,7 @@ type Application = {
 };
 type Summary = {
   totals: Record<string, number>;
-  rates: { completion: number; prizeConversion: number };
+  rates: { completion: number; prizeConversion: number; rouletteConversion?: number };
 };
 type Point = { timestamp: number; value: number };
 type Item = { name: string; value: number };
@@ -91,6 +91,7 @@ export function Analytics({ org }: { org: string }) {
     [prizes, setPrizes] = useState<Item[]>([]),
     [results, setResults] = useState<Item[]>([]),
     [topEvents, setTopEvents] = useState<Item[]>([]),
+    [blocked, setBlocked] = useState<Item[]>([]),
     [error, setError] = useState(false);
   useEffect(() => {
     setProject('');
@@ -124,8 +125,9 @@ export function Analytics({ org }: { org: string }) {
       get(`/analytics/breakdown?${q}&dimension=prize`, org),
       get(`/analytics/breakdown?${q}&dimension=result`, org),
       get(`/analytics/breakdown?${q}&dimension=event`, org),
+      get(`/analytics/breakdown?${q}&dimension=reason`, org),
     ])
-      .then(([a, b, c, d, e, f, g, h]) => {
+      .then(([a, b, c, d, e, f, g, h, i]) => {
         setS(a);
         setUsers(b.points);
         setEvents(c.points);
@@ -134,6 +136,7 @@ export function Analytics({ org }: { org: string }) {
         setPrizes(f.items);
         setResults(g.items);
         setTopEvents(h.items);
+        setBlocked(i.items);
       })
       .catch(() => setError(true));
   }, [org, range, project, application]);
@@ -272,6 +275,7 @@ export function Analytics({ org }: { org: string }) {
               </div>
             )}
           </div>
+          {(apps.find((a) => a.id === application)?.applicationType ?? 'generic') === 'roulette' && <><div className="grid"><div className="card"><small>Giros iniciados</small><b>{formatMetricValue(s.totals.rouletteSpinsStarted)}</b></div><div className="card"><small>Giros completados</small><b>{formatMetricValue(s.totals.rouletteSpinsCompleted)}</b></div><div className="card"><small>Premios entregados</small><b>{formatMetricValue(s.totals.roulettePrizesWon)}</b></div><div className="card"><small>Sin premio</small><b>{formatMetricValue(s.totals.rouletteNoPrize)}</b></div><div className="card"><small>Bloqueados</small><b>{formatMetricValue(s.totals.rouletteSpinBlocked)}</b></div><div className="card"><small>Conversión a giro</small><b>{formatPercentage(s.rates.rouletteConversion)}</b></div></div><div className="chart-grid"><Rank title="Premios obtenidos" items={prizes} /><Rank title="Participaciones bloqueadas" items={blocked} /><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: s.totals.rouletteArOpen }, { name: 'Sesiones AR', value: s.totals.rouletteArSessions }, { name: 'Ruletas colocadas', value: s.totals.rouletteArPlaced }]} /></div></>}
           <div className="chart-grid">
             <ChartBox title="Usuarios en el tiempo" data={users} />
             <ChartBox

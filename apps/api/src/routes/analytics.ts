@@ -4,7 +4,7 @@ import { requireAuth, requireOrganization } from '../auth/middleware';
 import type { Env } from '../index';
 type Range = '24h' | '7d' | '30d' | 'all';
 type Metric = 'users' | 'events' | 'games' | 'prizes';
-type Dimension = 'game' | 'prize' | 'result' | 'event';
+type Dimension = 'game' | 'prize' | 'result' | 'reason' | 'event';
 type Vars = {
   user: { id: string; email: string; name: string; platformRole: string };
   sessionId: string;
@@ -113,6 +113,10 @@ analyticsRoutes.get('/summary', async (c) => {
       rouletteSpinsCompleted: count('roulette_spin_completed'),
       roulettePrizesWon: count('roulette_prize_won'),
       rouletteNoPrize: count('roulette_no_prize'),
+      rouletteSpinBlocked: count('roulette_spin_blocked'),
+      rouletteArOpen: count('roulette_ar_open_click'),
+      rouletteArSessions: count('roulette_ar_session_started'),
+      rouletteArPlaced: count('roulette_ar_placed'),
     },
     rates: {
       completion: started ? count('game_finished') / started : 0,
@@ -145,7 +149,7 @@ analyticsRoutes.get('/breakdown', async (c) => {
       .all();
     return c.json({ dimension: d, items: rows.results });
   }
-  if (d !== 'game' && d !== 'prize' && d !== 'result')
+  if (d !== 'game' && d !== 'prize' && d !== 'result' && d !== 'reason')
     return c.json(
       { error: { code: 'BAD_REQUEST', message: 'Invalid dimension' } },
       400,
