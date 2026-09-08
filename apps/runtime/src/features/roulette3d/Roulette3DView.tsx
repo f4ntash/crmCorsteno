@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RoulettePreview } from '../../../../web/src/RoulettePreview';
-import { Roulette3D } from './Roulette3D';
-import type { Roulette3DConfig } from './types';
+import { Roulette3D } from '@corsteno/roulette-3d';
+import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 import { publicExperiencesApi, type SpinResult } from '../../api/publicExperiencesApi';
 import { createExperienceAnalytics } from '../../analytics/experienceAnalytics';
 import { RouletteResult } from '../roulette/components/RouletteResult';

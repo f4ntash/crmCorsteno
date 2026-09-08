@@ -1,5 +1,5 @@
 import type { SpinResult } from '../../../api/publicExperiencesApi';
-import type { Roulette3DConfig } from '../../roulette3d/types';
+import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 
 export function RouletteResult({ result, config, onCta }: { result: SpinResult; config: Roulette3DConfig; onCta: () => void }) {
   const cta = config.resultCta;

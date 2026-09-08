@@ -54,6 +54,9 @@ importers:
 
   apps/runtime:
     dependencies:
+      '@corsteno/roulette-3d':
+        specifier: workspace:*
+        version: link:../../packages/roulette-3d
       '@corsteno/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -91,6 +94,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@corsteno/roulette-3d':
+        specifier: workspace:*
+        version: link:../../packages/roulette-3d
       '@corsteno/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -144,6 +150,19 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.5.0)
+
+  packages/roulette-3d:
+    dependencies:
+      three:
+        specifier: ^0.179.1
+        version: 0.179.1
+    devDependencies:
+      '@types/three':
+        specifier: ^0.179.0
+        version: 0.179.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/types: {}
 

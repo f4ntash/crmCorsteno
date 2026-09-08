@@ -1,4 +1,4 @@
-import type { Roulette3DConfig } from '../features/roulette3d/types';
+import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 
 const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
 export type PublicExperienceResponse = { active: boolean; reason?: string; experience?: { type: string; config: Roulette3DConfig; startsAt: string | null; endsAt: string | null } };
