@@ -18,17 +18,20 @@ export function normalizeRouletteDraft(value: unknown): RouletteConfig {
   const segments = old.length >= 6 && old.length <= 10 ? old.filter((s): s is RouletteSegment => !!s && typeof s === 'object' && typeof (s as RouletteSegment).color === 'string').map((s) => ({ id: s.id || `seg-${crypto.randomUUID()}`, color: s.color, prizeId: s.prizeId ?? byName.get((s as { label?: string }).label ?? '') ?? null })) : [];
   const base = defaultDraft(Math.max(6, Math.min(10, segments.length || 6)));
   const fallbackSegments = base.segments.map((s) => ({ ...s, prizeId: finalPrizes[0]?.id ?? null }));
-  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments, effects: x?.effects ?? { sound: true, vibration: true, celebration: true }, resultCta: x?.resultCta };
+  const participation = (x?.participation ?? {}) as Partial<NonNullable<RouletteConfig['participation']>>;
+  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments, effects: x?.effects ?? { sound: true, vibration: true, celebration: true }, resultCta: x?.resultCta, participation: { maxSpinsPerDevice: participation.maxSpinsPerDevice ?? null, maxSpinsPerSession: participation.maxSpinsPerSession ?? null, cooldownSeconds: participation.cooldownSeconds ?? 0 } };
 }
 
 export function isValidRouletteDraft(draft: RouletteConfig) {
-  return /^#[0-9a-f]{6}$/i.test(draft.backgroundColor) && draft.prizes.length >= 1 && draft.prizes.length <= 5 && new Set(draft.prizes.map((p) => p.id)).size === draft.prizes.length && draft.prizes.every((p) => p.name.trim()) && draft.segments.length >= 6 && draft.segments.length <= 10 && draft.segments.every((s) => /^#[0-9a-f]{6}$/i.test(s.color) && (s.prizeId === null || draft.prizes.some((p) => p.id === s.prizeId)));
+  const participation = draft.participation ?? { maxSpinsPerDevice: null, maxSpinsPerSession: null, cooldownSeconds: 0 };
+  const validLimit = (value: number | null) => value === null || Number.isInteger(value) && value >= 1 && value <= 100;
+  return /^#[0-9a-f]{6}$/i.test(draft.backgroundColor) && draft.prizes.length >= 1 && draft.prizes.length <= 5 && new Set(draft.prizes.map((p) => p.id)).size === draft.prizes.length && draft.prizes.every((p) => p.name.trim()) && draft.segments.length >= 6 && draft.segments.length <= 10 && draft.segments.every((s) => /^#[0-9a-f]{6}$/i.test(s.color) && (s.prizeId === null || draft.prizes.some((p) => p.id === s.prizeId))) && validLimit(participation.maxSpinsPerDevice) && validLimit(participation.maxSpinsPerSession) && Number.isInteger(participation.cooldownSeconds) && participation.cooldownSeconds >= 0 && participation.cooldownSeconds <= 604800;
 }
 
 export function useRouletteDraft(initialValue?: unknown) {
   const [draft, setDraft] = useState<RouletteConfig>(() => normalizeRouletteDraft(initialValue));
   const [original, setOriginal] = useState(() => JSON.stringify(initialValue));
-  const reset = useCallback((value: unknown) => { setDraft(normalizeRouletteDraft(value)); setOriginal(JSON.stringify(value)); }, []);
+  const reset = useCallback((value: unknown) => { const normalized = normalizeRouletteDraft(value); setDraft(normalized); setOriginal(JSON.stringify(normalized)); }, []);
   const resize = useCallback((count: number) => setDraft((d) => { const segments = d.segments.slice(0, count); while (segments.length < count) segments.push({ id: `seg-${crypto.randomUUID()}`, prizeId: d.prizes[0]?.id ?? null, color: palette[segments.length] }); return { ...d, segments }; }), []);
   const updateSegment = useCallback((index: number, key: 'prizeId' | 'color', value: string) => setDraft((d) => ({ ...d, segments: d.segments.map((s, i) => i === index ? { ...s, [key]: key === 'prizeId' && value === '' ? null : value } : s) })), []);
   const updatePrize = useCallback((index: number, prize: RoulettePrize) => setDraft((d) => ({ ...d, prizes: d.prizes.map((p, i) => i === index ? prize : p) })), []);
