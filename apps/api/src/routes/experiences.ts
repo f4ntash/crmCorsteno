@@ -257,6 +257,29 @@ experienceRoutes.post('/:id/publish', async (c) => {
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
 });
 
+experienceRoutes.post('/:id/clone', async (c) => {
+  const sourceId = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const source = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(sourceId, organizationId).first<Record<string, unknown>>();
+  if (!source) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const sourceConfig = source.draftConfig ?? source.publishedConfig;
+  if (sourceConfig === null || sourceConfig === undefined) return c.json(bad('Source experience has no configuration'), 422);
+  let serializedConfig: string;
+  try {
+    const parsed = parseJson(sourceConfig as string);
+    if (!parsed) return c.json(bad('Source experience has no configuration'), 422);
+    serializedConfig = JSON.stringify(parsed);
+  } catch {
+    return c.json({ error: { code: 'UNPROCESSABLE_ENTITY', message: 'Source experience has invalid configuration' } }, 422);
+  }
+  const id = crypto.randomUUID();
+  const slug = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
+    .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, source.startsAt ?? null, source.endsAt ?? null).run();
+  const cloned = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  try { return c.json(present(cloned ?? {}), 201); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid cloned experience JSON' } }, 500); }
+});
+
 experienceRoutes.get('/:id/inventory', async (c) => {
   const id = c.req.param('id');
   const organizationId = c.get('organization').id;
@@ -303,9 +326,13 @@ experienceRoutes.post('/', async (c) => {
   if (!name) return c.json(bad('name is required'), 400);
   if (typeof type !== 'string' || !datesValid(startsAt, endsAt)) return c.json(bad('ends_at must be greater than starts_at'), 400);
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
+  let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', segments: [] });
+  if (body.draft_config !== undefined) {
+    if (type !== 'roulette' || !validDraftConfig(body.draft_config)) return c.json(bad('Invalid roulette draft_config'), 400);
+    draftConfig = JSON.stringify(body.draft_config);
+  }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
-  const draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', segments: [] });
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, NULL, ?, ?)`)
     .bind(id, c.get('organization').id, name, slug, type, draftConfig, startsAt ?? null, endsAt ?? null).run();
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
