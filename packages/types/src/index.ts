@@ -40,6 +40,10 @@ export const KNOWN_EVENT_NAMES = [
   'roulette_prize_won',
   'roulette_no_prize',
   'roulette_result_cta_click',
+  'roulette_ar_open_click',
+  'roulette_ar_session_started',
+  'roulette_ar_placed',
+  'roulette_ar_session_ended',
 ] as const;
 
 export type EventName = (typeof KNOWN_EVENT_NAMES)[number];
