@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) { return apiRequest<T>(path, org, init); }
-export function PublishControls({ organizationId }: { organizationId: string }) {
+export function PublishControls({ organizationId, canPublish }: { organizationId: string; canPublish: boolean }) {
   const location = useLocation();
   const [state, setState] = useState<{ draft: unknown; published: unknown; status: string }>();
   const [message, setMessage] = useState('');
@@ -22,5 +22,5 @@ export function PublishControls({ organizationId }: { organizationId: string }) 
     setPublishing(true); setMessage('');
     try { await get(`/experiences/${id}/publish`, organizationId, { method: 'POST' }); setMessage('Publicado correctamente.'); setState({ draft: currentState.draft, published: currentState.draft, status: 'published' }); } catch (error) { setMessage((error as Error).message); } finally { setPublishing(false); }
   }
-  return <div className="publish-control"><span>{state.status === 'published' ? (hasUnpublishedChanges ? 'Cambios sin publicar' : 'Publicado') : 'Borrador'}</span><button disabled={!hasUnpublishedChanges || publishing} onClick={() => void publish()}>{publishing ? 'Publicando…' : 'Publicar'}</button>{message && <small>{message}</small>}</div>;
+  return <div className="publish-control"><span>{state.status === 'published' ? (hasUnpublishedChanges ? 'Cambios sin publicar' : 'Publicado') : 'Borrador'}</span>{canPublish && <button disabled={!hasUnpublishedChanges || publishing} onClick={() => void publish()}>{publishing ? 'Publicando…' : 'Publicar'}</button>}{message && <small>{message}</small>}</div>;
 }

@@ -8,7 +8,7 @@ import { SpinHistory } from '../components/SpinHistory';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) { return apiRequest<T>(path, org, init); }
 const runtime = import.meta.env.VITE_RUNTIME_BASE_URL ?? 'http://localhost:5174';
-export function ExperienceDetailPage({ org }: { org: string }) {
+export function ExperienceDetailPage({ org, permissions }: { org: string; permissions: string[] }) {
   const location = useLocation();
   const id = location.pathname.match(/^\/app\/experiences\/([^/]+)$/)?.[1] ?? '';
   const [experience, setExperience] = useState<{ id: string; type: string; slug: string; draftConfig?: { prizes?: Array<{ id: string; name: string }> } }>();
@@ -16,5 +16,5 @@ export function ExperienceDetailPage({ org }: { org: string }) {
   if (!id || !experience) return null;
   const Editor = experienceEditors[experience.type as keyof typeof experienceEditors];
   const prizes = experience.draftConfig?.prizes ?? [];
-  return <><PublishControls organizationId={org} /><div className="route-qr"><ExperienceQrModal slug={experience.slug} runtimeBaseUrl={runtime} /></div>{Editor ? <Editor org={org} id={id} /> : <main className="page"><p>Esta experiencia todavía no tiene un editor disponible.</p></main>}<SpinHistory experienceId={id} organizationId={org} prizes={prizes} /></>;
+  return <><PublishControls organizationId={org} canPublish={permissions.includes('crm.manage')} /><div className="route-qr"><ExperienceQrModal slug={experience.slug} runtimeBaseUrl={runtime} /></div>{Editor ? <Editor org={org} id={id} canEdit={permissions.includes('crm.manage')} canAdjustInventory={permissions.includes('crm.manage')} /> : <main className="page"><p>Esta experiencia todavía no tiene un editor disponible.</p></main>}<SpinHistory experienceId={id} organizationId={org} prizes={prizes} /></>;
 }

@@ -4,7 +4,7 @@ import app from '../src';
 import { validDraftConfig } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
-function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null) {
+function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null, role = 'owner') {
   const experiences: E[] = [
     { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: initialStatus, schema_version: 1, draft_config: initialDraft, published_config: initialPublished, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },
@@ -19,7 +19,7 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
         if (sql.includes('experience_prize_inventory') && sql.includes('stock_mode')) { const item = inventory.find((x) => x.experience_id === args[0] && x.prize_id === args[1]); return item ? { stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count } as T : null as T; }
         if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platform_role: 'user', expires_at: Date.now() + 10000 } as T;
         if (sql.includes('experience_participation')) { const isDevice = args[2] === 'device'; const id = args[3]; const matches = spins.filter((x) => x.experienceId === args[0] && x.organizationId === args[1] && (isDevice ? x.participantDeviceId === id : x.participantSessionId === id)); const latest = matches.at(-1); return matches.length ? { spin_count: matches.length, last_spin_at: latest?.createdAt ?? null } as T : null as T; }
-        if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role: 'owner' } as T;
+        if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role } as T;
         if (sql.includes('FROM experiences')) { const e = experiences.find((x) => sql.includes('slug=?') ? x.slug === args[0] : x.id === args[0] && x.organization_id === args[1]); return e ? { ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at } as T : null as T; }
         return null as T;
       },
@@ -39,6 +39,23 @@ function request(path: string, env: any, init?: RequestInit) { const headers = n
 describe('experiences tenant isolation and validation', () => {
   it('lists and reads only the current organization, parsing JSON', async () => { const env = fixture(); const list = await request('/experiences', env); expect(list.status).toBe(200); expect(await list.json()).toEqual([expect.objectContaining({ id: 'a', draftConfig: { segments: [] } })]); expect((await request('/experiences/b', env)).status).toBe(404); });
   it('rejects invalid dates/status and foreign mutations', async () => { const env = fixture(); const badDates = await request('/experiences', env, { method: 'POST', body: JSON.stringify({ name: 'x', starts_at: '2026-01-02', ends_at: '2026-01-01' }) }); expect(badDates.status).toBe(400); for (const status of ['nope', 'active', 'scheduled', 'expired']) { const badStatus = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ status }) }); expect(badStatus.status).toBe(400); } expect((await request('/experiences/b', env, { method: 'PATCH', body: JSON.stringify({ name: 'x' }) })).status).toBe(404); expect((await request('/experiences/b', env, { method: 'DELETE' })).status).toBe(404); });
+});
+
+describe('experience permissions', () => {
+  it('allows a member to read but blocks every CRM mutation', async () => {
+    const env = fixture('{"segments":[]}', 'draft', null, 'member');
+    expect((await request('/experiences', env)).status).toBe(200);
+    expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ name: 'blocked' }) })).status).toBe(403);
+    expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(403);
+    expect((await request('/experiences/a/assets', env, { method: 'POST', body: new FormData() })).status).toBe(403);
+    expect((await request('/experiences/a/inventory/prize-1/adjust', env, { method: 'POST', body: JSON.stringify({ delta: 1 }) })).status).toBe(403);
+    expect((await request('/experiences/a', env, { method: 'DELETE' })).status).toBe(403);
+    expect((await request('/experiences', env, { method: 'POST', body: JSON.stringify({ name: 'blocked' }) })).status).toBe(403);
+  });
+  it('denies unauthenticated experience mutations', async () => {
+    const env = fixture();
+    expect((await app.fetch(new Request('http://localhost/experiences/a', { method: 'PATCH', body: JSON.stringify({ name: 'blocked' }) }), env)).status).toBe(401);
+  });
 });
 
 describe('roulette draft_config validation', () => {

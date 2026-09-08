@@ -9,7 +9,8 @@ import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
 
 type Inventory = { prizeId: string; name: string; iconUrl: string | null; enabled: boolean; weight: number; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number };
-export function RouletteEditor({ org, id }: { org: string; id: string }) {
+export function RouletteEditor({ org, id, canEdit = true, canAdjustInventory = true }: { org: string; id: string; canEdit?: boolean; canAdjustInventory?: boolean }) { return <div className={!canEdit || !canAdjustInventory ? 'permission-readonly' : ''} aria-readonly={!canEdit || !canAdjustInventory}>{!canEdit && <p className="field-help">Esta experiencia es de solo lectura para tu rol.</p>}<RouletteEditorContent org={org} id={id} /></div>; }
+function RouletteEditorContent({ org, id }: { org: string; id: string }) {
   const navigate = useNavigate(); const [item, setItem] = useState<Experience>(); const [inventory, setInventory] = useState<Inventory[]>([]); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [adjusting, setAdjusting] = useState<{ prizeId: string; name: string; sign: 1 | -1 } | null>(null); const [amount, setAmount] = useState('1'); const [adjustError, setAdjustError] = useState('');
   const { draft, setDraft, reset, resize, updateSegment, updatePrize, addPrize, dirty, valid } = useRouletteDraft();
   const reloadInventory = () => experiencesApi.inventory(id, org).then((result) => setInventory(result.items)).catch(() => setInventory([]));

@@ -1,0 +1,5 @@
+.permission-readonly .editor-panel,
+.permission-readonly .inventory-panel {
+  pointer-events: none;
+  opacity: 0.72;
+}

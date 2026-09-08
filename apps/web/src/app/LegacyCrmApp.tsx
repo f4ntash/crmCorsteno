@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import '../analytics.css';
 import '../home.css';
 import '../experiences.css';
+import '../permission.css';
 import { apiRequest } from '../shared/api/client';
 import type { Me } from '../features/auth/types';
 import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
@@ -66,8 +67,8 @@ function Shell() {
         <Routes>
           <Route index element={<Home org={o} />} />
           <Route path="analytics" element={<Analytics org={o} />} />
-          <Route path="experiences" element={<ExperiencesPage org={o} />} />
-          <Route path="experiences/:id" element={<ExperienceDetailPage org={o} />} />
+          <Route path="experiences" element={<ExperiencesPage org={o} canCreate={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
+          <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} />} />
           <Route
             path="*"
             element={

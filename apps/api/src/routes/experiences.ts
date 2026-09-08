@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireAuth, requireOrganization } from '../auth/middleware';
+import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 
@@ -51,6 +51,10 @@ type Variables = {
 
 export const experienceRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 experienceRoutes.use('*', requireAuth, requireOrganization);
+experienceRoutes.get('*', requireOrganizationPermission('crm.read'));
+experienceRoutes.post('*', requireOrganizationPermission('crm.manage'));
+experienceRoutes.patch('*', requireOrganizationPermission('crm.manage'));
+experienceRoutes.delete('*', requireOrganizationPermission('crm.manage'));
 
 const select = `SELECT id, organization_id organizationId, name, slug, type, status,
   schema_version schemaVersion, draft_config draftConfig, published_config publishedConfig,
