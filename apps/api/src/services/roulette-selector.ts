@@ -1,8 +1,8 @@
 export type RouletteOutcome = { prizeId: string | null; weight: number; segmentIndices: readonly number[] };
 type RouletteSelectionConfig = { segments: readonly unknown[] };
-type PrizeRule = { id: string; enabled?: boolean; weight?: number; stockLimit?: number | null };
+type PrizeRule = { id: string; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
 type SegmentRule = { prizeId: string | null; weight?: number };
-type InventoryRule = { stockLimit: number | null; stockUsed: number };
+type InventoryRule = { stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number };
 
 const UINT32_RANGE = 0x1_0000_0000;
 
@@ -36,9 +36,10 @@ export function buildRouletteOutcomes(config: { prizes: readonly PrizeRule[]; se
     const segmentIndices = groups.get(prize.id);
     if (!segmentIndices || prize.enabled === false || (prize.weight ?? 1) <= 0) continue;
     const stock = inventory.get(prize.id);
-    const stockLimit = stock?.stockLimit ?? prize.stockLimit ?? null;
-    const stockUsed = stock?.stockUsed ?? 0;
-    if (stockLimit !== null && stockUsed >= stockLimit) continue;
+    const legacyLimited = prize.stockMode === undefined && prize.stockLimit !== undefined && prize.stockLimit !== null;
+    const stockMode = stock?.stockMode ?? prize.stockMode ?? (legacyLimited ? 'limited' : 'unlimited');
+    const stockAvailable = stock?.stockAvailable ?? (stockMode === 'limited' ? prize.initialStock ?? prize.stockLimit ?? 0 : null);
+    if (stockMode === 'limited' && (stockAvailable ?? 0) <= 0) continue;
     outcomes.push({ prizeId: prize.id, weight: prize.weight ?? 1, segmentIndices });
   }
   const noPrizeSegments = groups.get('__no_prize__');

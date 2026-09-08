@@ -28,4 +28,13 @@ describe('roulette selector', () => {
     const outcomes = buildRouletteOutcomes({ prizes: [{ id: 'a' }], segments: [{ prizeId: null }, { prizeId: null }, { prizeId: 'a' }] }, new Map());
     expect(outcomes).toEqual([{ prizeId: 'a', weight: 1, segmentIndices: [2] }, { prizeId: null, weight: 1, segmentIndices: [0, 1] }]);
   });
+
+  it('excludes disabled and exhausted prizes while keeping unlimited prizes eligible', () => {
+    const inventory = new Map([
+      ['limited-empty', { stockMode: 'limited' as const, stockAvailable: 0, deliveredCount: 2 }],
+      ['unlimited', { stockMode: 'unlimited' as const, stockAvailable: null, deliveredCount: 99 }],
+    ]);
+    const outcomes = buildRouletteOutcomes({ prizes: [{ id: 'limited-empty' }, { id: 'unlimited' }, { id: 'disabled', enabled: false }], segments: [{ prizeId: 'limited-empty' }, { prizeId: 'unlimited' }, { prizeId: 'disabled' }, { prizeId: null }] }, inventory);
+    expect(outcomes.map((x) => x.prizeId)).toEqual(['unlimited', null]);
+  });
 });

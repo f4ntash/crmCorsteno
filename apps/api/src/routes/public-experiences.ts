@@ -31,18 +31,26 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   try { config = parseJson(row.published_config) as DraftConfig | null; } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_limit stockLimit, stock_used stockUsed FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockLimit: number | null; stockUsed: number }>();
+    const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
     const inventory = new Map(inventoryRows.results.map((item) => [item.prizeId, item]));
     const outcomes = buildRouletteOutcomes(config, inventory);
     if (!outcomes.length) return c.json({ active: false, reason: 'unavailable' });
     const outcome = selectRouletteOutcome(outcomes, secureRandomValue());
     if (outcome.prizeId !== null) {
       const prize = config.prizes.find((item) => item.id === outcome.prizeId)!;
-      const stockLimit = inventory.get(prize.id)?.stockLimit ?? prize.stockLimit ?? null;
-      if (stockLimit !== null) {
-        const update = await c.env.DB.prepare(`UPDATE experience_prize_inventory SET stock_used=stock_used+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_used < stock_limit`).bind(row.id, prize.id).run();
-        if (!update.meta?.changes) continue;
-      }
+      const stock = inventory.get(prize.id);
+      const stockMode = stock?.stockMode ?? (prize.stockMode ?? (prize.stockLimit == null ? 'unlimited' : 'limited'));
+      const spinId = crypto.randomUUID();
+      if (!stock && stockMode === 'unlimited') await c.env.DB.prepare('INSERT OR IGNORE INTO experience_prize_inventory (experience_id, prize_id, stock_mode, stock_available, delivered_count) VALUES (?, ?, \'unlimited\', NULL, 0)').bind(row.id, prize.id).run();
+      const update = stockMode === 'limited'
+        ? await c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id).run()
+        : await c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id).run();
+      if (!update.meta?.changes) continue;
+      await c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId).run();
+      const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
+      const segment = config.segments[segmentIndex]!;
+      const prizeResult = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
+      return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null });
     }
     const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
     const segment = config.segments[segmentIndex]!;

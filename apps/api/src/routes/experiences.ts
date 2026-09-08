@@ -23,7 +23,7 @@ export type Experience = {
   updatedAt: string;
 };
 
-export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockLimit?: number | null };
+export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
 export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }> };
 
 type Variables = {
@@ -81,21 +81,32 @@ export function validDraftConfig(value: unknown): value is DraftConfig {
   const config = value as Record<string, unknown>;
   if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
   const ids = new Set<string>();
-  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl)) || (item.enabled !== undefined && typeof item.enabled !== 'boolean') || (item.weight !== undefined && (!Number.isInteger(item.weight) || Number(item.weight) < 1 || Number(item.weight) > 1000)) || (item.stockLimit !== undefined && item.stockLimit !== null && (!Number.isInteger(item.stockLimit) || Number(item.stockLimit) < 0 || Number(item.stockLimit) > 1_000_000_000))) return false; ids.add(item.id); }
+  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; const legacyStock = item.stockLimit; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl)) || (item.enabled !== undefined && typeof item.enabled !== 'boolean') || (item.weight !== undefined && (!Number.isInteger(item.weight) || Number(item.weight) < 1 || Number(item.weight) > 1000)) || (item.stockMode !== undefined && item.stockMode !== 'limited' && item.stockMode !== 'unlimited') || (item.initialStock !== undefined && (!Number.isInteger(item.initialStock) || Number(item.initialStock) < 0 || Number(item.initialStock) > 1_000_000_000)) || (legacyStock !== undefined && legacyStock !== null && (!Number.isInteger(legacyStock) || Number(legacyStock) < 0 || Number(legacyStock) > 1_000_000_000))) return false; ids.add(item.id); }
   const segmentIds = new Set<string>();
   return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))) && (item.weight === undefined || (item.prizeId === null && Number.isInteger(item.weight) && Number(item.weight) >= 1 && Number(item.weight) <= 1000)); });
 }
 
-export function normalizePrizeConfig(prize: PrizeConfig): Required<Pick<PrizeConfig, 'id' | 'name' | 'enabled' | 'weight' | 'stockLimit'>> & Pick<PrizeConfig, 'iconUrl'> {
-  return { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: prize.enabled ?? true, weight: prize.weight ?? 1, stockLimit: prize.stockLimit ?? null };
+export function normalizePrizeConfig(prize: PrizeConfig) {
+  const legacyLimited = prize.stockMode === undefined && prize.stockLimit !== undefined && prize.stockLimit !== null;
+  return { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: prize.enabled ?? true, weight: prize.weight ?? 1, stockMode: prize.stockMode ?? (legacyLimited ? 'limited' : 'unlimited'), initialStock: prize.initialStock ?? (legacyLimited ? prize.stockLimit! : undefined) } as const;
 }
 
 async function syncPrizeInventory(db: D1Database, experienceId: string, config: DraftConfig) {
   for (const prize of config.prizes) {
     const normalized = normalizePrizeConfig(prize);
-    await db.prepare(`INSERT INTO experience_prize_inventory (experience_id, prize_id, stock_limit, stock_used) VALUES (?, ?, ?, 0)
-      ON CONFLICT(experience_id, prize_id) DO UPDATE SET stock_limit=excluded.stock_limit, updated_at=CURRENT_TIMESTAMP`)
-      .bind(experienceId, normalized.id, normalized.stockLimit).run();
+    const current = await db.prepare('SELECT stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=? AND prize_id=?').bind(experienceId, normalized.id).first<{ stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
+    if (!current) {
+      const available = normalized.stockMode === 'limited' ? normalized.initialStock ?? 0 : null;
+      await db.prepare('INSERT INTO experience_prize_inventory (experience_id, prize_id, stock_mode, stock_available, delivered_count) VALUES (?, ?, ?, ?, 0)').bind(experienceId, normalized.id, normalized.stockMode, available).run();
+      if (normalized.stockMode === 'limited' && available !== null && available > 0) await db.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity) VALUES (?, ?, ?, \'initial_stock\', ?)').bind(crypto.randomUUID(), experienceId, normalized.id, available).run();
+    } else if (normalized.stockMode === 'unlimited') {
+      await db.prepare('UPDATE experience_prize_inventory SET stock_mode=\'unlimited\', stock_available=NULL, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=?').bind(experienceId, normalized.id).run();
+    } else if (current.stockMode === 'unlimited') {
+      const history = await db.prepare('SELECT id FROM experience_prize_inventory_events WHERE experience_id=? AND prize_id=? LIMIT 1').bind(experienceId, normalized.id).first();
+      const available = current.deliveredCount === 0 && !history ? normalized.initialStock ?? 0 : 0;
+      await db.prepare('UPDATE experience_prize_inventory SET stock_mode=\'limited\', stock_available=?, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=?').bind(available, experienceId, normalized.id).run();
+      if (!history && current.deliveredCount === 0 && available > 0) await db.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity) VALUES (?, ?, ?, \'initial_stock\', ?)').bind(crypto.randomUUID(), experienceId, normalized.id, available).run();
+    }
   }
 }
 
@@ -158,9 +169,32 @@ experienceRoutes.get('/:id/inventory', async (c) => {
   let config: DraftConfig | null;
   try { config = parseJson(row.publishedConfig as string | null) as DraftConfig | null; } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
   if (!config || !validDraftConfig(config)) return c.json({ error: { code: 'NOT_FOUND', message: 'Published inventory not found' } }, 404);
-  const inventory = await c.env.DB.prepare('SELECT prize_id prizeId, stock_limit stockLimit, stock_used stockUsed FROM experience_prize_inventory WHERE experience_id=?').bind(id).all<{ prizeId: string; stockLimit: number | null; stockUsed: number }>();
+  const inventory = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=?').bind(id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
   const byPrize = new Map(inventory.results.map((item) => [item.prizeId, item]));
-  return c.json(config.prizes.map((prize) => { const normalized = normalizePrizeConfig(prize); const item = byPrize.get(prize.id); const stockLimit = item?.stockLimit ?? normalized.stockLimit; const stockUsed = item?.stockUsed ?? 0; return { prizeId: prize.id, stockLimit, stockUsed, stockRemaining: stockLimit === null ? null : Math.max(0, stockLimit - stockUsed) }; }));
+  return c.json({ items: config.prizes.map((prize) => { const normalized = normalizePrizeConfig(prize); const item = byPrize.get(prize.id); return { prizeId: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: normalized.enabled, weight: normalized.weight, stockMode: item?.stockMode ?? normalized.stockMode, stockAvailable: item?.stockAvailable ?? (normalized.stockMode === 'limited' ? normalized.initialStock ?? 0 : null), deliveredCount: item?.deliveredCount ?? 0 }; }) });
+});
+
+experienceRoutes.post('/:id/inventory/:prizeId/adjust', async (c) => {
+  const id = c.req.param('id'); const prizeId = c.req.param('prizeId');
+  const organizationId = c.get('organization').id;
+  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  let body: { delta?: unknown }; try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const delta = body.delta;
+  if (typeof delta !== 'number' || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 1_000_000_000) return c.json(bad('delta must be a non-zero integer within range'), 400);
+  let config: DraftConfig | null; try { config = parseJson(row.publishedConfig as string | null) as DraftConfig | null; } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
+  const prize = config?.prizes.find((item) => item.id === prizeId); if (!config || !validDraftConfig(config) || !prize) return c.json({ error: { code: 'NOT_FOUND', message: 'Prize not found' } }, 404);
+  const inventory = await c.env.DB.prepare('SELECT stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=? AND prize_id=?').bind(id, prizeId).first<{ stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
+  if (!inventory) return c.json(bad('Publish the experience before adjusting inventory'), 400);
+  if (inventory.stockMode !== 'limited') return c.json(bad('Unlimited prizes do not have adjustable stock'), 400);
+  const amount = Math.abs(delta);
+  const update = delta > 0
+    ? await c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available+?, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=?').bind(amount, id, prizeId).run()
+    : await c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-?, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>=?').bind(amount, id, prizeId, amount).run();
+  if (!update.meta?.changes) return c.json(bad('Stock cannot be negative'), 400);
+  await c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), id, prizeId, delta > 0 ? 'manual_add' : 'manual_remove', amount).run();
+  const current = await c.env.DB.prepare('SELECT stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=? AND prize_id=?').bind(id, prizeId).first<{ stockAvailable: number; deliveredCount: number }>();
+  return c.json({ item: { prizeId, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: normalizePrizeConfig(prize).enabled, weight: normalizePrizeConfig(prize).weight, stockMode: 'limited', stockAvailable: current?.stockAvailable ?? 0, deliveredCount: current?.deliveredCount ?? 0 } });
 });
 
 experienceRoutes.post('/', async (c) => {
@@ -221,6 +255,7 @@ experienceRoutes.delete('/:id', async (c) => {
   const organizationId = c.get('organization').id;
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  await c.env.DB.prepare('DELETE FROM experience_prize_inventory_events WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).run();
   return c.body(null, 204);

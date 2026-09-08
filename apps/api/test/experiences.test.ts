@@ -9,17 +9,18 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
     { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: initialStatus, schema_version: 1, draft_config: initialDraft, published_config: initialPublished, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },
   ];
-  const inventory: Array<{ experience_id: string; prize_id: string; stock_limit: number | null; stock_used: number }> = [];
+  const inventory: Array<{ experience_id: string; prize_id: string; stock_mode: 'limited' | 'unlimited'; stock_available: number | null; delivered_count: number }> = [];
   const db = { prepare(sql: string) { return { bind(...args: any[]) {
     return {
       async first<T>() {
+        if (sql.includes('experience_prize_inventory') && sql.includes('stock_mode')) { const item = inventory.find((x) => x.experience_id === args[0] && x.prize_id === args[1]); return item ? { stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count } as T : null as T; }
         if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platform_role: 'user', expires_at: Date.now() + 10000 } as T;
         if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role: 'owner' } as T;
         if (sql.includes('FROM experiences')) { const e = experiences.find((x) => sql.includes('slug=?') ? x.slug === args[0] : x.id === args[0] && x.organization_id === args[1]); return e ? { ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at } as T : null as T; }
         return null as T;
       },
-      async all<T>() { if (sql.includes('experience_prize_inventory')) return { results: inventory.filter((item) => item.experience_id === args[0]).map((item) => ({ prizeId: item.prize_id, stockLimit: item.stock_limit, stockUsed: item.stock_used })) as T[] }; return { results: experiences.filter((e) => e.organization_id === args[0]).map((e) => ({ ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at })) as T[] }; },
-      async run() { if (sql.includes('experience_prize_inventory') && sql.startsWith('INSERT')) { const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (existing) existing.stock_limit = args[2] as number | null; else inventory.push({ experience_id: args[0], prize_id: args[1], stock_limit: args[2] as number | null, stock_used: 0 }); } if (sql.includes('experience_prize_inventory') && sql.startsWith('UPDATE')) { const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!existing || existing.stock_limit === null || existing.stock_used >= existing.stock_limit) return { success: true, meta: { changes: 0 } }; existing.stock_used += 1; return { success: true, meta: { changes: 1 } }; } if (sql.includes('published_config')) { const experience = experiences.find((e) => e.id === args[args.length - 2] && e.organization_id === args[args.length - 1]); if (experience) { experience.published_config = args[0] as string; experience.status = 'published'; } } const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
+      async all<T>() { if (sql.includes('experience_prize_inventory')) return { results: inventory.filter((item) => item.experience_id === args[0]).map((item) => ({ prizeId: item.prize_id, stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count })) as T[] }; return { results: experiences.filter((e) => e.organization_id === args[0]).map((e) => ({ ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at })) as T[] }; },
+      async run() { if (sql.includes('experience_prize_inventory') && sql.startsWith('INSERT')) { const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!existing) inventory.push({ experience_id: args[0], prize_id: args[1], stock_mode: args[2] as 'limited' | 'unlimited', stock_available: args[3] as number | null, delivered_count: 0 }); } if (sql.includes('stock_available=stock_available+?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) + (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('stock_available=stock_available-?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing || (existing.stock_available ?? 0) < (args[0] as number)) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) - (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('experience_prize_inventory') && sql.startsWith('UPDATE')) { const limited = sql.includes('stock_available=stock_available-1'); const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!existing || (limited && (existing.stock_available ?? 0) <= 0)) return { success: true, meta: { changes: 0 } }; if (limited) existing.stock_available = (existing.stock_available ?? 0) - 1; existing.delivered_count += 1; return { success: true, meta: { changes: 1 } }; } if (sql.includes('published_config')) { const experience = experiences.find((e) => e.id === args[args.length - 2] && e.organization_id === args[args.length - 1]); if (experience) { experience.published_config = args[0] as string; experience.status = 'published'; } } const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
     };
   } }; } };
   const objects = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
@@ -154,7 +155,7 @@ describe('public published experience', () => {
   });
 
   it('consumes limited inventory atomically and preserves it on republish', async () => {
-    const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockLimit: 2 }], segments: sixSegments() });
+    const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 2 }], segments: sixSegments() });
     const env = fixture(limited);
     expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200);
     expect((await request('/experiences/a/inventory', env)).status).toBe(200);
@@ -165,11 +166,20 @@ describe('public published experience', () => {
     expect(await exhausted.json()).toEqual({ active: false, reason: 'unavailable' });
     expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200);
     const inventory = await request('/experiences/a/inventory', env);
-    expect(await inventory.json()).toEqual([{ prizeId: 'prize-1', stockLimit: 2, stockUsed: 2, stockRemaining: 0 }]);
+    expect(await inventory.json()).toEqual({ items: [{ prizeId: 'prize-1', name: 'Remera', iconUrl: null, enabled: true, weight: 1, stockMode: 'limited', stockAvailable: 0, deliveredCount: 2 }] });
   });
 
   it('isolates inventory by organization', async () => {
     const response = await request('/experiences/b/inventory', fixture(published, 'published', published));
     expect(response.status).toBe(404);
+  });
+
+  it('adjusts only limited stock and never changes delivered count', async () => {
+    const env = fixture(JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 2 }], segments: sixSegments() }));
+    expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200);
+    expect((await request('/experiences/a/inventory/prize-1/adjust', env, { method: 'POST', body: JSON.stringify({ delta: 3 }) })).status).toBe(200);
+    expect((await request('/experiences/a/inventory/prize-1/adjust', env, { method: 'POST', body: JSON.stringify({ delta: -1 }) })).status).toBe(200);
+    expect((await request('/experiences/a/inventory/prize-1/adjust', env, { method: 'POST', body: JSON.stringify({ delta: -99 }) })).status).toBe(400);
+    const result = await request('/experiences/a/inventory', env); expect((await result.json() as { items: Array<{ stockAvailable: number; deliveredCount: number }> }).items[0]).toEqual(expect.objectContaining({ stockAvailable: 4, deliveredCount: 0 }));
   });
 });
