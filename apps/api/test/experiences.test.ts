@@ -21,9 +21,14 @@ function fixture() {
       async run() { const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
     };
   } }; } };
-  return { DB: db, ENVIRONMENT: 'test', APP_VERSION: 'test' };
+  const objects = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
+  const assets = {
+    async put(key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }) { objects.set(key, { bytes: value, contentType: options.httpMetadata.contentType }); },
+    async get(key: string) { const object = objects.get(key); if (!object) return null; return { body: new Response(object.bytes).body, httpEtag: 'test-etag', writeHttpMetadata(headers: Headers) { headers.set('content-type', object.contentType); } }; },
+  };
+  return { DB: db, EXPERIENCE_ASSETS: assets, ENVIRONMENT: 'test', APP_VERSION: 'test' };
 }
-function request(path: string, env: any, init?: RequestInit) { return app.fetch(new Request(`http://localhost${path}`, { ...init, headers: { Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', 'Content-Type': 'application/json', ...init?.headers } }), env); }
+function request(path: string, env: any, init?: RequestInit) { const headers = new Headers({ Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers }); return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }), env); }
 
 describe('experiences tenant isolation and validation', () => {
   it('lists and reads only the current organization, parsing JSON', async () => { const env = fixture(); const list = await request('/experiences', env); expect(list.status).toBe(200); expect(await list.json()).toEqual([expect.objectContaining({ id: 'a', draftConfig: { segments: [] } })]); expect((await request('/experiences/b', env)).status).toBe(404); });
@@ -37,3 +42,36 @@ describe('roulette draft_config validation', () => {
   it('rejects fewer or more than ten segments', () => { const values = six(); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: values.slice(0, 5) })).toBe(false); expect(validDraftConfig({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: [...values, ...[6, 7, 8, 9, 10].map((i) => segment(i))] })).toBe(false); });
   it('rejects invalid colors, prize references, and duplicate ids', () => { const values = six(); const base = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: values }; expect(validDraftConfig({ ...base, backgroundColor: 'black' })).toBe(false); expect(validDraftConfig({ ...base, segments: values.map((s, i) => i === 0 ? { ...s, color: '#12' } : s) })).toBe(false); expect(validDraftConfig({ ...base, segments: values.map((s, i) => i === 0 ? { ...s, prizeId: 'missing' } : s) })).toBe(false); expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'A' }, { id: 'prize-1', name: 'B' }] })).toBe(false); expect(validDraftConfig({ ...base, segments: values.map((s, i) => i === 0 ? { ...s, id: 'seg-1' } : s) })).toBe(false); });
 });
+
+describe('experience prize assets', () => {
+  const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'icon.png', { type: 'image/png' });
+  const svg = new File(['<svg xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="5" r="5" /></svg>'], 'icon.svg', { type: 'image/svg+xml' });
+  const upload = (file: File, env = fixture()) => { const form = new FormData(); form.append('file', file); return request('/experiences/a/assets', env, { method: 'POST', body: form }); };
+  it('uploads PNG and sanitizes valid SVG', async () => {
+    const env = fixture();
+    const pngResponse = await upload(png, env);
+    expect(pngResponse.status).toBe(201);
+    const pngResult = await pngResponse.json<{ url: string; key: string }>();
+    expect(pngResult.key).toMatch(/^organizations\/org-a\/experiences\/a\/.*\.png$/);
+    const served = await request(`/../assets/${pngResult.key}`, env, { headers: { Cookie: '' } });
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/png');
+    const svgResponse = await upload(svg, env);
+    expect(svgResponse.status).toBe(201);
+    expect((await svgResponse.json<{ url: string }>()).url).toContain('/assets/organizations/org-a/experiences/a/');
+  });
+  it('rejects invalid MIME, oversized files, foreign experiences, and dangerous SVG', async () => {
+    const env = fixture();
+    expect((await upload(new File(['text'], 'x.txt', { type: 'text/plain' }), env)).status).toBe(415);
+    expect((await upload(new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'x.png', { type: 'image/png' }), env)).status).toBe(413);
+    const foreign = new FormData(); foreign.append('file', png); expect((await request('/experiences/b/assets', env, { method: 'POST', body: foreign })).status).toBe(404);
+    expect((await upload(new File(['<svg><script>alert(1)</script></svg>'], 'x.svg', { type: 'image/svg+xml' }), env)).status).toBe(400);
+  });
+  it('accepts only safe asset URLs in draft_config', () => {
+    const base = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() };
+    expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: '/assets/organizations/org-a/experiences/a/123e4567-e89b-12d3-a456-426614174000.png' }] })).toBe(true);
+    expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: 'javascript:alert(1)' }] })).toBe(false);
+  });
+});
+
+function sixSegments() { return [0, 1, 2, 3, 4, 5].map((i) => ({ id: `seg-${i}`, color: '#D6B25E', prizeId: 'prize-1' })); }

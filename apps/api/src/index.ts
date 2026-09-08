@@ -16,6 +16,7 @@ export interface Env {
   WEB_ORIGIN?: string;
   WEB_ORIGINS?: string;
   DB: D1Database;
+  EXPERIENCE_ASSETS?: R2Bucket;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -51,6 +52,17 @@ app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
 app.route('/experiences', experienceRoutes);
+app.get('/assets/*', async (c) => {
+  const key = c.req.path.slice('/assets/'.length);
+  if (!/^organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/.test(key)) return c.notFound();
+  const object = await c.env.EXPERIENCE_ASSETS?.get(key);
+  if (!object) return c.notFound();
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
+  return new Response(object.body, { headers });
+});
 app.get('/dev/db-check', async (c) => {
   if (c.env.ENVIRONMENT !== 'development') return c.notFound();
   const result = await c.env.DB.prepare(

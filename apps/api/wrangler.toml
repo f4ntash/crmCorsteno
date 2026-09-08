@@ -12,3 +12,11 @@ binding = "DB"
 database_name = "corsteno-db"
 database_id = "e028adf0-ed6c-4e20-b74d-59b94910639f"
 migrations_dir = "src/db/migrations"
+
+[[r2_buckets]]
+binding = "EXPERIENCE_ASSETS"
+bucket_name = "corsteno-experience-assets"
+
+[[env.development.r2_buckets]]
+binding = "EXPERIENCE_ASSETS"
+bucket_name = "corsteno-experience-assets"

@@ -23,6 +23,9 @@ export type Experience = {
   updatedAt: string;
 };
 
+type PrizeConfig = { id: string; name: string; iconUrl?: string | null };
+type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null }> };
+
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
   sessionId: string;
@@ -67,15 +70,58 @@ function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
 const HEX = /^#[0-9a-f]{6}$/i;
-export function validDraftConfig(value: unknown): value is { schemaVersion: 1; backgroundColor: string; prizes: Array<{ id: string; name: string }>; segments: Array<{ id: string; color: string; prizeId: string | null }> } {
+const ASSET_PATH = /^\/assets\/organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/;
+export function validAssetUrl(value: unknown) {
+  if (typeof value !== 'string') return false;
+  if (ASSET_PATH.test(value)) return true;
+  try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && ASSET_PATH.test(url.pathname) && !url.username && !url.password; } catch { return false; }
+}
+export function validDraftConfig(value: unknown): value is DraftConfig {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const config = value as Record<string, unknown>;
   if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
   const ids = new Set<string>();
-  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim()) return false; ids.add(item.id); }
+  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl))) return false; ids.add(item.id); }
   const segmentIds = new Set<string>();
   return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))); });
 }
+
+const MAX_ASSET_BYTES = 2 * 1024 * 1024;
+const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+export function sanitizeSvg(value: string) {
+  if (!/^\s*(?:<\?xml[^>]*>\s*)?<svg\b/i.test(value) || !/<\/svg>\s*$/i.test(value)) return null;
+  if (/<\/?script\b|<\/?foreignObject\b|<\/?iframe\b|<\/?object\b|<\/?embed\b|<!DOCTYPE\b|<!ENTITY\b|\son[a-z0-9_-]+\s*=|(?:href|src|xlink:href)\s*=\s*["']\s*(?:https?:|\/\/|data:|javascript:)|url\s*\(/i.test(value)) return null;
+  return value;
+}
+
+experienceRoutes.post('/:id/assets', async (c) => {
+  const id = c.req.param('id');
+  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, c.get('organization').id).first();
+  if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const body = await c.req.parseBody().catch(() => null);
+  const file = body && body.file instanceof File ? body.file : null;
+  if (!file) return c.json(bad('A file is required'), 400);
+  if (file.size > MAX_ASSET_BYTES) return c.json(bad('File exceeds the 2 MB limit'), 413);
+  if (file.type !== 'image/png' && file.type !== 'image/svg+xml') return c.json(bad('Only PNG and SVG files are allowed'), 415);
+  let bytes: ArrayBuffer;
+  let extension: 'png' | 'svg';
+  if (file.type === 'image/png') {
+    bytes = await file.arrayBuffer();
+    const signature = new Uint8Array(bytes.slice(0, PNG_SIGNATURE.length));
+    if (signature.length !== PNG_SIGNATURE.length || !PNG_SIGNATURE.every((byte, index) => signature[index] === byte)) return c.json(bad('Invalid PNG file'), 400);
+    extension = 'png';
+  } else {
+    const text = await file.text();
+    const safe = sanitizeSvg(text);
+    if (!safe) return c.json(bad('SVG contains unsupported or executable content'), 400);
+    bytes = new TextEncoder().encode(safe).buffer;
+    extension = 'svg';
+  }
+  const key = `organizations/${c.get('organization').id}/experiences/${id}/${crypto.randomUUID()}.${extension}`;
+  if (!c.env.EXPERIENCE_ASSETS) return c.json({ error: { code: 'ASSET_STORAGE_UNAVAILABLE', message: 'Asset storage is not configured' } }, 503);
+  await c.env.EXPERIENCE_ASSETS.put(key, bytes, { httpMetadata: { contentType: file.type } });
+  return c.json({ url: `${new URL(c.req.url).origin}/assets/${key}`, key }, 201);
+});
 
 experienceRoutes.post('/', async (c) => {
   let body: Record<string, unknown>;
