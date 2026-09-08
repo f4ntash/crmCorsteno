@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import './analytics.css';
 import './home.css';
+import './experiences.css';
 const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
 type Me = {
   user: { name: string; platformRole: string };
@@ -37,6 +38,7 @@ type Summary = {
 };
 type Point = { timestamp: number; value: number };
 type Item = { name: string; value: number };
+type Experience = { id: string; name: string; type: string; effective_status: string; starts_at: string | null; ends_at: string | null };
 async function get(path: string, org?: string, init?: RequestInit) {
   const r = await fetch(api + path, {
     ...init,
@@ -70,6 +72,10 @@ function formatPercentage(value: number | null | undefined): string {
     return '—';
   return `${(value * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`;
 }
+function experienceDate(value: string | null, empty: string) { if (!value) return empty; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Fecha inválida' : date.toLocaleString('es-AR'); }
+const experienceStatuses: Record<string, string> = { draft: 'Borrador', scheduled: 'Programada', active: 'Activa', paused: 'Pausada', expired: 'Vencida' };
+function Experiences({ org }: { org: string }) { const [items, setItems] = useState<Experience[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState(false), [modal, setModal] = useState(false), [name, setName] = useState(''), [saving, setSaving] = useState(false), [saveError, setSaveError] = useState(''); const load = () => { if (!org) return; setLoading(true); setError(false); get('/experiences', org).then(setItems).catch(() => setError(true)).finally(() => setLoading(false)); }; useEffect(() => { setItems([]); load(); }, [org]); async function create(e: React.FormEvent) { e.preventDefault(); if (!name.trim() || saving) return; setSaving(true); setSaveError(''); try { await get('/experiences', org, { method: 'POST', body: JSON.stringify({ name: name.trim(), type: 'roulette' }) }); setModal(false); setName(''); load(); } catch (err) { setSaveError((err as Error).message); } finally { setSaving(false); } } return <main className="page"><div className="page-heading"><div><p className="eyebrow">EXPERIENCES / GESTIÓN</p><h1>Experiencias</h1></div><button onClick={() => { setSaveError(''); setModal(true); }}>Nueva experiencia</button></div>{loading ? <p>Cargando experiencias…</p> : error ? <div className="empty"><h2>No se pudieron cargar las experiencias.</h2><button onClick={load}>Reintentar</button></div> : items.length ? <div className="experience-list">{items.map((item) => <div className="experience-card" key={item.id}><div><h2>{item.name}</h2><p>{item.type}</p></div><span className={`status status-${item.effective_status}`}>{experienceStatuses[item.effective_status] ?? item.effective_status}</span><div className="experience-dates"><span><small>Inicio</small>{experienceDate(item.starts_at, 'Inicio inmediato')}</span><span><small>Fin</small>{experienceDate(item.ends_at, 'Sin vencimiento')}</span></div><Link className="configure" to={`/app/experiences/${item.id}`}>Configurar →</Link></div>)}</div> : <div className="empty"><h2>No tenés experiencias todavía.</h2><p>Creá una experiencia para comenzar.</p><button onClick={() => setModal(true)}>Crear experiencia</button></div>}{modal && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true"><h2>Nueva experiencia</h2><form onSubmit={create}><label>Nombre<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ruleta Evento Septiembre" /></label>{saveError && <p className="error">{saveError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={() => setModal(false)}>Cancelar</button><button disabled={saving || !name.trim()}>{saving ? 'Creando…' : 'Crear experiencia'}</button></div></form></div></div>}</main>; }
+function ExperiencePlaceholder({ org }: { org: string }) { const id = location.pathname.split('/').pop(); const [item, setItem] = useState<Experience>(); const n = useNavigate(); useEffect(() => { if (org && id) get(`/experiences/${id}`, org).then(setItem).catch(() => setItem(undefined)); }, [org, id]); return <main className="page"><p className="eyebrow">EXPERIENCE / CONFIGURACIÓN</p><h1>{item?.name ?? 'Experiencia'}</h1><div className="card placeholder"><p>Configuración próximamente</p><button onClick={() => n('/app/experiences')}>Volver a experiencias</button></div></main>; }
 function Login() {
   const n = useNavigate();
   const [e, se] = useState('admin@corsteno.local'),
@@ -599,6 +605,7 @@ function Shell() {
           <Link to="/app">Inicio</Link>
           <Link to="/app/projects">Proyectos</Link>
           <Link to="/app/analytics">Analytics</Link>
+          <Link to="/app/experiences">Experiencias</Link>
           <Link to="/app/crm">CRM</Link>
           <Link to="/app/settings">Configuración</Link>
         </nav>
@@ -629,6 +636,8 @@ function Shell() {
         <Routes>
           <Route index element={<Home org={o} />} />
           <Route path="analytics" element={<Analytics org={o} />} />
+          <Route path="experiences" element={<Experiences org={o} />} />
+          <Route path="experiences/:id" element={<ExperiencePlaceholder org={o} />} />
           <Route
             path="*"
             element={
