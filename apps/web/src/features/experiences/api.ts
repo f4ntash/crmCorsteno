@@ -1,5 +1,6 @@
 import { apiRequest } from '../../shared/api/client';
 import type { Experience } from './types';
+export type ExperienceSpin = { id: string; experienceId: string; segmentId: string | null; segmentIndex: number; prizeId: string | null; outcomeType: 'prize' | 'no_prize'; createdAt: string };
 
 export const experiencesApi = {
   list: (organizationId: string) => apiRequest<Experience[]>('/experiences', organizationId),
@@ -10,4 +11,5 @@ export const experiencesApi = {
   uploadAsset: (id: string, organizationId: string, file: File) => { const body = new FormData(); body.append('file', file); return apiRequest(`/experiences/${id}/assets`, organizationId, { method: 'POST', body }); },
   inventory: (id: string, organizationId: string) => apiRequest<{ items: Array<{ prizeId: string; name: string; iconUrl: string | null; enabled: boolean; weight: number; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }> }>(`/experiences/${id}/inventory`, organizationId),
   adjustInventory: (id: string, organizationId: string, prizeId: string, delta: number) => apiRequest<{ item: { prizeId: string; stockAvailable: number | null; deliveredCount: number } }>(`/experiences/${id}/inventory/${prizeId}/adjust`, organizationId, { method: 'POST', body: JSON.stringify({ delta }) }),
+  spins: (id: string, organizationId: string, params: { limit?: number; offset?: number; outcome?: string; prizeId?: string; from?: string; to?: string } = {}) => { const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '') as [string, string][]).toString(); return apiRequest<{ items: ExperienceSpin[]; pagination: { limit: number; offset: number; nextOffset: number | null } }>(`/experiences/${id}/spins${query ? `?${query}` : ''}`, organizationId); },
 };
