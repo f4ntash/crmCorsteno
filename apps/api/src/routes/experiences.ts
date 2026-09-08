@@ -438,6 +438,7 @@ experienceRoutes.delete('/:id', async (c) => {
   const organizationId = c.get('organization').id;
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  await c.env.DB.prepare('DELETE FROM subscription_experiences WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_access_periods WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory_events WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory WHERE experience_id=?').bind(id).run();

@@ -7,6 +7,7 @@ type AccessPeriod = {
   endsAt: string;
   source: string;
   note: string | null;
+  planName?: string | null;
 };
 type AccessStatus =
   'legacy_unrestricted' | 'scheduled' | 'active' | 'expired' | 'no_access';
@@ -136,6 +137,8 @@ export function AccessPeriodPanel({
             {periods.map((period) => (
               <li key={period.id}>
                 {displayDate(period.startsAt)} → {displayDate(period.endsAt)}
+                {period.source === 'subscription' ? ' · Suscripción' : ' · Manual'}
+                {period.planName ? ` · ${period.planName}` : ''}
                 {period.note ? ` · ${period.note}` : ''}
               </li>
             ))}

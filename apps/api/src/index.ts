@@ -10,6 +10,7 @@ import { analyticsRoutes } from './routes/analytics';
 import { experienceRoutes } from './routes/experiences';
 import { requireAuth, requireOrganization } from './auth/middleware';
 import { publicExperienceRoutes } from './routes/public-experiences';
+import { commercialRoutes } from './routes/commercial';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -58,6 +59,7 @@ app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
 app.route('/experiences', experienceRoutes);
 app.route('/public', publicExperienceRoutes);
+app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);
   if (!/^organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/.test(key)) return c.notFound();

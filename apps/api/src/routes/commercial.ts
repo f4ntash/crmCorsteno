@@ -1,0 +1,120 @@
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
+import type { Env } from '../index';
+import { addBillingInterval, getEffectiveSubscriptionStatus, type BillingInterval } from '../services/subscription-periods';
+
+type Variables = {
+  user: { id: string; email: string; name: string; platformRole: string };
+  organization: { id: string; name: string; slug: string; role: string };
+};
+type Plan = { id: string; code: string; name: string; description: string | null; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; priceAmountMinor: number; currency: string; active: number };
+type SubscriptionPeriod = { id: string; subscriptionId: string; organizationId: string; startsAt: string; endsAt: string; status: string; idempotencyKey: string | null; createdAt: string };
+type Subscription = { id: string; organizationId: string; planId: string; status: 'pending' | 'active' | 'cancelled' | 'expired'; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; planCode: string; planName: string; planDescription: string | null };
+
+export const commercialRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
+function isCommercialPath(path: string) { return path === '/plans' || path.startsWith('/subscriptions'); }
+commercialRoutes.use('*', async (c, next) => {
+  if (!isCommercialPath(c.req.path)) return next();
+  const auth = requireAuth as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+  const organization = requireOrganization as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+  return auth(c, async () => { await organization(c, next); });
+});
+commercialRoutes.use('*', async (c, next) => {
+  if (!isCommercialPath(c.req.path)) return next();
+  const permission = (c.req.method === 'GET' ? requireOrganizationPermission('crm.read') : requireOrganizationPermission('crm.manage')) as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+  return permission(c, next);
+});
+
+function bad(message: string) { return { error: { code: 'BAD_REQUEST', message } }; }
+function presentPlan(row: Record<string, unknown>): Plan { return { id: String(row.id), code: String(row.code), name: String(row.name), description: row.description as string | null, billingInterval: row.billingInterval as BillingInterval, billingIntervalCount: Number(row.billingIntervalCount), includedAccessDays: row.includedAccessDays === null ? null : Number(row.includedAccessDays), priceAmountMinor: Number(row.priceAmountMinor), currency: String(row.currency), active: Number(row.active) }; }
+function presentPeriod(row: Record<string, unknown>): SubscriptionPeriod { return { id: String(row.id), subscriptionId: String(row.subscriptionId), organizationId: String(row.organizationId), startsAt: String(row.startsAt), endsAt: String(row.endsAt), status: String(row.status), idempotencyKey: row.idempotencyKey as string | null, createdAt: String(row.createdAt) }; }
+
+async function getSubscription(db: D1Database, id: string, organizationId: string) {
+  const row = await db.prepare(`SELECT s.id,s.organization_id organizationId,s.plan_id planId,s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.price_amount_minor priceAmountMinor,s.currency,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays,p.code planCode,p.name planName,p.description planDescription FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND s.organization_id=?`).bind(id, organizationId).first<Subscription>();
+  if (!row) return null;
+  const periods = await db.prepare('SELECT id,subscription_id subscriptionId,organization_id organizationId,starts_at startsAt,ends_at endsAt,status,idempotency_key idempotencyKey,created_at createdAt FROM subscription_periods WHERE subscription_id=? AND organization_id=? ORDER BY starts_at DESC, id DESC').bind(id, organizationId).all<Record<string, unknown>>();
+  const experiences = await db.prepare('SELECT e.id,e.name,e.slug FROM subscription_experiences se JOIN experiences e ON e.id=se.experience_id WHERE se.subscription_id=? AND se.organization_id=? ORDER BY e.created_at DESC').bind(id, organizationId).all<{ id: string; name: string; slug: string }>();
+  return { ...row, effectiveStatus: getEffectiveSubscriptionStatus(row.status, row.currentPeriodEnd), periods: periods.results.map(presentPeriod), experiences: experiences.results };
+}
+
+commercialRoutes.get('/plans', async (c) => {
+  const rows = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active FROM plans WHERE active=1 ORDER BY price_amount_minor ASC, name ASC').bind().all<Record<string, unknown>>();
+  return c.json(rows.results.map(presentPlan));
+});
+
+commercialRoutes.get('/subscriptions', async (c) => {
+  const rows = await c.env.DB.prepare('SELECT id FROM subscriptions WHERE organization_id=? ORDER BY created_at DESC, id DESC').bind(c.get('organization').id).all<{ id: string }>();
+  return c.json(await Promise.all(rows.results.map((row) => getSubscription(c.env.DB, row.id, c.get('organization').id))));
+});
+
+commercialRoutes.get('/subscriptions/:id', async (c) => {
+  const subscription = await getSubscription(c.env.DB, c.req.param('id'), c.get('organization').id);
+  if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
+  return c.json(subscription);
+});
+
+commercialRoutes.post('/subscriptions', async (c) => {
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const organizationId = c.get('organization').id;
+  const planId = typeof body.plan_id === 'string' ? body.plan_id : '';
+  const experienceIds = Array.isArray(body.experience_ids) ? body.experience_ids.filter((value): value is string => typeof value === 'string' && !!value) : [];
+  const uniqueExperienceIds = [...new Set(experienceIds)];
+  if (!planId) return c.json(bad('plan_id is required'), 400);
+  if (!uniqueExperienceIds.length) return c.json(bad('At least one experience is required'), 400);
+  if (uniqueExperienceIds.length !== experienceIds.length) return c.json(bad('Duplicate experience attachments are not allowed'), 400);
+  const planRow = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active FROM plans WHERE id=?').bind(planId).first<Record<string, unknown>>();
+  if (!planRow) return c.json({ error: { code: 'NOT_FOUND', message: 'Plan not found' } }, 404);
+  const plan = presentPlan(planRow);
+  if (!plan.active) return c.json(bad('Plan is not active'), 400);
+  const startValue = body.starts_at;
+  if (typeof startValue !== 'string' || !Number.isFinite(new Date(startValue).getTime())) return c.json(bad('A valid starts_at is required'), 400);
+  const startsAt = new Date(startValue);
+  const endsAt = addBillingInterval(startsAt, plan.billingInterval, plan.billingIntervalCount, plan.includedAccessDays);
+  const placeholders = uniqueExperienceIds.map(() => '?').join(',');
+  const experiences = await c.env.DB.prepare(`SELECT id FROM experiences WHERE organization_id=? AND id IN (${placeholders})`).bind(organizationId, ...uniqueExperienceIds).all<{ id: string }>();
+  if (experiences.results.length !== uniqueExperienceIds.length) return c.json({ error: { code: 'NOT_FOUND', message: 'One or more experiences not found' } }, 404);
+  const subscriptionId = crypto.randomUUID();
+  const periodId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [
+    c.env.DB.prepare('INSERT INTO subscriptions (id,organization_id,plan_id,status,starts_at,current_period_start,current_period_end,cancel_at_period_end,price_amount_minor,currency,billing_interval,billing_interval_count,included_access_days) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(subscriptionId, organizationId, plan.id, 'active', startsAt.toISOString(), startsAt.toISOString(), endsAt.toISOString(), 0, plan.priceAmountMinor, plan.currency, plan.billingInterval, plan.billingIntervalCount, plan.includedAccessDays),
+    c.env.DB.prepare('INSERT INTO subscription_periods (id,subscription_id,organization_id,starts_at,ends_at,status) VALUES (?,?,?,?,?,?)').bind(periodId, subscriptionId, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'active'),
+  ];
+  for (const experienceId of uniqueExperienceIds) {
+    statements.push(c.env.DB.prepare('INSERT INTO subscription_experiences (subscription_id,experience_id,organization_id) VALUES (?,?,?)').bind(subscriptionId, experienceId, organizationId));
+    statements.push(c.env.DB.prepare('INSERT INTO experience_access_periods (id,experience_id,organization_id,starts_at,ends_at,source,created_by,note,subscription_period_id) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), experienceId, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'subscription', c.get('user').id, `Subscription ${subscriptionId}`, periodId));
+  }
+  await c.env.DB.batch(statements);
+  return c.json(await getSubscription(c.env.DB, subscriptionId, organizationId), 201);
+});
+
+commercialRoutes.post('/subscriptions/:id/renew', async (c) => {
+  const organizationId = c.get('organization').id;
+  const subscription = await getSubscription(c.env.DB, c.req.param('id'), organizationId);
+  if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
+  if (subscription.status === 'cancelled' || subscription.cancelAtPeriodEnd) return c.json({ error: { code: 'CONFLICT', message: 'Cancelled subscriptions cannot be renewed' } }, 409);
+  const key = c.req.header('Idempotency-Key')?.trim();
+  if (!key || key.length > 200) return c.json(bad('Idempotency-Key is required for renewal'), 400);
+  const existing = await c.env.DB.prepare('SELECT id FROM subscription_periods WHERE subscription_id=? AND organization_id=? AND idempotency_key=?').bind(subscription.id, organizationId, key).first<{ id: string }>();
+  if (existing) return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
+  const currentEnd = new Date(subscription.currentPeriodEnd);
+  const startsAt = currentEnd.getTime() < Date.now() ? new Date() : currentEnd;
+  const endsAt = addBillingInterval(startsAt, subscription.billingInterval, subscription.billingIntervalCount, subscription.includedAccessDays);
+  const periodId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [
+    c.env.DB.prepare('INSERT OR IGNORE INTO subscription_periods (id,subscription_id,organization_id,starts_at,ends_at,status,idempotency_key) VALUES (?,?,?,?,?,?,?)').bind(periodId, subscription.id, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'active', key),
+    c.env.DB.prepare('UPDATE subscriptions SET status=\'active\',current_period_start=?,current_period_end=?,cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(startsAt.toISOString(), endsAt.toISOString(), subscription.id, organizationId),
+  ];
+  for (const experience of subscription.experiences) statements.push(c.env.DB.prepare('INSERT OR IGNORE INTO experience_access_periods (id,experience_id,organization_id,starts_at,ends_at,source,created_by,note,subscription_period_id) VALUES (?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), experience.id, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'subscription', c.get('user').id, `Subscription ${subscription.id}`, periodId));
+  await c.env.DB.batch(statements);
+  return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
+});
+
+commercialRoutes.post('/subscriptions/:id/cancel', async (c) => {
+  const organizationId = c.get('organization').id;
+  const subscription = await getSubscription(c.env.DB, c.req.param('id'), organizationId);
+  if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
+  await c.env.DB.prepare("UPDATE subscriptions SET cancel_at_period_end=1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?").bind(subscription.id, organizationId).run();
+  return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
+});

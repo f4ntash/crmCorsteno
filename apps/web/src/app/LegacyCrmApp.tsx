@@ -10,6 +10,8 @@ import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
 import { ExperienceDetailPage } from '../features/experiences/pages/ExperienceDetailPage';
 import { LoginPage } from '../features/auth/pages/LoginPage';
 import { Analytics, Home } from '../features/dashboard/DashboardPages';
+import { CommercialPage } from '../features/commercial/pages/CommercialPage';
+import { SubscriptionsPage } from '../features/commercial/pages/SubscriptionsPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -37,6 +39,8 @@ function Shell() {
           <Link to="/app/projects">Proyectos</Link>
           <Link to="/app/analytics">Analytics</Link>
           <Link to="/app/experiences">Experiencias</Link>
+          <Link to="/app/commercial">Comercial</Link>
+          <Link to="/app/subscriptions">Suscripciones</Link>
           <Link to="/app/crm">CRM</Link>
           <Link to="/app/settings">Configuración</Link>
         </nav>
@@ -69,6 +73,8 @@ function Shell() {
           <Route path="analytics" element={<Analytics org={o} />} />
           <Route path="experiences" element={<ExperiencesPage org={o} canCreate={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
           <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} />} />
+          <Route path="commercial" element={<CommercialPage org={o} />} />
+          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
           <Route
             path="*"
             element={

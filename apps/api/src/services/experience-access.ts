@@ -11,6 +11,8 @@ export type ExperienceAccessPeriod = {
   createdAt: string;
   createdBy: string | null;
   note: string | null;
+  subscriptionPeriodId?: string | null;
+  planName?: string | null;
 };
 
 export function getEffectiveExperienceAccessStatus(
@@ -38,8 +40,9 @@ export async function getExperienceAccessPeriods(
 ) {
   const rows = await db
     .prepare(
-      `SELECT id, experience_id experienceId, organization_id organizationId, starts_at startsAt, ends_at endsAt, source, created_at createdAt, created_by createdBy, note
-    FROM experience_access_periods WHERE experience_id=? AND organization_id=? ORDER BY starts_at ASC, created_at ASC, id ASC`,
+      `SELECT ap.id, ap.experience_id experienceId, ap.organization_id organizationId, ap.starts_at startsAt, ap.ends_at endsAt, ap.source, ap.created_at createdAt, ap.created_by createdBy, ap.note, ap.subscription_period_id subscriptionPeriodId, p.name planName
+    FROM experience_access_periods ap LEFT JOIN subscription_periods sp ON sp.id=ap.subscription_period_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN plans p ON p.id=s.plan_id
+    WHERE ap.experience_id=? AND ap.organization_id=? ORDER BY ap.starts_at ASC, ap.created_at ASC, ap.id ASC`,
     )
     .bind(experienceId, organizationId)
     .all<ExperienceAccessPeriod>();
