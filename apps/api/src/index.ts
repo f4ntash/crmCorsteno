@@ -14,6 +14,7 @@ export interface Env {
   ENVIRONMENT: string;
   APP_VERSION: string;
   WEB_ORIGIN?: string;
+  WEB_ORIGINS?: string;
   DB: D1Database;
 }
 
@@ -26,8 +27,10 @@ const developmentOrigins = [
 ];
 
 app.use('*', async (c, next) => {
-  const configuredOrigins =
-    c.env.WEB_ORIGIN?.split(',')
+  const configuredOrigins = [c.env.WEB_ORIGINS, c.env.WEB_ORIGIN]
+    .filter(Boolean)
+    .join(',')
+    .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean) ?? [];
   const allowedOrigins =
@@ -37,7 +40,7 @@ app.use('*', async (c, next) => {
   return cors({
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
     credentials: true,
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization'],
   })(c, next);
 });
