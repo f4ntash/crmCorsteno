@@ -67,11 +67,14 @@ function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
 const HEX = /^#[0-9a-f]{6}$/i;
-export function validDraftConfig(value: unknown): value is { schemaVersion: 1; backgroundColor: string; segments: Array<{ id: string; label: string; color: string }> } {
+export function validDraftConfig(value: unknown): value is { schemaVersion: 1; backgroundColor: string; prizes: Array<{ id: string; name: string }>; segments: Array<{ id: string; color: string; prizeId: string | null }> } {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const config = value as Record<string, unknown>;
-  if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
-  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && typeof item.label === 'string' && !!item.label.trim() && typeof item.color === 'string' && HEX.test(item.color); });
+  if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
+  const ids = new Set<string>();
+  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim()) return false; ids.add(item.id); }
+  const segmentIds = new Set<string>();
+  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))); });
 }
 
 experienceRoutes.post('/', async (c) => {
