@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { RoulettePreview } from '../../web/src/RoulettePreview';
+import { Roulette3DView } from './features/roulette3d/Roulette3DView';
 
 const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
 type Prize = { id: string; name: string; iconUrl?: string | null };
@@ -15,8 +15,7 @@ function Viewer() {
   if (state.error || !state.data) return <main><h1>No pudimos cargar esta experiencia.</h1></main>;
   if (!state.data.active) return <main><h1>{state.data.reason === 'scheduled' ? 'Esta experiencia todavía no está disponible.' : state.data.reason === 'expired' ? 'Esta experiencia finalizó.' : 'Esta experiencia no está disponible.'}</h1></main>;
   const config = state.data.experience!.config;
-  const segments = config.segments.map((segment) => { const prize = config.prizes.find((item) => item.id === segment.prizeId); return { ...segment, label: prize?.name ?? 'Sin premio', iconUrl: prize?.iconUrl ?? null }; });
-  return <main><RoulettePreview segments={segments} backgroundColor={config.backgroundColor} /></main>;
+  return <main><Roulette3DView config={config} /></main>;
 }
 
 export function App() { return <Routes><Route path="/r/:slug" element={<Viewer />} /><Route path="*" element={<Navigate to="/r/" replace />} /></Routes>; }
