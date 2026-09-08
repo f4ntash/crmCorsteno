@@ -109,6 +109,16 @@ async function syncPrizeInventory(db: D1Database, experienceId: string, config: 
     }
   }
 }
+async function ensureAnalyticsApplication(db: D1Database, experienceId: string, organizationId: string, name: string) {
+  const existing = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
+  if (existing?.applicationId) return;
+  const project = await db.prepare('SELECT id FROM projects WHERE organization_id=? ORDER BY created_at LIMIT 1').bind(organizationId).first<{ id: string }>();
+  if (!project) return;
+  const applicationId = crypto.randomUUID();
+  await db.prepare("INSERT OR IGNORE INTO applications (id, organization_id, project_id, name, slug, status, application_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', 'roulette', ?, ?)").bind(applicationId, organizationId, project.id, name, `roulette-${experienceId}`, Date.now(), Date.now()).run();
+  const actual = await db.prepare('SELECT id FROM applications WHERE organization_id=? AND project_id=? AND slug=?').bind(organizationId, project.id, `roulette-${experienceId}`).first<{ id: string }>();
+  if (actual) await db.prepare('UPDATE experiences SET project_id=?, application_id=? WHERE id=? AND organization_id=?').bind(project.id, actual.id, experienceId, organizationId).run();
+}
 
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -157,6 +167,7 @@ experienceRoutes.post('/:id/publish', async (c) => {
   const snapshot = JSON.stringify(draft);
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
   await syncPrizeInventory(c.env.DB, id, draft);
+  await ensureAnalyticsApplication(c.env.DB, id, organizationId, String(row.name ?? 'Roulette'));
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
 });

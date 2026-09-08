@@ -39,7 +39,8 @@ const b1: Scope = {
   projectId: 'b1',
   applicationId: 'b1-app',
 };
-const scopes: Scope[] = [a1, a1a2, a2, b1];
+const roulette: Scope = { organizationId: 'org-a', projectId: 'a1', applicationId: 'roulette-app' };
+const scopes: Scope[] = [a1, a1a2, a2, roulette, b1];
 
 function event(scope: Scope, values: Omit<Event, keyof Scope>): Event {
   return { ...scope, ...values };
@@ -223,7 +224,7 @@ function database(state: TestState): D1Database {
                       name: `Application ${index}`,
                       slug: `app-${index}`,
                       status: 'active',
-                      applicationType: index === 0 ? 'webar' : null,
+                      applicationType: item.applicationId === 'roulette-app' ? 'roulette' : index === 0 ? 'webar' : null,
                     })) as T[],
                 };
               }
@@ -374,6 +375,7 @@ describe('Analytics deterministic summary', () => {
     expect(result.body.rates).toEqual({
       completion: 2 / 3,
       prizeConversion: 1 / 3,
+      rouletteConversion: 0,
     });
   });
   it('uses zero-safe rates when no games started', async () => {
@@ -381,8 +383,22 @@ describe('Analytics deterministic summary', () => {
       totals: Record<string, number>;
       rates: Record<string, number>;
     }>('/analytics/summary?range=all&projectId=a2', state([]));
-    expect(result.body.rates).toEqual({ completion: 0, prizeConversion: 0 });
+    expect(result.body.rates).toEqual({ completion: 0, prizeConversion: 0, rouletteConversion: 0 });
     expect(result.body.totals.gamesStarted).toBe(0);
+  });
+  it('exposes roulette metrics and filters by roulette application', async () => {
+    const events = [
+      event(roulette, { event: 'experience_view', userId: 'u1', sessionId: 's1', occurredAt: NOW - 1000 }),
+      event(roulette, { event: 'roulette_spin_started', userId: 'u1', sessionId: 's1', occurredAt: NOW - 900 }),
+      event(roulette, { event: 'roulette_spin_completed', userId: 'u1', sessionId: 's1', occurredAt: NOW - 800 }),
+      event(roulette, { event: 'roulette_prize_won', userId: 'u1', sessionId: 's1', occurredAt: NOW - 700, properties: { prize: 'Remera' } }),
+      event(a1, { event: 'experience_view', userId: 'other', sessionId: 'other', occurredAt: NOW - 600 }),
+    ];
+    const applications = await request<Array<{ id: string; applicationType: string }>>('/applications?projectId=a1', state(events));
+    expect(applications.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'roulette-app', applicationType: 'roulette' })]));
+    const result = await request<{ totals: Record<string, number>; rates: Record<string, number> }>('/analytics/summary?range=all&projectId=a1&applicationId=roulette-app', state(events));
+    expect(result.body.totals).toMatchObject({ uniqueUsers: 1, sessions: 1, rouletteSpinsStarted: 1, rouletteSpinsCompleted: 1, roulettePrizesWon: 1, rouletteNoPrize: 0 });
+    expect(result.body.rates.rouletteConversion).toBe(1);
   });
 });
 

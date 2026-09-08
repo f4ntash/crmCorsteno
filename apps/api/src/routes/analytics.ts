@@ -109,10 +109,15 @@ analyticsRoutes.get('/summary', async (c) => {
       prizesWon: count('prize_won'),
       prizesClaimed: count('prize_claimed'),
       ...webar,
+      rouletteSpinsStarted: count('roulette_spin_started'),
+      rouletteSpinsCompleted: count('roulette_spin_completed'),
+      roulettePrizesWon: count('roulette_prize_won'),
+      rouletteNoPrize: count('roulette_no_prize'),
     },
     rates: {
       completion: started ? count('game_finished') / started : 0,
       prizeConversion: started ? count('prize_won') / started : 0,
+      rouletteConversion: count('experience_view') ? count('roulette_spin_started') / count('experience_view') : 0,
     },
   });
 });
