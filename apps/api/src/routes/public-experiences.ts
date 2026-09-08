@@ -26,6 +26,9 @@ async function recordExperienceEvent(db: D1Database, experienceId: string, organ
   if (!app) return;
   await db.prepare('INSERT INTO events (id,organization_id,project_id,application_id,event_name,anonymous_user_id,session_id,properties,occurred_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, app.projectId, applicationId, event, userId, sessionId, JSON.stringify(properties), Date.now(), Date.now()).run();
 }
+function trackExperienceEvent(db: D1Database, experienceId: string, organizationId: string, name: string, event: string, userId: string | null, sessionId: string | null, properties: Record<string, unknown>) {
+  void recordExperienceEvent(db, experienceId, organizationId, name, event, userId, sessionId, properties).catch(() => undefined);
+}
 
 publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   const row = await c.env.DB.prepare(
@@ -51,6 +54,8 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   let config: DraftConfig | null;
   try { config = parseJson(row.published_config) as DraftConfig | null; } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
+  let applicationId: string | null = null;
+  try { applicationId = (await ensureAnalyticsApplication(c.env.DB, row.id, row.organization_id, row.name)) ?? null; } catch { /* analytics is secondary to the authoritative spin */ }
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
     const inventory = new Map(inventoryRows.results.map((item) => [item.prizeId, item]));
@@ -62,25 +67,30 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
       const stock = inventory.get(prize.id);
       const stockMode = stock?.stockMode ?? (prize.stockMode ?? (prize.stockLimit == null ? 'unlimited' : 'limited'));
       const spinId = crypto.randomUUID();
-      if (!stock && stockMode === 'unlimited') await c.env.DB.prepare('INSERT OR IGNORE INTO experience_prize_inventory (experience_id, prize_id, stock_mode, stock_available, delivered_count) VALUES (?, ?, \'unlimited\', NULL, 0)').bind(row.id, prize.id).run();
-      const update = stockMode === 'limited'
-        ? await c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id).run()
-        : await c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id).run();
-      if (!update.meta?.changes) continue;
-      await c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId).run();
-      await recordExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_prize_won', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, prize: prize.name, prizeId: prize.id, spinId });
       const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
       const segment = config.segments[segmentIndex]!;
+      const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type) VALUES (?, ?, ?, ?, ?, ?, ?, \'prize\')').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, prize.id);
+      const inventoryInsert = !stock && stockMode === 'unlimited' ? c.env.DB.prepare('INSERT OR IGNORE INTO experience_prize_inventory (experience_id, prize_id, stock_mode, stock_available, delivered_count) VALUES (?, ?, \'unlimited\', NULL, 0)').bind(row.id, prize.id) : null;
+      const update = stockMode === 'limited'
+        ? c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id)
+        : c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id);
+      const inventoryEvent = c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId);
+      const statements = inventoryInsert ? [inventoryInsert, update, spinInsert, inventoryEvent] : [update, spinInsert, inventoryEvent];
+      const results = await c.env.DB.batch(statements);
+      if (!results[statements.indexOf(update)]?.meta?.changes) continue;
+      trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_prize_won', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, prize: prize.name, prizeId: prize.id, spinId });
       const prizeResult = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
-      await recordExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, prize: prize.name, prizeId: prize.id });
+      trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, prize: prize.name, prizeId: prize.id });
       return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null });
     }
     const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
     const segment = config.segments[segmentIndex]!;
     const prize = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
     const spinId = crypto.randomUUID();
-    await recordExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, result: 'no_prize', prize: 'Sin premio' });
-    await recordExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_no_prize', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, prize: 'Sin premio' });
+    const spinInsert = c.env.DB.prepare('INSERT INTO experience_spins (id, experience_id, organization_id, application_id, segment_id, segment_index, prize_id, outcome_type) VALUES (?, ?, ?, ?, ?, ?, ?, \'no_prize\')').bind(spinId, row.id, row.organization_id, applicationId, segment.id, segmentIndex, null);
+    await c.env.DB.batch([spinInsert]);
+    trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, result: 'no_prize', prize: 'Sin premio' });
+    trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_no_prize', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, organizationId: row.organization_id, spinId, prize: 'Sin premio' });
     return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prize ? { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null } : null });
   }
   return c.json({ active: false, reason: 'unavailable' }, 503);

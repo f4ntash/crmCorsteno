@@ -23,6 +23,18 @@ export type Experience = {
   updatedAt: string;
 };
 
+export type ExperienceSpin = {
+  id: string;
+  experienceId: string;
+  organizationId: string;
+  applicationId: string | null;
+  segmentId: string | null;
+  segmentIndex: number;
+  prizeId: string | null;
+  outcomeType: 'prize' | 'no_prize';
+  createdAt: string;
+};
+
 export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
 export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }>; effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean }; resultCta?: { enabled?: boolean; label?: string; url?: string } };
 
@@ -232,6 +244,24 @@ experienceRoutes.post('/', async (c) => {
 experienceRoutes.get('/', async (c) => {
   const rows = await c.env.DB.prepare(`${select} WHERE organization_id=? ORDER BY created_at DESC`).bind(c.get('organization').id).all<Record<string, unknown>>();
   try { return c.json(rows.results.map(present)); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
+});
+
+experienceRoutes.get('/:id/spins', async (c) => {
+  const id = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
+  if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const query = c.req.query();
+  const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 100);
+  const offset = Math.max(Number(query.offset) || 0, 0);
+  const values: (string | number)[] = [organizationId, id];
+  let where = 'organization_id=? AND experience_id=?';
+  if (query.prizeId) { where += ' AND prize_id=?'; values.push(query.prizeId); }
+  if (query.outcome) { if (query.outcome !== 'prize' && query.outcome !== 'no_prize') return c.json(bad('Invalid outcome'), 400); where += ' AND outcome_type=?'; values.push(query.outcome); }
+  if (query.from) { where += ' AND created_at>=?'; values.push(query.from); }
+  if (query.to) { where += ' AND created_at<=?'; values.push(query.to); }
+  const rows = await c.env.DB.prepare(`SELECT id,experience_id experienceId,organization_id organizationId,application_id applicationId,segment_id segmentId,segment_index segmentIndex,prize_id prizeId,outcome_type outcomeType,created_at createdAt FROM experience_spins WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset).all<ExperienceSpin>();
+  return c.json({ items: rows.results, pagination: { limit, offset, nextOffset: rows.results.length === limit ? offset + limit : null } });
 });
 
 experienceRoutes.get('/:id', async (c) => {
