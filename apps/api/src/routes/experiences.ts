@@ -23,8 +23,8 @@ export type Experience = {
   updatedAt: string;
 };
 
-type PrizeConfig = { id: string; name: string; iconUrl?: string | null };
-type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null }> };
+export type PrizeConfig = { id: string; name: string; iconUrl?: string | null };
+export type DraftConfig = { schemaVersion: 1; backgroundColor: string; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null }> };
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };

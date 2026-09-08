@@ -21,6 +21,7 @@ export class Roulette3D {
   private resizeObserver?: ResizeObserver;
   private lastTime = 0;
   private readonly spinAnimator: RouletteSpinAnimator;
+  private hasSpun = false;
 
   constructor(config: Roulette3DConfig, options: Roulette3DOptions = {}) {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -41,9 +42,9 @@ export class Roulette3D {
 
   mount(container: HTMLElement) { this.container = container; container.replaceChildren(this.renderer.domElement); this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(container); this.resize(); this.lastTime = performance.now(); this.animate(); return () => this.dispose(); }
   update(config: Roulette3DConfig) { this.scene.background = new THREE.Color(config.backgroundColor); this.wheel?.dispose(); this.wheel = new RouletteWheel(config); this.root.add(this.wheel.group); if (!this.frame) { this.frame = createRouletteFrame(ROULETTE_RADIUS); this.root.add(this.frame); } if (!this.pointer) { this.pointer = createRoulettePointer(ROULETTE_RADIUS); this.root.add(this.pointer); } if (this.spinAnimator) this.spinAnimator.setTarget(this.wheel.group, this.pointer, config.segments.length); }
-  spinTo(targetSegmentIndex: number) { return this.spinAnimator.spinTo(targetSegmentIndex); }
+  spinTo(targetSegmentIndex: number) { const accepted = this.spinAnimator.spinTo(targetSegmentIndex); if (accepted) this.hasSpun = true; return accepted; }
   resize() { if (!this.container) return; const width = Math.max(1, this.container.clientWidth); const height = Math.max(1, this.container.clientHeight); this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); this.renderer.setSize(width, height, false); }
   dispose() { if (this.animationFrame) cancelAnimationFrame(this.animationFrame); this.animationFrame = undefined; this.resizeObserver?.disconnect(); this.resizeObserver = undefined; this.wheel?.dispose(); this.scene.traverse((object) => { const mesh = object as THREE.Mesh; mesh.geometry?.dispose(); const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []; materials.forEach((material) => { material.dispose(); const map = (material as THREE.MeshStandardMaterial).map; map?.dispose(); }); }); this.renderer.dispose(); this.renderer.domElement.remove(); this.container = undefined; }
 
-  private animate = (time = performance.now()) => { this.animationFrame = requestAnimationFrame(this.animate); const delta = Math.min(0.05, (time - this.lastTime) / 1000); this.lastTime = time; if (!this.spinAnimator.isSpinning) this.wheel!.group.rotation.z += delta * 0.018; this.spinAnimator.update(delta); this.renderer.render(this.scene, this.camera); };
+  private animate = (time = performance.now()) => { this.animationFrame = requestAnimationFrame(this.animate); const delta = Math.min(0.05, (time - this.lastTime) / 1000); this.lastTime = time; if (!this.spinAnimator.isSpinning && !this.hasSpun) this.wheel!.group.rotation.z += delta * 0.018; this.spinAnimator.update(delta); this.renderer.render(this.scene, this.camera); };
 }

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import app from '../src';
 import { validDraftConfig } from '../src/routes/experiences';
 
@@ -113,5 +113,42 @@ describe('public published experience', () => {
   it('returns 404 for an unknown slug', async () => {
     const response = await app.fetch(new Request('http://localhost/public/experiences/missing'), fixture());
     expect(response.status).toBe(404);
+  });
+
+  it('returns a server-selected spin result without private fields', async () => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), fixture(published, 'published', published));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null };
+    expect(body.spinId).toEqual(expect.any(String));
+    expect(body.segmentIndex).toBeGreaterThanOrEqual(0);
+    expect(body.segmentIndex).toBeLessThan(6);
+    expect(body.segment).toEqual({ id: `seg-${body.segmentIndex}`, prizeId: 'prize-1' });
+    expect(body.prize).toEqual({ id: 'prize-1', name: 'Remera', iconUrl: null });
+    expect(body).not.toHaveProperty('draft_config');
+    expect(body).not.toHaveProperty('organization_id');
+  });
+
+  it('returns null prize for an eligible no-prize segment', async () => {
+    const noPrize = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments().map((segment, index) => index === 0 ? { ...segment, prizeId: null } : segment) });
+    const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => { (array as Uint32Array)[0] = 0; return array; });
+    try {
+      const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(noPrize, 'published', noPrize));
+      expect(response.status).toBe(200);
+      const body = await response.json() as { segmentIndex: number; prize: unknown };
+      expect(body.segmentIndex).toBe(0);
+      expect(body.prize).toBeNull();
+    } finally { random.mockRestore(); }
+  });
+
+  it.each(['draft', 'paused'])('does not spin %s experiences', async (status) => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(published, status, published));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ active: false, reason: status });
+  });
+
+  it('does not spin invalid published configuration', async () => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture('{"segments":[]}', 'published', '{"segments":[]}'));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ active: false, reason: 'unavailable' });
   });
 });
