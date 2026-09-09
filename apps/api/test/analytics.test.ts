@@ -17,7 +17,8 @@ type Scope = {
   projectId: string;
   applicationId: string;
 };
-type TestState = { events: Event[]; scopes: Scope[] };
+type Spin = { organizationId: string; applicationId: string; outcome: 'prize' | 'no_prize' };
+type TestState = { events: Event[]; scopes: Scope[]; spins: Spin[] };
 
 const a1: Scope = {
   organizationId: 'org-a',
@@ -228,6 +229,13 @@ function database(state: TestState): D1Database {
                     })) as T[],
                 };
               }
+              if (sql.includes('FROM experience_spins')) {
+                return {
+                  results: state.spins
+                    .filter((item) => item.organizationId === String(args[0]) && item.applicationId === String(args.at(-1)))
+                    .map((item) => ({ outcome: item.outcome, n: 1 })) as T[],
+                };
+              }
               const rows = filterEvents(state, sql, args);
               if (sql.includes('GROUP BY event_name')) {
                 const counts = new Map<string, number>();
@@ -323,8 +331,8 @@ async function request<T>(
     throw error;
   }
 }
-function state(events = baseEvents()): TestState {
-  return { events, scopes };
+function state(events = baseEvents(), spins: Spin[] = []): TestState {
+  return { events, scopes, spins };
 }
 
 beforeEach(() => {
@@ -396,7 +404,7 @@ describe('Analytics deterministic summary', () => {
     ];
     const applications = await request<Array<{ id: string; applicationType: string }>>('/applications?projectId=a1', state(events));
     expect(applications.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'roulette-app', applicationType: 'roulette' })]));
-    const result = await request<{ totals: Record<string, number>; rates: Record<string, number> }>('/analytics/summary?range=all&projectId=a1&applicationId=roulette-app', state(events));
+    const result = await request<{ totals: Record<string, number>; rates: Record<string, number> }>('/analytics/summary?range=all&projectId=a1&applicationId=roulette-app', state(events, [{ organizationId: 'org-a', applicationId: 'roulette-app', outcome: 'prize' }]));
     expect(result.body.totals).toMatchObject({ uniqueUsers: 1, sessions: 1, rouletteSpinsStarted: 1, rouletteSpinsCompleted: 1, roulettePrizesWon: 1, rouletteNoPrize: 0 });
     expect(result.body.rates.rouletteConversion).toBe(1);
   });

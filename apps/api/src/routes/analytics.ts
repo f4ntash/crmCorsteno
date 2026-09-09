@@ -18,6 +18,7 @@ const sinceOf = (r: Range) =>
   r === 'all'
     ? 0
     : Date.now() - { '24h': 86400000, '7d': 604800000, '30d': 2592000000 }[r];
+const sinceIsoOf = (r: Range) => r === 'all' ? '1970-01-01T00:00:00.000Z' : new Date(sinceOf(r)).toISOString();
 async function scope(c: Context<{ Bindings: Env; Variables: Vars }>) {
   const q = c.req.query();
   const range = rangeOf(q.range);
@@ -81,9 +82,21 @@ analyticsRoutes.get('/summary', async (c) => {
   const total = rows.results.reduce((n, x) => n + x.n, 0);
   const operational = await (async () => {
     try {
-      const spinRows = await c.env.DB.prepare(`SELECT outcome_type outcome,COUNT(*) n FROM experience_spins WHERE ${s.where.replaceAll('occurred_at', 'created_at')} GROUP BY outcome_type`).bind(...s.values).all<{ outcome: string; n: number }>();
+      let spinFrom = 'experience_spins s';
+      let spinWhere = 's.organization_id=? AND s.created_at>=?';
+      const spinValues: (string | number)[] = [s.org.id, sinceIsoOf(s.range)];
+      if (s.q.projectId) {
+        spinFrom += ' JOIN applications a ON a.id=s.application_id AND a.organization_id=s.organization_id';
+        spinWhere += ' AND a.project_id=?';
+        spinValues.push(s.q.projectId);
+      }
+      if (s.q.applicationId) {
+        spinWhere += ' AND s.application_id=?';
+        spinValues.push(s.q.applicationId);
+      }
+      const spinRows = await c.env.DB.prepare(`SELECT s.outcome_type outcome,COUNT(*) n FROM ${spinFrom} WHERE ${spinWhere} GROUP BY s.outcome_type`).bind(...spinValues).all<{ outcome: string; n: number }>();
       let claimWhere = 'c.organization_id=? AND c.created_at>=?';
-      const claimValues: (string | number)[] = [s.org.id, sinceOf(s.range)];
+      const claimValues: (string | number)[] = [s.org.id, sinceIsoOf(s.range)];
       if (s.q.projectId) { claimWhere += ' AND e.project_id=?'; claimValues.push(s.q.projectId); }
       if (s.q.applicationId) { claimWhere += ' AND es.application_id=?'; claimValues.push(s.q.applicationId); }
       const claimRows = await c.env.DB.prepare(`SELECT c.status,COUNT(*) n FROM roulette_prize_claims c JOIN experiences e ON e.id=c.experience_id AND e.organization_id=c.organization_id JOIN experience_spins es ON es.id=c.spin_id AND es.organization_id=c.organization_id WHERE ${claimWhere} GROUP BY c.status`).bind(...claimValues).all<{ status: string; n: number }>();
@@ -173,7 +186,7 @@ analyticsRoutes.get('/breakdown', async (c) => {
     if (application?.applicationType === 'roulette') {
       try {
         let spinWhere = "s.organization_id=? AND s.created_at>=? AND s.outcome_type='prize' AND s.application_id=?";
-        const spinValues: (string | number)[] = [s.org.id, sinceOf(s.range), s.q.applicationId];
+        const spinValues: (string | number)[] = [s.org.id, sinceIsoOf(s.range), s.q.applicationId];
         if (s.q.projectId) { spinWhere += ' AND a.project_id=?'; spinValues.push(s.q.projectId); }
         const spinRows = await c.env.DB.prepare(`SELECT s.prize_id prizeId,e.published_config publishedConfig,e.draft_config draftConfig FROM experience_spins s JOIN experiences e ON e.id=s.experience_id AND e.organization_id=s.organization_id JOIN applications a ON a.id=s.application_id AND a.organization_id=s.organization_id WHERE ${spinWhere}`).bind(...spinValues).all<{ prizeId: string; publishedConfig: string | null; draftConfig: string | null }>();
         const counts = new Map<string, number>();
