@@ -130,7 +130,7 @@ export function AccessPeriodPanel({
           {displayDate(latest.startsAt)} → {displayDate(latest.endsAt)}
         </p>
       )}
-      {periods.length > 0 && (
+      {(periods.length > 0 || canManage) && <details className="access-period-details"><summary>{canManage ? 'Ver y gestionar vigencia' : 'Ver historial de vigencia'}</summary>{periods.length > 0 && (
         <div>
           <h3>Historial</h3>
           <ul>
@@ -144,9 +144,7 @@ export function AccessPeriodPanel({
             ))}
           </ul>
         </div>
-      )}
-      {canManage && (
-        <>
+      )}{canManage && <>
           <h3>Agregar vigencia</h3>
           <div className="access-period-form">
             <label>
@@ -210,8 +208,7 @@ export function AccessPeriodPanel({
               </button>
             </div>
           )}
-        </>
-      )}
+        </>}</details>}
       {error && (
         <p className="error" role="alert">
           {error}

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Roulette3DPreview } from './Roulette3DPreview';
 import { apiRequest } from '../../../shared/api/client';
 import { experiencesApi } from '../../experiences/api';
@@ -41,13 +40,11 @@ export function RouletteEditor({
           Esta experiencia es de solo lectura para tu rol.
         </p>
       )}
-      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} />
+      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canEdit} canAdjustInventory={canAdjustInventory} />
     </div>
   );
 }
-function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; id: string; redemptionAvailable: boolean }) {
-  const navigate = useNavigate();
-  const [item, setItem] = useState<Experience>();
+function RouletteEditorContent({ org, id, redemptionAvailable, canEdit, canAdjustInventory }: { org: string; id: string; redemptionAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean }) {
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,17 +78,23 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
     apiRequest<Experience & { draftConfig: unknown }>(`/experiences/${id}`, org)
       .then((experience) => {
         reset(experience.draftConfig);
-        setItem(experience);
         void reloadInventory();
       })
       .catch(() => setError('No se pudo cargar la experiencia.'))
       .finally(() => setLoading(false));
   }, [org, id]);
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [dirty]);
   if (loading)
     return (
-      <main className="page">
-        <p>Cargando configuración…</p>
-      </main>
+      <div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando configuración…</div>
     );
   async function save() {
     if (!valid || !dirty || saving) return;
@@ -145,22 +148,12 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
     },
   };
   return (
-    <main className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">EXPERIENCE / CONFIGURACIÓN</p>
-          <h1>{item?.name}</h1>
-        </div>
-        <button
-          className="secondary"
-          onClick={() => navigate('/app/experiences')}
-        >
-          Volver
-        </button>
-      </div>
-      <div className="editor-grid">
+    <div className="roulette-workspace">
+      <div className="editor-grid roulette-config-grid">
         <section className="card editor-panel">
-          <h2>Configuración</h2>
+          <fieldset className="roulette-draft-fields" disabled={!canEdit}>
+          <legend className="sr-only">Configuración de borrador</legend>
+          <h3>Diseño</h3>
           <label>
             Fondo
             <input
@@ -245,11 +238,11 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
               </>
             )}
           </fieldset>
-          <ParticipationControls
+          <div className="roulette-participation"><h3>Participación</h3><ParticipationControls
             draft={draft}
             onChange={(participation) => setDraft({ ...draft, participation })}
-          />
-          <h3>Premios</h3>
+          /></div>
+          <h3>Premios</h3><p className="field-help">El stock inicial pertenece al borrador. El inventario operativo en vivo se ajusta por separado.</p>
           {draft.prizes.map((prize, index) => (
             <PrizeEditor
               key={prize.id}
@@ -300,28 +293,25 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
               />
             </div>
           ))}
-          <div className="save-row">
+          </fieldset><div className="save-row">
             {dirty && <span className="dirty">Cambios sin guardar</span>}
             {message && <span className="success">{message}</span>}
             {error && <span className="error">{error}</span>}
             <button
-              disabled={!valid || !dirty || saving}
+              disabled={!canEdit || !valid || !dirty || saving}
               onClick={() => void save()}
             >
               {saving ? 'Guardando…' : 'Guardar borrador'}
             </button>
           </div>
         </section>
-        <section className="card preview-panel">
-          <h2>Preview 3D</h2>
+        <section className="card preview-panel roulette-preview-panel">
+          <h3>Vista previa 3D</h3><p className="field-help">Previsualización del borrador; no publica cambios.</p>
           <Roulette3DPreview config={preview} />
         </section>
       </div>
       <section className="card inventory-panel">
-        <h2>Gestión de premios</h2>
-        <p>
-          El stock se administra operativamente y no se reinicia al republicar.
-        </p>
+        <div className="workspace-section-heading"><div><h3>Inventario operativo en vivo</h3><p className="field-help">Los ajustes cambian el saldo actual; republicar no lo reinicia.</p></div></div>
         {draft.prizes.map((prize) => {
           const entry = inventory.find((x) => x.prizeId === prize.id);
           return (
@@ -339,7 +329,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
               {prize.stockMode === 'limited' && (
                 <>
                   <button
-                    className="secondary"
+                    className="secondary" disabled={!canAdjustInventory}
                     onClick={() => {
                       setAdjusting({
                         prizeId: prize.id,
@@ -352,7 +342,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
                     Agregar stock
                   </button>
                   <button
-                    className="secondary"
+                    className="secondary" disabled={!canAdjustInventory}
                     onClick={() => {
                       setAdjusting({
                         prizeId: prize.id,
@@ -370,7 +360,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
           );
         })}
       </section>
-      {adjusting && (
+      {adjusting && canAdjustInventory && (
         <div className="adjust-modal" role="dialog" aria-modal="true">
           <div className="card">
             <h2>
@@ -396,7 +386,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; 
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 function PrizeEditor({

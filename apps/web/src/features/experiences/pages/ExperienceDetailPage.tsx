@@ -22,9 +22,11 @@ const runtime =
 export function ExperienceDetailPage({
   org,
   permissions,
+  canManageCommercial,
 }: {
   org: string;
   permissions: string[];
+  canManageCommercial: boolean;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,14 +36,21 @@ export function ExperienceDetailPage({
     id: string;
     type: string;
     slug: string;
+    name: string;
+    status: string;
     draftConfig?: { prizes?: Array<{ id: string; name: string }> };
   }>();
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [redemptionAvailable, setRedemptionAvailable] = useState(false);
   useEffect(() => {
     if (!id || !org) return;
+    setLoading(true);
+    setLoadError('');
     get(`/experiences/${id}`, org)
       .then(setExperience)
-      .catch(() => setExperience(undefined));
+      .catch((error) => { setExperience(undefined); setLoadError((error as Error).message); })
+      .finally(() => setLoading(false));
     commercialApi.subscriptions(org)
       .then((subscriptions) => setRedemptionAvailable(subscriptions.some((subscription) =>
         subscription.experiences.some((attached) => attached.id === id) &&
@@ -49,7 +58,8 @@ export function ExperienceDetailPage({
       )))
       .catch(() => setRedemptionAvailable(false));
   }, [id, org]);
-  if (!id || !experience) return null;
+  if (loading) return <main className="page"><div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando experiencia…</div></main>;
+  if (!id || !experience) return <main className="page"><div className="empty"><h2>No se pudo cargar la experiencia.</h2>{loadError && <p className="error">{loadError}</p>}<button className="secondary" onClick={() => navigate('/app/experiences')}>Volver a experiencias</button></div></main>;
   const Editor =
     experienceEditors[experience.type as keyof typeof experienceEditors];
   const prizes = experience.draftConfig?.prizes ?? [];
@@ -62,36 +72,15 @@ export function ExperienceDetailPage({
       window.alert((error as Error).message);
     }
   }
-  return (
-    <>
-      {permissions.includes('crm.manage') && <button type="button" onClick={clone}>Duplicar experiencia</button>}
-      <PublishControls
-        organizationId={org}
-        canPublish={permissions.includes('crm.manage')}
-      />
-      <AccessPeriodPanel experienceId={id} organizationId={org} canManage={permissions.includes('crm.manage')} />
-      <div className="route-qr">
-        <ExperienceQrModal slug={experience.slug} runtimeBaseUrl={runtime} />
-      </div>
-      {Editor ? (
-        <Editor
-          org={org}
-          id={id}
-          redemptionAvailable={redemptionAvailable}
-          canEdit={permissions.includes('crm.manage')}
-          canAdjustInventory={permissions.includes('crm.manage')}
-        />
-      ) : (
-        <main className="page">
-          <p>Esta experiencia todavía no tiene un editor disponible.</p>
-        </main>
-      )}
-      <SpinHistory experienceId={id} organizationId={org} prizes={prizes} />
-      <ClaimsPanel
-        experienceId={id}
-        organizationId={org}
-        canRedeem={permissions.includes('crm.manage')}
-      />
-    </>
-  );
+  const canManage = permissions.includes('crm.manage');
+  return <main className="page experience-workspace">
+    <header className="experience-workspace-header">
+      <div><p className="eyebrow">EXPERIENCIA / OPERACIÓN</p><h1>{experience.name}</h1><p className="page-description">Configuración, disponibilidad y resultados de esta experiencia.</p></div>
+      <div className="workspace-actions"><ExperienceQrModal slug={experience.slug} runtimeBaseUrl={runtime} />{canManageCommercial && <button type="button" className="secondary" onClick={() => void clone()}>Duplicar</button>}</div>
+    </header>
+    <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a><a href="#results">Resultados</a></nav>
+    <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={`${runtime}/r/${encodeURIComponent(experience.slug)}`} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublishControls organizationId={org} canPublish={canManage} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
+    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canManage} canAdjustInventory={canManage} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
+    <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>
+  </main>;
 }
