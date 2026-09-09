@@ -5,6 +5,8 @@ export type Roulette3DConfig = {
   backgroundColor: string;
   prizes: Roulette3DPrize[];
   segments: Roulette3DSegment[];
+  participation?: { maxSpinsPerDevice?: number | null; maxSpinsPerSession?: number | null; cooldownSeconds?: number };
+  prizeAvailability?: Record<string, 'available' | 'sold_out'>;
   effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean };
   resultCta?: { enabled?: boolean; label?: string; url?: string };
 };

@@ -13,6 +13,8 @@ import { Analytics, Home } from '../features/dashboard/DashboardPages';
 import { CommercialPage } from '../features/commercial/pages/CommercialPage';
 import { SubscriptionsPage } from '../features/commercial/pages/SubscriptionsPage';
 import { isPlatformCommercialAdmin } from '../features/commercial/permissions';
+import { ClientOnboardingPage } from '../features/onboarding/pages/ClientOnboardingPage';
+import { RedeemPage } from '../features/claims/pages/RedeemPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -30,6 +32,8 @@ function Shell() {
       .catch(() => n('/login'));
   }, [n]);
   if (!m) return <main>Loading…</main>;
+  const platformOperator = ['super_admin', 'corsteno_admin'].includes(m.user.platformRole);
+  const canManage = m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false;
   return (
     <div className="shell">
       <aside>
@@ -40,8 +44,8 @@ function Shell() {
           <Link to="/app/projects">Proyectos</Link>
           <Link to="/app/analytics">Analytics</Link>
           <Link to="/app/experiences">Experiencias</Link>
-          <Link to="/app/commercial">Comercial</Link>
-          <Link to="/app/subscriptions">Suscripciones</Link>
+          {platformOperator && <><Link to="/app/onboarding">Nuevo cliente</Link><Link to="/app/commercial">Comercial</Link><Link to="/app/subscriptions">Suscripciones</Link></>}
+          {canManage && <Link to="/app/redeem">Canjear premio</Link>}
           <Link to="/app/crm">CRM</Link>
           <Link to="/app/settings">Configuración</Link>
         </nav>
@@ -72,10 +76,12 @@ function Shell() {
         <Routes>
           <Route index element={<Home org={o} />} />
           <Route path="analytics" element={<Analytics org={o} />} />
-          <Route path="experiences" element={<ExperiencesPage org={o} canCreate={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
+          <Route path="experiences" element={<ExperiencesPage org={o} canCreate={platformOperator} />} />
           <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} />} />
-          <Route path="commercial" element={<CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} />} />
-          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+          <Route path="commercial" element={platformOperator ? <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
+          <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
+          <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
+          <Route path="redeem" element={canManage ? <RedeemPage org={o} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"
             element={

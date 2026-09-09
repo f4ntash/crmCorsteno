@@ -82,7 +82,9 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   let config: unknown;
   try { config = parseJson(row.published_config); } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
-  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at, featureEntitlements: entitlements } });
+  const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: string; stockAvailable: number | null }>();
+  const prizeAvailability = Object.fromEntries(inventoryRows.results.map((item) => [item.prizeId, item.stockMode === 'limited' && (item.stockAvailable ?? 0) <= 0 ? 'sold_out' : 'available']));
+  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at, featureEntitlements: entitlements, prizeAvailability } });
 });
 
 publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {

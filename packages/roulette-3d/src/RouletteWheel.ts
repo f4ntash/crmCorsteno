@@ -26,6 +26,8 @@ export class RouletteWheel {
         roughness: 0.52,
         emissive: segment.color,
         emissiveIntensity: 0.08,
+        transparent: segment.prizeId !== null && config.prizeAvailability?.[segment.prizeId] === 'sold_out',
+        opacity: segment.prizeId !== null && config.prizeAvailability?.[segment.prizeId] === 'sold_out' ? 0.38 : 1,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
@@ -34,7 +36,8 @@ export class RouletteWheel {
       this.segmentMeshes.push(mesh);
       this.resources.push(geometry, material);
       const prize = config.prizes.find((item) => item.id === segment.prizeId);
-      const texture = prize?.iconUrl ? loadPrizeTexture(prize.iconUrl) : createLabelTexture(prize?.name ?? 'Sin premio');
+      const soldOut = segment.prizeId !== null && config.prizeAvailability?.[segment.prizeId] === 'sold_out';
+      const texture = !soldOut && prize?.iconUrl ? loadPrizeTexture(prize.iconUrl) : createLabelTexture(soldOut ? 'SIN STOCK' : (prize?.name ?? 'Sin premio'));
       if (!texture) return;
       const iconMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
       const icon = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.24), iconMaterial);

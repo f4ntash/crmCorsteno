@@ -122,4 +122,9 @@ export const experiencesApi = {
       organizationId,
       { method: 'POST' },
     ),
+  redeemByCode: (organizationId: string, code: string) =>
+    apiRequest<{ prizeName: string; experienceId: string; status: 'redeemed'; redeemedAt: string }>('/experiences/claims/redeem', organizationId, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 };
