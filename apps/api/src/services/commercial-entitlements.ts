@@ -41,3 +41,26 @@ export async function getExperienceEntitlements(db: D1Database, experienceId: st
     return { features: [...featureSet], maxActiveExperiences };
   } catch { return { ...LEGACY_FULL_ACCESS, features: [...LEGACY_FULL_ACCESS.features] }; }
 }
+
+/** Returns the maximum active/pending plan capacity for new entitled experiences. */
+export async function getOrganizationExperienceLimit(db: D1Database, organizationId: string) {
+  try {
+    const rows = await db.prepare("SELECT feature_entitlements_json featureEntitlementsJson FROM subscriptions WHERE organization_id=? AND status IN ('active','pending')").bind(organizationId).all<{ featureEntitlementsJson: string | null }>();
+    if (!rows.results.length) return null;
+    let limit = 0;
+    for (const row of rows.results) {
+      const entitlement = parseSubscriptionEntitlements(row.featureEntitlementsJson);
+      if (entitlement.maxActiveExperiences === null) return null;
+      limit = Math.max(limit, entitlement.maxActiveExperiences);
+    }
+    return limit;
+  } catch { return null; }
+}
+
+export async function canCreateOrganizationExperience(db: D1Database, organizationId: string) {
+  const limit = await getOrganizationExperienceLimit(db, organizationId);
+  if (limit === null) return { allowed: true as const, current: 0, limit: null };
+  const row = await db.prepare("SELECT COUNT(DISTINCT se.experience_id) count FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending')").bind(organizationId, organizationId).first<{ count: number }>();
+  const current = Number(row?.count ?? 0);
+  return { allowed: current < limit, current, limit };
+}

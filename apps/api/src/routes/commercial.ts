@@ -26,6 +26,7 @@ commercialRoutes.use('*', async (c, next) => {
 });
 commercialRoutes.use('*', async (c, next) => {
   if (!isCommercialPath(c.req.path)) return next();
+  if (c.req.path.startsWith('/subscriptions') && !isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
   const permission = (c.req.method === 'GET' ? requireOrganizationPermission('crm.read') : requireOrganizationPermission('crm.manage')) as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
   return permission(c, next);
 });

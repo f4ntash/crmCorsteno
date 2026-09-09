@@ -5,7 +5,7 @@ import { validDraftConfig } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
 type AccessPeriod = { id: string; experience_id: string; organization_id: string; starts_at: string; ends_at: string; source: string; created_at: string; created_by: string | null; note: string | null };
-function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null, role = 'owner', initialAccessPeriods: AccessPeriod[] = [], platformRole = 'user') {
+function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null, role = 'owner', initialAccessPeriods: AccessPeriod[] = [], platformRole = 'corsteno_admin') {
   const experiences: E[] = [
     { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: initialStatus, schema_version: 1, draft_config: initialDraft, published_config: initialPublished, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },

@@ -3,7 +3,7 @@ import { requireAuth, requireOrganization, requireOrganizationPermission } from 
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
-import { getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
+import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -59,9 +59,26 @@ experienceRoutes.post('*', requireOrganizationPermission('crm.manage'));
 experienceRoutes.patch('*', requireOrganizationPermission('crm.manage'));
 experienceRoutes.delete('*', requireOrganizationPermission('crm.manage'));
 
+function isPlatformOperator(platformRole: string) { return ['super_admin', 'corsteno_admin'].includes(platformRole); }
+
 function presentClaim(row: Record<string, unknown>) {
   return { id: row.id, code: row.code, prizeId: row.prizeId, prizeName: row.prizeName, status: row.status, createdAt: row.createdAt, redeemedAt: row.redeemedAt ?? null };
 }
+
+experienceRoutes.post('/claims/redeem', async (c) => {
+  const organizationId = c.get('organization').id;
+  const userId = c.get('user').id;
+  let body: { code?: unknown };
+  try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const code = typeof body.code === 'string' ? body.code.trim().toUpperCase().replace(/\s+/g, '') : '';
+  if (!code || code.length > 64) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
+  const claim = await c.env.DB.prepare('SELECT id,experience_id experienceId,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE code=? AND organization_id=?').bind(code, organizationId).first<Record<string, unknown>>();
+  if (!claim) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
+  if (claim.status !== 'active') return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
+  const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND organization_id=? AND status='active'").bind(userId, claim.id, organizationId).run();
+  if (!update.meta?.changes) return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
+  return c.json({ prizeName: claim.prizeName, experienceId: claim.experienceId, status: 'redeemed', redeemedAt: new Date().toISOString() });
+});
 
 experienceRoutes.get('/:id/claims', async (c) => {
   const experienceId = c.req.param('id');
@@ -270,6 +287,9 @@ experienceRoutes.post('/:id/publish', async (c) => {
 });
 
 experienceRoutes.post('/:id/clone', async (c) => {
+  if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  const capacity = await canCreateOrganizationExperience(c.env.DB, c.get('organization').id);
+  if (!capacity.allowed) return c.json({ error: { code: 'EXPERIENCE_LIMIT_REACHED', message: 'Experience limit reached', current: capacity.current, limit: capacity.limit } }, 409);
   const sourceId = c.req.param('id');
   const organizationId = c.get('organization').id;
   const source = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(sourceId, organizationId).first<Record<string, unknown>>();
@@ -364,6 +384,9 @@ experienceRoutes.post('/:id/inventory/:prizeId/adjust', async (c) => {
 });
 
 experienceRoutes.post('/', async (c) => {
+  if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  const capacity = await canCreateOrganizationExperience(c.env.DB, c.get('organization').id);
+  if (!capacity.allowed) return c.json({ error: { code: 'EXPERIENCE_LIMIT_REACHED', message: 'Experience limit reached', current: capacity.current, limit: capacity.limit } }, 409);
   let body: Record<string, unknown>;
   try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
   const name = typeof body.name === 'string' ? body.name.trim() : '';
@@ -373,7 +396,7 @@ experienceRoutes.post('/', async (c) => {
   if (!name) return c.json(bad('name is required'), 400);
   if (typeof type !== 'string' || !datesValid(startsAt, endsAt)) return c.json(bad('ends_at must be greater than starts_at'), 400);
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
-  let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', segments: [] });
+  let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'no-prize', name: 'Sin premio', enabled: true, weight: 1, stockMode: 'unlimited' }], segments: [], participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } });
   if (body.draft_config !== undefined) {
     if (type !== 'roulette' || !validDraftConfig(body.draft_config)) return c.json(bad('Invalid roulette draft_config'), 400);
     draftConfig = JSON.stringify(body.draft_config);

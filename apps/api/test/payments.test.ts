@@ -11,7 +11,7 @@ function fixture(row = subscription()) {
   const payments: any[] = [];
   const db = { prepare(sql: string) { return { bind(...args: any[]) { const statement: any = { __sql: sql, __args: args };
     statement.first = async () => {
-      if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user', email: 'u@example.com', name: 'User', platformRole: 'user', expires_at: Date.now() + 60000 };
+      if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user', email: 'u@example.com', name: 'User', platformRole: 'corsteno_admin', expires_at: Date.now() + 60000 };
       if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role: 'owner' };
       if (sql.includes('FROM subscriptions s')) return row.id === args[0] && row.organizationId === args[1] ? row : null;
       return null;
