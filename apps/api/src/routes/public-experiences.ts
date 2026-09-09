@@ -69,6 +69,21 @@ async function prepareParticipation(db: D1Database, experienceId: string, organi
   }
   return { statements, scopes } as const;
 }
+async function checkParticipation(db: D1Database, experienceId: string, organizationId: string, policy: ParticipationPolicy, deviceId: string | null, sessionId: string | null, now: Date) {
+  const scopes: Array<{ type: ParticipationScope; id: string; limit: number | null; cooldown: number }> = [];
+  if (policy.maxSpinsPerDevice !== null || policy.cooldownSeconds > 0) scopes.push({ type: 'device', id: deviceId ?? '', limit: policy.maxSpinsPerDevice, cooldown: policy.cooldownSeconds });
+  if (policy.maxSpinsPerSession !== null) scopes.push({ type: 'session', id: sessionId ?? '', limit: policy.maxSpinsPerSession, cooldown: 0 });
+  for (const scope of scopes) {
+    if (!scope.id) return { reason: 'identity_required' as const };
+    const state = await db.prepare('SELECT spin_count, last_spin_at FROM experience_participation WHERE experience_id=? AND organization_id=? AND scope_type=? AND participant_id=?').bind(experienceId, organizationId, scope.type, scope.id).first<ParticipationState>();
+    if (scope.limit !== null && (state?.spin_count ?? 0) >= scope.limit) return { reason: scope.type === 'device' ? 'device_limit' as const : 'session_limit' as const };
+    if (scope.cooldown > 0 && state?.last_spin_at) {
+      const retryAt = new Date(new Date(state.last_spin_at).getTime() + scope.cooldown * 1000);
+      if (now < retryAt) return { reason: 'cooldown' as const, retryAt: retryAt.toISOString() };
+    }
+  }
+  return null;
+}
 
 publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   const row = await c.env.DB.prepare(
@@ -104,18 +119,25 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   const deviceId = (body.deviceId ?? c.req.header('X-Anonymous-User-Id') ?? null) as string | null;
   const sessionId = (body.sessionId ?? c.req.header('X-Session-Id') ?? null) as string | null;
   const policy = normalizeParticipationConfig(config.participation);
+  const invalidIdentity = (deviceId !== null && !validParticipantId(deviceId)) || (sessionId !== null && !validParticipantId(sessionId));
   let applicationId: string | null = null;
   try { applicationId = (await ensureAnalyticsApplication(c.env.DB, row.id, row.organization_id, row.name)) ?? null; } catch { /* analytics is secondary to the authoritative spin */ }
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number }>();
     const inventory = new Map(inventoryRows.results.map((item) => [item.prizeId, item]));
     const outcomes = buildRouletteOutcomes(config, inventory);
-    if (!outcomes.length) return c.json({ active: false, reason: 'unavailable' });
-    if ((deviceId !== null && !validParticipantId(deviceId)) || (sessionId !== null && !validParticipantId(sessionId))) {
+    if (invalidIdentity) {
       const blocked = publicParticipationError('identity_required');
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_blocked', null, null, { experienceId: row.id, reason: 'identity_required' });
       return c.json(blocked, 400);
     }
+    const participationCheck = await checkParticipation(c.env.DB, row.id, row.organization_id, policy, deviceId, sessionId, new Date());
+    if (participationCheck) {
+      const blocked = publicParticipationError(participationCheck.reason, participationCheck.retryAt);
+      trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_blocked', deviceId, sessionId, { experienceId: row.id, reason: participationCheck.reason });
+      return c.json(blocked, participationCheck.reason === 'identity_required' ? 400 : 429);
+    }
+    if (!outcomes.length) return c.json({ active: false, reason: 'unavailable' });
     const participation = await prepareParticipation(c.env.DB, row.id, row.organization_id, policy, deviceId, sessionId, new Date());
     if ('blocked' in participation) {
       const blocked = participation.blocked as ReturnType<typeof publicParticipationError>;
