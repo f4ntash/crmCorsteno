@@ -41,6 +41,23 @@ function formatPercentage(value: number | null | undefined): string {
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) { return apiRequest<T>(path, org, init); }
 
+const metricLabels: Record<string, string> = {
+  uniqueUsers: 'Usuarios únicos', sessions: 'Sesiones', appOpens: 'Aperturas', totalEvents: 'Eventos totales',
+  experiencesStarted: 'Experiencias iniciadas', experiencesFinished: 'Experiencias completadas', targetsDetected: 'Targets detectados', favoritesAdded: 'Favoritos agregados',
+  navigationsStarted: 'Navegaciones iniciadas', schedulesViewed: 'Agenda consultada', cameraPermissionsGranted: 'Permisos de cámara concedidos', cameraPermissionsDenied: 'Permisos de cámara denegados',
+  gamesStarted: 'Juegos iniciados', gamesFinished: 'Juegos completados', prizesWon: 'Premios otorgados', prizesClaimed: 'Premios reclamados',
+};
+const displayLabels: Record<string, string> = {
+  experience_view: 'Vista de experiencia', roulette_spin_click: 'Clic en girar', roulette_spin_started: 'Giro iniciado', roulette_spin_completed: 'Giro completado', roulette_spin_blocked: 'Giro bloqueado', roulette_prize_won: 'Premio otorgado',
+  roulette_result_cta_click: 'Clic en CTA del resultado', roulette_ar_open_click: 'AR abierto', roulette_ar_session_started: 'Sesión AR iniciada', roulette_ar_placed: 'Ruleta colocada', roulette_ar_session_ended: 'Sesión AR finalizada',
+  cooldown: 'En período de espera', device_limit: 'Límite por dispositivo', session_limit: 'Límite por sesión', already_participated: 'Ya participó', identity_required: 'Identidad requerida',
+};
+function readableLabel(value: string) { const key = value.trim().toLowerCase().replaceAll(' ', '_'); return displayLabels[value] ?? displayLabels[key] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+function typeLabel(type?: string) { return type === 'webar' ? 'WebAR' : type === 'game' ? 'Juego' : type === 'roulette' ? 'Ruleta' : 'General'; }
+function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { return <div className="analytics-kpi"><small>{label}</small><b>{formatMetricValue(value)}</b></div>; }
+function SectionHeading({ eyebrow, title, detail }: { eyebrow?: string; title: string; detail?: string }) { return <div className="analytics-section-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2>{detail && <p>{detail}</p>}</div></div>; }
+function StatusPanel({ kind, children }: { kind: 'loading' | 'empty' | 'error'; children: React.ReactNode }) { return <div className={`analytics-state analytics-state-${kind}`} role={kind === 'error' ? 'alert' : undefined}>{kind === 'loading' && <span className="loading-mark" />}{children}</div>; }
+
 export function ChartBox({
   title,
   data,
@@ -51,8 +68,8 @@ export function ChartBox({
   color?: string;
 }) {
   return (
-    <div className="card chart">
-      <h3>{title}</h3>
+    <section className="card chart">
+      <div className="chart-heading"><h3>{title}</h3><span>{data.length ? `${data.length} puntos` : 'Sin datos'}</span></div>
       {data.length ? (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={data}>
@@ -72,9 +89,9 @@ export function ChartBox({
           </LineChart>
         </ResponsiveContainer>
       ) : (
-        <p>Todavía no hay actividad registrada para este período.</p>
+        <StatusPanel kind="empty">Todavía no hay actividad registrada para este período.</StatusPanel>
       )}
-    </div>
+    </section>
   );
 }
 export function Analytics({ org }: { org: string }) {
@@ -140,20 +157,22 @@ export function Analytics({ org }: { org: string }) {
       })
       .catch(() => setError(true));
   }, [org, range, project, application]);
+  const selectedApp = apps.find((app) => app.id === application);
+  const scopeType = selectedApp?.applicationType ?? 'generic';
+  const scopeName = selectedApp?.name ?? (project ? projects.find((item) => item.id === project)?.name ?? 'Proyecto seleccionado' : 'Todas las aplicaciones');
   if (error)
     return (
-      <main className="page">
-        <h1>Analytics</h1>
-        <p>No se pudieron cargar los datos.</p>
+      <main className="page analytics-page">
+        <p className="eyebrow">RESULTADOS / DATOS REALES</p><h1>Resultados</h1>
+        <StatusPanel kind="error"><strong>No se pudieron cargar los resultados.</strong><span>Probá de nuevo o revisá los filtros seleccionados.</span></StatusPanel>
       </main>
     );
   return (
-    <main className="page">
-      <p className="eyebrow">ANALYTICS / DATOS REALES</p>
-      <h1>Actividad real</h1>
-      <div className="filters">
+    <main className="page analytics-page">
+      <div className="analytics-header"><div><p className="eyebrow">RESULTADOS / DATOS REALES</p><h1>Resultados</h1><p className="page-description">Una lectura clara de la actividad de tus experiencias.</p></div><div className="scope-summary"><small>ALCANCE ACTUAL</small><strong>{scopeName}</strong><span>{typeLabel(scopeType)} · {range === '24h' ? 'Últimas 24 horas' : range === '7d' ? 'Últimos 7 días' : range === '30d' ? 'Últimos 30 días' : 'Todo el período'}</span></div></div>
+      <section className="analytics-toolbar" aria-label="Filtros de resultados"><div className="toolbar-heading"><strong>Filtrar resultados</strong><span>Los datos se actualizan al cambiar un filtro.</span></div><div className="filters">
         <label>
-          Rango
+          Período
           <select value={range} onChange={(e) => setRange(e.target.value)}>
             <option value="24h">24 horas</option>
             <option value="7d">7 días</option>
@@ -186,12 +205,12 @@ export function Analytics({ org }: { org: string }) {
             ))}
           </select>
         </label>
-      </div>
+      </div></section>
       {!s ? (
-        <p>Cargando analytics…</p>
+        <StatusPanel kind="loading">Cargando resultados…</StatusPanel>
       ) : (
         <>
-          <div className="grid">
+          <section className="analytics-section"><SectionHeading eyebrow="RESUMEN" title={scopeType === 'generic' ? 'Actividad general' : `Indicadores de ${typeLabel(scopeType)}`} detail="Indicadores principales del alcance seleccionado." /><div className="grid analytics-kpi-grid">
             {Object.entries(s.totals)
               .filter(([k]) => {
                 const selectedType = apps.find(
@@ -230,60 +249,28 @@ export function Analytics({ org }: { org: string }) {
                 ].includes(k);
               })
               .map(([k, v]) => (
-                <div className="card" key={k}>
-                  <small>
-                    {{
-                      uniqueUsers: 'Usuarios',
-                      sessions: 'Sesiones',
-                      appOpens: 'Aperturas',
-                      totalEvents: 'Eventos totales',
-                      experiencesStarted: 'Experiencias iniciadas',
-                      experiencesFinished: 'Experiencias completadas',
-                      targetsDetected: 'Targets detectados',
-                      favoritesAdded: 'Favoritos agregados',
-                      navigationsStarted: 'Navegaciones iniciadas',
-                      schedulesViewed: 'Agenda consultada',
-                      cameraPermissionsGranted: 'Permisos cámara concedidos',
-                      cameraPermissionsDenied: 'Permisos cámara denegados',
-                      gamesStarted: 'Juegos iniciados',
-                      gamesFinished: 'Juegos completados',
-                      prizesWon: 'Premios ganados',
-                      prizesClaimed: 'Premios reclamados',
-                    }[k] ?? k}
-                  </small>
-                  <b>
-                    {k === 'lastActivityAt'
-                      ? formatDateTime(v)
-                      : formatMetricValue(v)}
-                  </b>
-                </div>
+                <MetricCard key={k} label={metricLabels[k] ?? readableLabel(k)} value={k === 'lastActivityAt' ? formatDateTime(v) : v} />
               ))}
             {(apps.find((a) => a.id === application)?.applicationType ??
               'generic') === 'game' && (
               <>
-                <div className="card">
-                  <small>Finalización</small>
-                  <b>{formatPercentage(s.rates.completion)}</b>
-                </div>
+                <MetricCard label="Finalización" value={formatPercentage(s.rates.completion)} />
               </>
             )}
             {(apps.find((a) => a.id === application)?.applicationType ??
               'generic') === 'game' && (
-              <div className="card">
-                <small>Conversión</small>
-                <b>{formatPercentage(s.rates.prizeConversion)}</b>
-              </div>
+              <MetricCard label="Conversión" value={formatPercentage(s.rates.prizeConversion)} />
             )}
-          </div>
-          {(apps.find((a) => a.id === application)?.applicationType ?? 'generic') === 'roulette' && <><div className="grid"><div className="card"><small>Giros iniciados</small><b>{formatMetricValue(s.totals.rouletteSpinsStarted)}</b></div><div className="card"><small>Giros completados</small><b>{formatMetricValue(s.totals.rouletteSpinsCompleted)}</b></div><div className="card"><small>Premios entregados</small><b>{formatMetricValue(s.totals.roulettePrizesWon)}</b></div><div className="card"><small>Sin premio</small><b>{formatMetricValue(s.totals.rouletteNoPrize)}</b></div><div className="card"><small>Claims generados</small><b>{formatMetricValue(s.totals.rouletteClaimsGenerated)}</b></div><div className="card"><small>Claims canjeados</small><b>{formatMetricValue(s.totals.rouletteClaimsRedeemed)}</b></div><div className="card"><small>Bloqueados</small><b>{formatMetricValue(s.totals.rouletteSpinBlocked)}</b></div><div className="card"><small>Conversión a giro</small><b>{formatPercentage(s.rates.rouletteConversion)}</b></div></div><div className="chart-grid"><Rank title="Premios obtenidos" items={prizes} /><Rank title="Participaciones bloqueadas" items={blocked} /><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: s.totals.rouletteArOpen }, { name: 'Sesiones AR', value: s.totals.rouletteArSessions }, { name: 'Ruletas colocadas', value: s.totals.rouletteArPlaced }]} /></div></>}
-          <div className="chart-grid">
+          </div></section>
+          {scopeType === 'roulette' && <section className="analytics-section"><SectionHeading eyebrow="RULETA" title="Giros, premios y claims" detail="Los indicadores de ruleta aparecen al seleccionar una aplicación de ruleta." /><div className="grid analytics-kpi-grid roulette-kpis"><MetricCard label="Giros iniciados" value={s.totals.rouletteSpinsStarted} /><MetricCard label="Giros completados" value={s.totals.rouletteSpinsCompleted} /><MetricCard label="Premios otorgados" value={s.totals.roulettePrizesWon} /><MetricCard label="Sin premio" value={s.totals.rouletteNoPrize} /><MetricCard label="Claims generados" value={s.totals.rouletteClaimsGenerated} /><MetricCard label="Claims canjeados" value={s.totals.rouletteClaimsRedeemed} /><MetricCard label="Participaciones bloqueadas" value={s.totals.rouletteSpinBlocked} /><MetricCard label="Conversión a giro" value={formatPercentage(s.rates.rouletteConversion)} /></div><div className="chart-grid"><Rank title="Premios otorgados" items={prizes} /><Rank title="Participaciones bloqueadas" items={blocked} /><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: s.totals.rouletteArOpen }, { name: 'Sesiones AR', value: s.totals.rouletteArSessions }, { name: 'Ruletas colocadas', value: s.totals.rouletteArPlaced }]} /></div></section>}
+          <section className="analytics-section"><SectionHeading eyebrow="TENDENCIA" title="Actividad en el tiempo" detail="Usuarios y eventos del mismo alcance y período." /><div className="chart-grid">
             <ChartBox title="Usuarios en el tiempo" data={users} />
             <ChartBox
               title="Eventos en el tiempo"
               data={events}
               color="#9bc47d"
             />
-          </div>
+          </div></section>
           {(apps.find((a) => a.id === application)?.applicationType ??
             'generic') === 'game' && (
             <div className="chart-grid">
@@ -344,19 +331,19 @@ export function Analytics({ org }: { org: string }) {
 }
 export function Rank({ title, items }: { title: string; items: Item[] }) {
   return (
-    <div className="card">
-      <h3>{title}</h3>
+    <section className="card breakdown-card">
+      <div className="breakdown-heading"><h3>{title}</h3><span>{items.length ? `${items.length} categorías` : 'Sin datos'}</span></div>
       {items.length ? (
         items.map((i) => (
           <p className="rank" key={i.name}>
-            <span>{i.name}</span>
+            <span>{readableLabel(i.name)}</span>
             <strong>{formatMetricValue(i.value)}</strong>
           </p>
         ))
       ) : (
-        <p>Todavía no hay datos.</p>
+        <StatusPanel kind="empty">Todavía no hay datos para este alcance.</StatusPanel>
       )}
-    </div>
+    </section>
   );
 }
 export function Home({ org }: { org: string }) {
@@ -403,7 +390,7 @@ export function Home({ org }: { org: string }) {
   return (
     <main className="page home-grid">
       <section className="home-app">
-        <p className="eyebrow">TU APP</p>
+        <p className="eyebrow">APLICACIÓN PRINCIPAL</p>
         <h1>{app?.name ?? 'Aplicación principal'}</h1>
         {loading ? (
           <p>Cargando aplicación…</p>
@@ -423,7 +410,7 @@ export function Home({ org }: { org: string }) {
               </p>
               <p>
                 <small>Estado</small>
-                <strong>{app.status}</strong>
+                <strong>{app.status === 'active' ? 'Activa' : app.status}</strong>
               </p>
             </div>
             <div className="triggers">
@@ -432,11 +419,11 @@ export function Home({ org }: { org: string }) {
                 QR activos <b>—</b>
               </span>
               <span>
-                Image Targets <b>—</b>
+                Objetivos de imagen <b>—</b>
               </span>
             </div>
             <Link className="row" to={`/app/projects/${app.projectId}`}>
-              Ver proyecto →
+              Ver proyecto
             </Link>
             {apps.length > 1 && (
               <label>
@@ -460,14 +447,14 @@ export function Home({ org }: { org: string }) {
           <div className="empty">
             <h3>No hay una aplicación configurada</h3>
             <p>
-              Esta organización todavía no tiene una application disponible.
+              Esta organización todavía no tiene una aplicación disponible.
             </p>
           </div>
         )}
       </section>
       <section className="home-analytics">
         <p className="eyebrow">RESUMEN 24 HORAS</p>
-        <h2>Analytics rápidas</h2>
+        <h2>Actividad reciente</h2>
         {loading ? (
           <p>Cargando métricas…</p>
         ) : (
@@ -503,7 +490,7 @@ export function Home({ org }: { org: string }) {
               </div>
             </div>
             <Link className="row" to="/app/analytics">
-              Ver Analytics completas →
+              Ver resultados
             </Link>
           </>
         )}
