@@ -3,6 +3,7 @@ import { requireAuth, requireOrganization, requireOrganizationPermission } from 
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
+import { getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -83,6 +84,9 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
   const experienceId = c.req.param('id');
   const organizationId = c.get('organization').id;
   const userId = c.get('user').id;
+  const experience = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first();
+  if (!experience) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  if (!subscriptionHasFeature(await getExperienceEntitlements(c.env.DB, experienceId, organizationId), 'redemption_claims')) return c.json({ error: { code: 'FEATURE_NOT_AVAILABLE', message: 'Redemption claims are not included in this plan' } }, 403);
   const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND experience_id=? AND organization_id=? AND status='active'").bind(userId, c.req.param('claimId'), experienceId, organizationId).run();
   if (!update.meta?.changes) {
     const claim = await c.env.DB.prepare('SELECT status FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<{ status: string }>();

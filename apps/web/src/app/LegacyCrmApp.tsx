@@ -12,6 +12,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage';
 import { Analytics, Home } from '../features/dashboard/DashboardPages';
 import { CommercialPage } from '../features/commercial/pages/CommercialPage';
 import { SubscriptionsPage } from '../features/commercial/pages/SubscriptionsPage';
+import { isPlatformCommercialAdmin } from '../features/commercial/permissions';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -73,8 +74,8 @@ function Shell() {
           <Route path="analytics" element={<Analytics org={o} />} />
           <Route path="experiences" element={<ExperiencesPage org={o} canCreate={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
           <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} />} />
-          <Route path="commercial" element={<CommercialPage org={o} canManageCatalog={['super_admin', 'corsteno_admin'].includes(m.user.platformRole)} />} />
-          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} canManageCommercial={['super_admin', 'corsteno_admin'].includes(m.user.platformRole)} />} />
+          <Route path="commercial" element={<CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
           <Route
             path="*"
             element={

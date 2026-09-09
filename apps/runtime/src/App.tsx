@@ -13,7 +13,7 @@ function Viewer() {
   if (state.error || !state.data) return <main><h1>No pudimos cargar esta experiencia.</h1></main>;
   if (!state.data.active) return <main><h1>{state.data.reason === 'scheduled' ? 'Esta experiencia todavía no está disponible.' : state.data.reason === 'expired' ? 'Esta experiencia finalizó.' : 'Esta experiencia no está disponible.'}</h1></main>;
   const config = state.data.experience!.config;
-  return <main><Roulette3DView config={config} slug={slug ?? ''} /></main>;
+  return <main><Roulette3DView config={config} slug={slug ?? ''} entitlements={state.data.experience?.featureEntitlements} /></main>;
 }
 
 export function App() { return <Routes><Route path="/r/:slug" element={<Viewer />} /><Route path="*" element={<Navigate to="/r/" replace />} /></Routes>; }

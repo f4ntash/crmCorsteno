@@ -6,6 +6,7 @@ import { addBillingInterval, getEffectiveSubscriptionStatus, type BillingInterva
 import { renewSubscription } from '../services/commercial-renewal';
 import { createMercadoPagoProvider } from '../payments/mercado-pago';
 import { grantPeriod, grantSubscriptionPeriod, type GrantType } from '../services/commercial-grants';
+import { entitlementsForPlan, parseSubscriptionEntitlements } from '../services/commercial-entitlements';
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -13,7 +14,7 @@ type Variables = {
 };
 type Plan = { id: string; code: string; name: string; description: string | null; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; priceAmountMinor: number; currency: string; active: number; availableForSale: number; pricingMode: 'paid' | 'free' | 'unconfigured' };
 type SubscriptionPeriod = { id: string; subscriptionId: string; organizationId: string; startsAt: string; endsAt: string; status: string; idempotencyKey: string | null; createdAt: string };
-type Subscription = { id: string; organizationId: string; planId: string; status: 'pending' | 'active' | 'cancelled' | 'expired'; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; planCode: string; planName: string; planDescription: string | null; pricingMode: 'paid' | 'free' | 'unconfigured' };
+type Subscription = { id: string; organizationId: string; planId: string; status: 'pending' | 'active' | 'cancelled' | 'expired'; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; planCode: string; planName: string; planDescription: string | null; pricingMode: 'paid' | 'free' | 'unconfigured'; featureEntitlementsJson: string | null };
 
 export const commercialRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 function isCommercialPath(path: string) { return path === '/plans' || path.startsWith('/plans/') || path.startsWith('/subscriptions'); }
@@ -35,11 +36,12 @@ function isPlatformOperator(platformRole: string) { return ['super_admin', 'cors
 function presentPeriod(row: Record<string, unknown>): SubscriptionPeriod { return { id: String(row.id), subscriptionId: String(row.subscriptionId), organizationId: String(row.organizationId), startsAt: String(row.startsAt), endsAt: String(row.endsAt), status: String(row.status), idempotencyKey: row.idempotencyKey as string | null, createdAt: String(row.createdAt) }; }
 
 async function getSubscription(db: D1Database, id: string, organizationId: string) {
-  const row = await db.prepare(`SELECT s.id,s.organization_id organizationId,s.plan_id planId,s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.price_amount_minor priceAmountMinor,s.currency,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays,p.code planCode,p.name planName,p.description planDescription,p.pricing_mode pricingMode FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND s.organization_id=?`).bind(id, organizationId).first<Subscription>();
+  const row = await db.prepare(`SELECT s.id,s.organization_id organizationId,s.plan_id planId,s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.price_amount_minor priceAmountMinor,s.currency,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays,s.feature_entitlements_json featureEntitlementsJson,p.code planCode,p.name planName,p.description planDescription,p.pricing_mode pricingMode FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND s.organization_id=?`).bind(id, organizationId).first<Subscription>();
   if (!row) return null;
   const periods = await db.prepare('SELECT id,subscription_id subscriptionId,organization_id organizationId,starts_at startsAt,ends_at endsAt,status,idempotency_key idempotencyKey,created_at createdAt FROM subscription_periods WHERE subscription_id=? AND organization_id=? ORDER BY starts_at DESC, id DESC').bind(id, organizationId).all<Record<string, unknown>>();
   const experiences = await db.prepare('SELECT e.id,e.name,e.slug FROM subscription_experiences se JOIN experiences e ON e.id=se.experience_id WHERE se.subscription_id=? AND se.organization_id=? ORDER BY e.created_at DESC').bind(id, organizationId).all<{ id: string; name: string; slug: string }>();
-  return { ...row, effectiveStatus: getEffectiveSubscriptionStatus(row.status, row.currentPeriodEnd), periods: periods.results.map(presentPeriod), experiences: experiences.results };
+  const { featureEntitlementsJson, ...subscription } = row;
+  return { ...subscription, featureEntitlements: parseSubscriptionEntitlements(featureEntitlementsJson), effectiveStatus: getEffectiveSubscriptionStatus(row.status, row.currentPeriodEnd), periods: periods.results.map(presentPeriod), experiences: experiences.results };
 }
 
 commercialRoutes.get('/plans', async (c) => {
@@ -99,6 +101,8 @@ commercialRoutes.post('/subscriptions', async (c) => {
   if (!planRow) return c.json({ error: { code: 'NOT_FOUND', message: 'Plan not found' } }, 404);
   const plan = presentPlan(planRow);
   if (!plan.active || !plan.availableForSale || plan.pricingMode === 'unconfigured' || (plan.pricingMode === 'paid' && plan.priceAmountMinor <= 0) || (plan.pricingMode === 'free' && plan.priceAmountMinor !== 0)) return c.json(bad('Plan is not available for sale'), 400);
+  const planEntitlements = entitlementsForPlan(plan.code);
+  if (planEntitlements?.maxActiveExperiences !== null && planEntitlements && uniqueExperienceIds.length > planEntitlements.maxActiveExperiences) return c.json(bad(`This plan allows up to ${planEntitlements.maxActiveExperiences} experiences`), 400);
   const startValue = body.starts_at;
   if (typeof startValue !== 'string' || !Number.isFinite(new Date(startValue).getTime())) return c.json(bad('A valid starts_at is required'), 400);
   const startsAt = new Date(startValue);
@@ -108,8 +112,9 @@ commercialRoutes.post('/subscriptions', async (c) => {
   if (experiences.results.length !== uniqueExperienceIds.length) return c.json({ error: { code: 'NOT_FOUND', message: 'One or more experiences not found' } }, 404);
   const subscriptionId = crypto.randomUUID();
   const periodId = crypto.randomUUID();
+  const featureEntitlements = planEntitlements;
   const statements: D1PreparedStatement[] = [
-    c.env.DB.prepare('INSERT INTO subscriptions (id,organization_id,plan_id,status,starts_at,current_period_start,current_period_end,cancel_at_period_end,price_amount_minor,currency,billing_interval,billing_interval_count,included_access_days) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(subscriptionId, organizationId, plan.id, 'active', startsAt.toISOString(), startsAt.toISOString(), endsAt.toISOString(), 0, plan.priceAmountMinor, plan.currency, plan.billingInterval, plan.billingIntervalCount, plan.includedAccessDays),
+    c.env.DB.prepare('INSERT INTO subscriptions (id,organization_id,plan_id,status,starts_at,current_period_start,current_period_end,cancel_at_period_end,price_amount_minor,currency,billing_interval,billing_interval_count,included_access_days,feature_entitlements_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(subscriptionId, organizationId, plan.id, 'active', startsAt.toISOString(), startsAt.toISOString(), endsAt.toISOString(), 0, plan.priceAmountMinor, plan.currency, plan.billingInterval, plan.billingIntervalCount, plan.includedAccessDays, featureEntitlements ? JSON.stringify(featureEntitlements) : null),
     c.env.DB.prepare('INSERT INTO subscription_periods (id,subscription_id,organization_id,starts_at,ends_at,status) VALUES (?,?,?,?,?,?)').bind(periodId, subscriptionId, organizationId, startsAt.toISOString(), endsAt.toISOString(), 'active'),
   ];
   for (const experienceId of uniqueExperienceIds) {

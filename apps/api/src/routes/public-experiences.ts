@@ -5,6 +5,7 @@ import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '
 import { normalizeParticipationConfig, parseJson, validDraftConfig, type DraftConfig } from './experiences';
 import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectRouletteOutcome } from '../services/roulette-selector';
 import { generateClaimCode } from '../services/prize-claims';
+import { getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 
 export const publicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
@@ -77,10 +78,11 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
   if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
+  const entitlements = await getExperienceEntitlements(c.env.DB, row.id, row.organization_id);
   let config: unknown;
   try { config = parseJson(row.published_config); } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
-  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at } });
+  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at, featureEntitlements: entitlements } });
 });
 
 publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
@@ -91,6 +93,7 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
   if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
+  const entitlements = await getExperienceEntitlements(c.env.DB, row.id, row.organization_id);
   if (row.type !== 'roulette') return c.json({ active: false, reason: 'unavailable' }, 503);
   let config: DraftConfig | null;
   try { config = parseJson(row.published_config) as DraftConfig | null; } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
@@ -131,7 +134,7 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
         ? c.env.DB.prepare('UPDATE experience_prize_inventory SET stock_available=stock_available-1, delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_available>0').bind(row.id, prize.id)
         : c.env.DB.prepare("UPDATE experience_prize_inventory SET delivered_count=delivered_count+1, updated_at=CURRENT_TIMESTAMP WHERE experience_id=? AND prize_id=? AND stock_mode='unlimited'").bind(row.id, prize.id);
       const inventoryEvent = c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity, spin_id) VALUES (?, ?, ?, \'prize_delivered\', 1, ?)').bind(crypto.randomUUID(), row.id, prize.id, spinId);
-      const claim = prize.redemption?.enabled === true ? { code: generateClaimCode(), status: 'active' as const } : null;
+      const claim = prize.redemption?.enabled === true && subscriptionHasFeature(entitlements, 'redemption_claims') ? { code: generateClaimCode(), status: 'active' as const } : null;
       const claimInsert = claim ? c.env.DB.prepare('INSERT INTO roulette_prize_claims (id, code, organization_id, experience_id, spin_id, prize_id, prize_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), claim.code, row.organization_id, row.id, spinId, prize.id, prize.name, claim.status) : null;
       const statements = inventoryInsert ? [...participation.statements, inventoryInsert, update, spinInsert, inventoryEvent, ...(claimInsert ? [claimInsert] : [])] : [...participation.statements, update, spinInsert, inventoryEvent, ...(claimInsert ? [claimInsert] : [])];
       let results: D1Result<unknown>[];

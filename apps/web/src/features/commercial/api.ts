@@ -1,7 +1,8 @@
 import { apiRequest } from '../../shared/api/client';
+import type { CommercialEntitlements } from '@corsteno/types';
 
 export type Plan = { id: string; code: string; name: string; description: string | null; billingInterval: 'monthly' | 'yearly' | 'one_time'; billingIntervalCount: number; includedAccessDays: number | null; priceAmountMinor: number; currency: string; active: number; availableForSale: number; pricingMode: 'paid' | 'free' | 'unconfigured' };
-export type Subscription = { id: string; planId: string; planCode: string; planName: string; planDescription: string | null; status: 'pending' | 'active' | 'cancelled' | 'expired'; effectiveStatus: string; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: string; billingIntervalCount: number; experiences: Array<{ id: string; name: string; slug: string }>; periods: Array<{ id: string; startsAt: string; endsAt: string; status: string; idempotencyKey: string | null }> };
+export type Subscription = { id: string; planId: string; planCode: string; planName: string; planDescription: string | null; status: 'pending' | 'active' | 'cancelled' | 'expired'; effectiveStatus: string; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: string; billingIntervalCount: number; featureEntitlements: CommercialEntitlements; experiences: Array<{ id: string; name: string; slug: string }>; periods: Array<{ id: string; startsAt: string; endsAt: string; status: string; idempotencyKey: string | null }> };
 export type Payment = { id: string; paymentSource: string; paymentMethod: string | null; provider: string | null; status: string; amountMinor: number; currency: string; reference: string | null; note: string | null; createdAt: string; paidAt: string | null };
 
 export const commercialApi = {
