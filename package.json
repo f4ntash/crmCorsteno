@@ -13,6 +13,7 @@
     "db:generate": "pnpm --filter @corsteno/api db:generate",
     "db:migrate:local": "pnpm --filter @corsteno/api db:migrate:local",
     "db:seed:local": "pnpm --filter @corsteno/api db:seed:local",
+    "seed:local": "tsx scripts/seed-local-platform-admin.ts",
     "analytics:demo": "tsx scripts/generate-demo-events.ts",
     "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",
     "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
