@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -8,12 +8,13 @@ type DialogProps = {
   description?: string;
   children: ReactNode;
   onClose: () => void;
+  initialFocusRef?: RefObject<HTMLElement | null>;
 };
 
 const focusable =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Dialog({ open, title, description, children, onClose }: DialogProps) {
+export function Dialog({ open, title, description, children, onClose, initialFocusRef }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -27,7 +28,7 @@ export function Dialog({ open, title, description, children, onClose }: DialogPr
     const panel = panelRef.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    requestAnimationFrame(() => panel?.querySelector<HTMLElement>(focusable)?.focus());
+    requestAnimationFrame(() => (initialFocusRef?.current ?? panel?.querySelector<HTMLElement>(focusable))?.focus());
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -55,7 +56,7 @@ export function Dialog({ open, title, description, children, onClose }: DialogPr
       document.body.style.overflow = previousOverflow;
       returnFocusRef.current?.focus();
     };
-  }, [open]);
+  }, [open, initialFocusRef]);
 
   if (!open) return null;
   return createPortal(
@@ -73,7 +74,7 @@ export function Dialog({ open, title, description, children, onClose }: DialogPr
             <h2 id={titleId}>{title}</h2>
             {description && <p id={descriptionId}>{description}</p>}
           </div>
-          <button className="button button-icon" type="button" onClick={onClose} aria-label="Cerrar diálogo">
+          <button className="button button-icon button-quiet" type="button" onClick={onClose} aria-label="Cerrar diálogo">
             ×
           </button>
         </div>

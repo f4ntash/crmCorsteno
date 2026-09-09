@@ -1,7 +1,7 @@
-.experience-list { display: grid; border-top: 1px solid var(--border); }
-.experience-card { display: grid; grid-template-columns: minmax(190px, 1.3fr) auto auto minmax(190px, auto) auto; align-items: center; gap: 18px; padding: 17px 4px; border-bottom: 1px solid var(--border); }
-.experience-card h2 { margin: 0; font-size: 15px; font-weight: 620; }
-.experience-card p { margin: 3px 0 0; color: var(--text-muted); font-size: 11px; text-transform: capitalize; }
+.experiences-page .experience-list { display: grid; border-top: 1px solid var(--border); }
+.experiences-page .experience-card { display: grid; grid-template-columns: minmax(190px, 1.3fr) auto auto minmax(190px, auto) auto; align-items: center; gap: 18px; padding: 17px 4px; border-bottom: 1px solid var(--border); }
+.experiences-page .experience-card h2 { margin: 0; font-size: 15px; font-weight: 620; }
+.experiences-page .experience-card p { margin: 3px 0 0; color: var(--text-muted); font-size: 11px; text-transform: capitalize; }
 .status { display: inline-flex; width: fit-content; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 10px; font-weight: 650; white-space: nowrap; }
 .status::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
 .status-active { border-color: #355848; color: var(--success); }
@@ -46,6 +46,6 @@
 .spin-history-head { color: var(--text-secondary); font-size: .8rem; text-transform: uppercase; }
 .pagination { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .field-help { color: var(--text-secondary); font-size: .9rem; }
-@media (max-width: 1180px) { .experience-card { grid-template-columns: minmax(180px,1fr) auto auto auto; } .experience-dates { grid-column: 1 / 4; } .configure { grid-column: 4; grid-row: 1; } }
+@media (max-width: 1180px) { .experiences-page .experience-card { grid-template-columns: minmax(180px,1fr) auto auto auto; } .experiences-page .experience-dates { grid-column: 1 / 4; } .experiences-page .configure { grid-column: 4; grid-row: 1; } }
 @media (max-width: 800px) { .editor-grid { grid-template-columns: 1fr; } .preview-panel { order: -1; } .segment-editor { grid-template-columns: 1fr auto auto; } }
-@media (max-width: 600px) { .experience-card { grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 16px 0; } .experience-card > .status:not(.access-status) { grid-column: 1; grid-row: 2; } .access-status { grid-column: 2; grid-row: 2; } .experience-dates { grid-column: 1 / -1; grid-row: 3; } .configure { grid-column: 2; grid-row: 1; } }
+@media (max-width: 600px) { .experiences-page .experience-card { grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 16px 0; } .experiences-page .experience-card > .status:not(.access-status) { grid-column: 1; grid-row: 2; } .experiences-page .access-status { grid-column: 2; grid-row: 2; } .experiences-page .experience-dates { grid-column: 1 / -1; grid-row: 3; } .experiences-page .configure { grid-column: 2; grid-row: 1; } }

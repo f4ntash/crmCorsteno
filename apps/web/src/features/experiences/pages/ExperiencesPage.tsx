@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 import type { Experience } from '../types';
@@ -36,6 +36,7 @@ export function ExperiencesPage({
   canCreate: boolean;
 }) {
   const navigate = useNavigate();
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Experience[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(false),
@@ -82,7 +83,7 @@ export function ExperiencesPage({
     }
   }
   return (
-    <main className="page">
+    <main className="page experiences-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">ESPACIO DE TRABAJO</p>
@@ -147,11 +148,12 @@ export function ExperiencesPage({
           )}
         </div>
       )}
-      <Dialog open={modal} title="Nueva experiencia" description="Creá una experiencia de ruleta para el workspace actual." onClose={() => !saving && setModal(false)}>
+      <Dialog open={modal} title="Nueva experiencia" description="Creá una experiencia de ruleta para el workspace actual." initialFocusRef={nameInputRef} onClose={() => !saving && setModal(false)}>
             <form onSubmit={create}>
               <label>
                 Nombre
                 <input
+                  ref={nameInputRef}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ruleta Evento Septiembre"

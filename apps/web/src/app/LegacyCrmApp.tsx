@@ -63,7 +63,7 @@ function Shell() {
           <button className="button button-icon menu-button" type="button" aria-expanded={navigationOpen} aria-controls="app-navigation" onClick={() => setNavigationOpen(true)}>Menú</button>
           <div className="organization-context">
             <span>{platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
-            <select aria-label="Organización actual" value={o} onChange={(e) => setO(e.target.value)}>
+            <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => setO(e.target.value)}>
               {m.memberships.map((x) => <option key={x.organizationId} value={x.organizationId}>{x.organizationName}</option>)}
             </select>
           </div>
