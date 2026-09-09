@@ -79,6 +79,19 @@ analyticsRoutes.get('/summary', async (c) => {
     .bind(...s.values)
     .first<{ n: number }>();
   const total = rows.results.reduce((n, x) => n + x.n, 0);
+  const operational = await (async () => {
+    try {
+      const spinRows = await c.env.DB.prepare(`SELECT outcome_type outcome,COUNT(*) n FROM experience_spins WHERE ${s.where.replaceAll('occurred_at', 'created_at')} GROUP BY outcome_type`).bind(...s.values).all<{ outcome: string; n: number }>();
+      const claimRows = await c.env.DB.prepare('SELECT status,COUNT(*) n FROM roulette_prize_claims WHERE organization_id=? AND created_at>=? GROUP BY status').bind(s.org.id, sinceOf(s.range)).all<{ status: string; n: number }>();
+      if (spinRows.results.some((row) => row.outcome !== 'prize' && row.outcome !== 'no_prize')) return null;
+      const successfulSpins = spinRows.results.reduce((sum, row) => sum + Number(row.n), 0);
+      const prizeWins = spinRows.results.find((row) => row.outcome === 'prize')?.n ?? 0;
+      const noPrize = spinRows.results.find((row) => row.outcome === 'no_prize')?.n ?? 0;
+      const claimsGenerated = claimRows.results.reduce((sum, row) => sum + Number(row.n), 0);
+      const claimsRedeemed = claimRows.results.find((row) => row.status === 'redeemed')?.n ?? 0;
+      return { successfulSpins, prizeWins, noPrize, claimsGenerated, claimsRedeemed };
+    } catch { return null; }
+  })();
   const last = await c.env.DB.prepare(
     `SELECT MAX(occurred_at) lastActivityAt FROM events WHERE ${s.where}`,
   )
@@ -110,9 +123,11 @@ analyticsRoutes.get('/summary', async (c) => {
       prizesClaimed: count('prize_claimed'),
       ...webar,
       rouletteSpinsStarted: count('roulette_spin_started'),
-      rouletteSpinsCompleted: count('roulette_spin_completed'),
-      roulettePrizesWon: count('roulette_prize_won'),
-      rouletteNoPrize: count('roulette_no_prize'),
+      rouletteSpinsCompleted: operational?.successfulSpins ?? count('roulette_spin_completed'),
+      roulettePrizesWon: operational?.prizeWins ?? count('roulette_prize_won'),
+      rouletteNoPrize: operational?.noPrize ?? count('roulette_no_prize'),
+      rouletteClaimsGenerated: operational?.claimsGenerated ?? 0,
+      rouletteClaimsRedeemed: operational?.claimsRedeemed ?? 0,
       rouletteSpinBlocked: count('roulette_spin_blocked'),
       rouletteArOpen: count('roulette_ar_open_click'),
       rouletteArSessions: count('roulette_ar_session_started'),
@@ -121,7 +136,7 @@ analyticsRoutes.get('/summary', async (c) => {
     rates: {
       completion: started ? count('game_finished') / started : 0,
       prizeConversion: started ? count('prize_won') / started : 0,
-      rouletteConversion: count('experience_view') ? count('roulette_spin_started') / count('experience_view') : 0,
+      rouletteConversion: count('experience_view') ? (operational?.successfulSpins ?? count('roulette_spin_started')) / count('experience_view') : 0,
     },
   });
 });
