@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 import type { Experience } from '../types';
 import { rouletteTemplates } from '../../roulette/templates';
+import { Dialog } from '../../../shared/ui/Dialog';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(
   path: string,
@@ -84,11 +85,12 @@ export function ExperiencesPage({
     <main className="page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">EXPERIENCES / GESTIÓN</p>
+          <p className="eyebrow">ESPACIO DE TRABAJO</p>
           <h1>Experiencias</h1>
+          <p className="page-description">Configurá, publicá y supervisá las experiencias de esta organización.</p>
         </div>
         {canCreate && (
-          <button
+          <button className="button button-primary"
             onClick={() => {
               setSaveError('');
               setModal(true);
@@ -99,7 +101,7 @@ export function ExperiencesPage({
         )}
       </div>
       {loading ? (
-        <p>Cargando experiencias…</p>
+        <div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando experiencias…</div>
       ) : error ? (
         <div className="empty">
           <h2>No se pudieron cargar las experiencias.</h2>
@@ -108,7 +110,7 @@ export function ExperiencesPage({
       ) : items.length ? (
         <div className="experience-list">
           {items.map((item) => (
-            <div className="experience-card" key={item.id}>
+            <article className="experience-card" key={item.id}>
               <div>
                 <h2>{item.name}</h2>
                 <p>{item.type}</p>
@@ -130,10 +132,10 @@ export function ExperiencesPage({
                   {experienceDate(item.ends_at, 'Sin vencimiento')}
                 </span>
               </div>
-              <Link className="configure" to={`/app/experiences/${item.id}`}>
-                Configurar →
+              <Link className="button button-secondary configure" to={`/app/experiences/${item.id}`}>
+                Abrir
               </Link>
-            </div>
+            </article>
           ))}
         </div>
       ) : (
@@ -145,15 +147,11 @@ export function ExperiencesPage({
           )}
         </div>
       )}
-      {modal && (
-        <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true">
-            <h2>Nueva experiencia</h2>
+      <Dialog open={modal} title="Nueva experiencia" description="Creá una experiencia de ruleta para el workspace actual." onClose={() => !saving && setModal(false)}>
             <form onSubmit={create}>
               <label>
                 Nombre
                 <input
-                  autoFocus
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ruleta Evento Septiembre"
@@ -173,22 +171,20 @@ export function ExperiencesPage({
                 ))}
               </fieldset>
               {saveError && <p className="error">{saveError}</p>}
-              <div className="modal-actions">
+              <div className="dialog-actions">
                 <button
                   type="button"
-                  className="secondary"
+                  className="button button-secondary"
                   onClick={() => setModal(false)}
                 >
                   Cancelar
                 </button>
-                <button disabled={saving || !name.trim()}>
+                <button className="button button-primary" disabled={saving || !name.trim()}>
                   {saving ? 'Creando…' : 'Crear experiencia'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Dialog>
     </main>
   );
 }
