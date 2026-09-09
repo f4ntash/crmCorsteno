@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 import { experiencesApi } from '../api';
+import { commercialApi } from '../../commercial/api';
 import { experienceEditors } from '../registry';
 import { ExperienceQrModal } from '../components/ExperienceQrModal';
 import { PublishControls } from '../components/PublishControls';
@@ -35,11 +36,18 @@ export function ExperienceDetailPage({
     slug: string;
     draftConfig?: { prizes?: Array<{ id: string; name: string }> };
   }>();
+  const [redemptionAvailable, setRedemptionAvailable] = useState(false);
   useEffect(() => {
     if (!id || !org) return;
     get(`/experiences/${id}`, org)
       .then(setExperience)
       .catch(() => setExperience(undefined));
+    commercialApi.subscriptions(org)
+      .then((subscriptions) => setRedemptionAvailable(subscriptions.some((subscription) =>
+        subscription.experiences.some((attached) => attached.id === id) &&
+        subscription.featureEntitlements.features.includes('redemption_claims'),
+      )))
+      .catch(() => setRedemptionAvailable(false));
   }, [id, org]);
   if (!id || !experience) return null;
   const Editor =
@@ -69,6 +77,7 @@ export function ExperienceDetailPage({
         <Editor
           org={org}
           id={id}
+          redemptionAvailable={redemptionAvailable}
           canEdit={permissions.includes('crm.manage')}
           canAdjustInventory={permissions.includes('crm.manage')}
         />

@@ -21,11 +21,13 @@ type Inventory = {
 export function RouletteEditor({
   org,
   id,
+  redemptionAvailable = false,
   canEdit = true,
   canAdjustInventory = true,
 }: {
   org: string;
   id: string;
+  redemptionAvailable?: boolean;
   canEdit?: boolean;
   canAdjustInventory?: boolean;
 }) {
@@ -39,11 +41,11 @@ export function RouletteEditor({
           Esta experiencia es de solo lectura para tu rol.
         </p>
       )}
-      <RouletteEditorContent org={org} id={id} />
+      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} />
     </div>
   );
 }
-function RouletteEditorContent({ org, id }: { org: string; id: string }) {
+function RouletteEditorContent({ org, id, redemptionAvailable }: { org: string; id: string; redemptionAvailable: boolean }) {
   const navigate = useNavigate();
   const [item, setItem] = useState<Experience>();
   const [inventory, setInventory] = useState<Inventory[]>([]);
@@ -255,6 +257,7 @@ function RouletteEditorContent({ org, id }: { org: string; id: string }) {
               inventory={inventory.find((x) => x.prizeId === prize.id)}
               experienceId={id}
               organizationId={org}
+              redemptionAvailable={redemptionAvailable}
               onChange={(next) => updatePrize(index, next)}
             />
           ))}
@@ -401,12 +404,14 @@ function PrizeEditor({
   inventory,
   experienceId,
   organizationId,
+  redemptionAvailable,
   onChange,
 }: {
   prize: Prize;
   inventory?: Inventory;
   experienceId: string;
   organizationId: string;
+  redemptionAvailable: boolean;
   onChange: (prize: Prize) => void;
 }) {
   const [error, setError] = useState('');
@@ -503,11 +508,16 @@ function PrizeEditor({
         <input
           type="checkbox"
           checked={prize.redemption?.enabled === true}
+          disabled={!redemptionAvailable}
           onChange={(e) => onChange({ ...prize, redemption: { enabled: e.target.checked } })}
         />{' '}
         Canje con código
       </label>
-      <small>Genera un código único cuando este premio sea ganado.</small>
+      {redemptionAvailable ? (
+        <small>Genera un código único cuando este premio sea ganado.</small>
+      ) : (
+        <small>Disponible en planes con Canje de premios.</small>
+      )}
       {inventory && (
         <small>
           Operativo:{' '}
