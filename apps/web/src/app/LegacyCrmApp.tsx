@@ -55,6 +55,12 @@ function Shell() {
             <NavLink className={navClass} to="/app/commercial">Catálogo comercial</NavLink>
             <NavLink className={navClass} to="/app/subscriptions">Suscripciones</NavLink>
           </>}
+          <div className="nav-upcoming" aria-label="Próximamente">
+            <p className="nav-section">Próximamente</p>
+            <NavLink className={navClass} to="/app/projects">Proyectos</NavLink>
+            <NavLink className={navClass} to="/app/crm">CRM</NavLink>
+            <NavLink className={navClass} to="/app/settings">Configuración</NavLink>
+          </div>
         </nav>
         {platformOperator && <NavLink className="button button-secondary new-client" to="/app/onboarding">Nuevo cliente</NavLink>}
       </aside>
