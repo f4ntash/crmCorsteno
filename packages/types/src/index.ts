@@ -47,3 +47,18 @@ export const KNOWN_EVENT_NAMES = [
 ] as const;
 
 export type EventName = (typeof KNOWN_EVENT_NAMES)[number];
+
+export function parseMoneyToMinor(value: string, decimals = 2): number | null {
+  const normalized = value.trim().replace(',', '.');
+  const pattern = new RegExp(`^(?:0|[1-9]\\d*)(?:\\.(\\d{1,${decimals}}))?$`);
+  const match = normalized.match(pattern);
+  if (!match) return null;
+  const [whole, fraction = ''] = normalized.split('.');
+  if (fraction.length > decimals) return null;
+  const amount = Number(whole) * (10 ** decimals) + Number(fraction.padEnd(decimals, '0'));
+  return Number.isSafeInteger(amount) ? amount : null;
+}
+
+export function formatMoneyFromMinor(amountMinor: number, currency: string, locale = 'es-AR'): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amountMinor / 100);
+}

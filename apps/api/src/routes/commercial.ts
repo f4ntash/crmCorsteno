@@ -10,12 +10,12 @@ type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
   organization: { id: string; name: string; slug: string; role: string };
 };
-type Plan = { id: string; code: string; name: string; description: string | null; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; priceAmountMinor: number; currency: string; active: number };
+type Plan = { id: string; code: string; name: string; description: string | null; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; priceAmountMinor: number; currency: string; active: number; availableForSale: number };
 type SubscriptionPeriod = { id: string; subscriptionId: string; organizationId: string; startsAt: string; endsAt: string; status: string; idempotencyKey: string | null; createdAt: string };
 type Subscription = { id: string; organizationId: string; planId: string; status: 'pending' | 'active' | 'cancelled' | 'expired'; startsAt: string; currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: number; priceAmountMinor: number; currency: string; billingInterval: BillingInterval; billingIntervalCount: number; includedAccessDays: number | null; planCode: string; planName: string; planDescription: string | null };
 
 export const commercialRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
-function isCommercialPath(path: string) { return path === '/plans' || path.startsWith('/subscriptions'); }
+function isCommercialPath(path: string) { return path === '/plans' || path.startsWith('/plans/') || path.startsWith('/subscriptions'); }
 commercialRoutes.use('*', async (c, next) => {
   if (!isCommercialPath(c.req.path)) return next();
   const auth = requireAuth as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
@@ -29,7 +29,7 @@ commercialRoutes.use('*', async (c, next) => {
 });
 
 function bad(message: string) { return { error: { code: 'BAD_REQUEST', message } }; }
-function presentPlan(row: Record<string, unknown>): Plan { return { id: String(row.id), code: String(row.code), name: String(row.name), description: row.description as string | null, billingInterval: row.billingInterval as BillingInterval, billingIntervalCount: Number(row.billingIntervalCount), includedAccessDays: row.includedAccessDays === null ? null : Number(row.includedAccessDays), priceAmountMinor: Number(row.priceAmountMinor), currency: String(row.currency), active: Number(row.active) }; }
+function presentPlan(row: Record<string, unknown>): Plan { return { id: String(row.id), code: String(row.code), name: String(row.name), description: row.description as string | null, billingInterval: row.billingInterval as BillingInterval, billingIntervalCount: Number(row.billingIntervalCount), includedAccessDays: row.includedAccessDays === null ? null : Number(row.includedAccessDays), priceAmountMinor: Number(row.priceAmountMinor), currency: String(row.currency), active: Number(row.active), availableForSale: Number(row.availableForSale ?? 1) }; }
 function presentPeriod(row: Record<string, unknown>): SubscriptionPeriod { return { id: String(row.id), subscriptionId: String(row.subscriptionId), organizationId: String(row.organizationId), startsAt: String(row.startsAt), endsAt: String(row.endsAt), status: String(row.status), idempotencyKey: row.idempotencyKey as string | null, createdAt: String(row.createdAt) }; }
 
 async function getSubscription(db: D1Database, id: string, organizationId: string) {
@@ -41,8 +41,34 @@ async function getSubscription(db: D1Database, id: string, organizationId: strin
 }
 
 commercialRoutes.get('/plans', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active FROM plans WHERE active=1 ORDER BY price_amount_minor ASC, name ASC').bind().all<Record<string, unknown>>();
+  const rows = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active,available_for_sale availableForSale FROM plans WHERE active=1 AND available_for_sale=1 AND price_amount_minor>0 ORDER BY price_amount_minor ASC, name ASC').bind().all<Record<string, unknown>>();
   return c.json(rows.results.map(presentPlan));
+});
+
+commercialRoutes.get('/plans/catalog', async (c) => {
+  if (!['super_admin', 'corsteno_admin'].includes(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  const rows = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active,available_for_sale availableForSale FROM plans ORDER BY active DESC, available_for_sale DESC, price_amount_minor ASC, name ASC').bind().all<Record<string, unknown>>();
+  return c.json(rows.results.map(presentPlan));
+});
+
+commercialRoutes.patch('/plans/:id', async (c) => {
+  if (!['super_admin', 'corsteno_admin'].includes(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const existing = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active,available_for_sale availableForSale FROM plans WHERE id=?').bind(c.req.param('id')).first<Record<string, unknown>>();
+  if (!existing) return c.json({ error: { code: 'NOT_FOUND', message: 'Plan not found' } }, 404);
+  const name = typeof body.name === 'string' ? body.name.trim() : String(existing.name);
+  const description = body.description === null || typeof body.description === 'string' ? body.description : existing.description;
+  const price = body.price_amount_minor === undefined ? Number(existing.priceAmountMinor) : body.price_amount_minor;
+  const currency = typeof body.currency === 'string' ? body.currency.toUpperCase() : String(existing.currency);
+  const interval = body.billing_interval === undefined ? existing.billingInterval : body.billing_interval;
+  const count = body.billing_interval_count === undefined ? Number(existing.billingIntervalCount) : body.billing_interval_count;
+  const includedDays = body.included_access_days === undefined ? (existing.includedAccessDays === null ? null : Number(existing.includedAccessDays)) : body.included_access_days;
+  const active = body.active === undefined ? Number(existing.active) : body.active;
+  const available = body.available_for_sale === undefined ? Number(existing.availableForSale ?? 1) : body.available_for_sale;
+  if (!name || !Number.isSafeInteger(price) || Number(price) < 0 || !['ARS', 'USD'].includes(currency) || !['monthly', 'yearly', 'one_time'].includes(String(interval)) || !Number.isInteger(count) || Number(count) < 1 || (interval === 'one_time' && (!Number.isInteger(includedDays) || Number(includedDays) < 1)) || ![0, 1].includes(Number(active)) || ![0, 1].includes(Number(available))) return c.json(bad('Invalid plan commercial fields'), 400);
+  await c.env.DB.prepare('UPDATE plans SET name=?,description=?,billing_interval=?,billing_interval_count=?,included_access_days=?,price_amount_minor=?,currency=?,active=?,available_for_sale=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(name, description, interval, count, includedDays, price, currency, active, available, c.req.param('id')).run();
+  return c.json(presentPlan({ ...existing, name, description, billingInterval: interval, billingIntervalCount: count, includedAccessDays: includedDays, priceAmountMinor: price, currency, active, availableForSale: available }));
 });
 
 commercialRoutes.get('/subscriptions', async (c) => {
@@ -66,10 +92,10 @@ commercialRoutes.post('/subscriptions', async (c) => {
   if (!planId) return c.json(bad('plan_id is required'), 400);
   if (!uniqueExperienceIds.length) return c.json(bad('At least one experience is required'), 400);
   if (uniqueExperienceIds.length !== experienceIds.length) return c.json(bad('Duplicate experience attachments are not allowed'), 400);
-  const planRow = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active FROM plans WHERE id=?').bind(planId).first<Record<string, unknown>>();
+  const planRow = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active,available_for_sale availableForSale FROM plans WHERE id=?').bind(planId).first<Record<string, unknown>>();
   if (!planRow) return c.json({ error: { code: 'NOT_FOUND', message: 'Plan not found' } }, 404);
   const plan = presentPlan(planRow);
-  if (!plan.active) return c.json(bad('Plan is not active'), 400);
+  if (!plan.active || !plan.availableForSale || plan.priceAmountMinor <= 0) return c.json(bad('Plan is not available for sale'), 400);
   const startValue = body.starts_at;
   if (typeof startValue !== 'string' || !Number.isFinite(new Date(startValue).getTime())) return c.json(bad('A valid starts_at is required'), 400);
   const startsAt = new Date(startValue);
