@@ -24,10 +24,11 @@ async function main() {
     `INSERT INTO organizations (id,name,slug,status,created_at,updated_at) VALUES (${quote(organizationId)},'Corsteno Local','corsteno-local','active',${now},${now}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,slug=excluded.slug,status='active',updated_at=excluded.updated_at;`,
     `INSERT INTO users (id,email,email_normalized,name,status,password_hash,platform_role,created_at,updated_at) VALUES (${quote(userId)},${quote(email)},${quote(email)},'Local Platform Admin','active',${quote(passwordHash)},'super_admin',${now},${now}) ON CONFLICT(email_normalized) DO UPDATE SET name=excluded.name,status='active',password_hash=excluded.password_hash,platform_role='super_admin',updated_at=excluded.updated_at;`,
     `INSERT INTO memberships (id,user_id,organization_id,role,status,created_at,updated_at) VALUES (${quote(membershipId)},(SELECT id FROM users WHERE email_normalized=${quote(email)}),${quote(organizationId)},'owner','active',${now},${now}) ON CONFLICT(user_id,organization_id) DO UPDATE SET role='owner',status='active',updated_at=excluded.updated_at;`,
+    `UPDATE plans SET pricing_mode='free', available_for_sale=1, price_amount_minor=0, active=1, updated_at=${now} WHERE code IN ('starter','professional');`,
   ].join('\n');
   const file = path.join(os.tmpdir(), `corsteno-seed-local-${process.pid}.sql`);
   await writeFile(file, sql, { encoding: 'utf8', flag: 'wx' });
-  try { execSync(`pnpm --dir apps/api exec wrangler d1 execute corsteno-db --local --file "${file.replaceAll('"', '\\"')}"`, { stdio: 'inherit', shell: true }); } finally { await unlink(file).catch(() => undefined); }
+  try { execSync(`pnpm --dir apps/api exec wrangler --env development d1 execute corsteno-db --local --file "${file.replaceAll('"', '\\"')}"`, { stdio: 'inherit', shell: true }); } finally { await unlink(file).catch(() => undefined); }
   console.log(`Seeded local platform admin ${email} in Corsteno Local (super_admin).`);
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

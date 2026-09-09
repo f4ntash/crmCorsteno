@@ -11,7 +11,7 @@ function assertLocalOnly() {
 }
 function shellQuote(value: string) { return `"${value.replaceAll('"', '\\"')}"`; }
 const wranglerBinary = path.resolve('apps/api/node_modules/.bin', process.platform === 'win32' ? 'wrangler.cmd' : 'wrangler');
-function wrangler(args: string[]) { return execSync(`${shellQuote(wranglerBinary)} ${args.map(shellQuote).join(' ')}`, { cwd: path.resolve('apps/api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: true }); }
+function wrangler(args: string[]) { return execSync(`${shellQuote(wranglerBinary)} ${['--env', 'development', ...args].map(shellQuote).join(' ')}`, { cwd: path.resolve('apps/api'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: true }); }
 function quoteIdentifier(value: string) { return `"${value.replaceAll('"', '""')}"`; }
 
 async function main() {
