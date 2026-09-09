@@ -82,7 +82,11 @@ analyticsRoutes.get('/summary', async (c) => {
   const operational = await (async () => {
     try {
       const spinRows = await c.env.DB.prepare(`SELECT outcome_type outcome,COUNT(*) n FROM experience_spins WHERE ${s.where.replaceAll('occurred_at', 'created_at')} GROUP BY outcome_type`).bind(...s.values).all<{ outcome: string; n: number }>();
-      const claimRows = await c.env.DB.prepare('SELECT status,COUNT(*) n FROM roulette_prize_claims WHERE organization_id=? AND created_at>=? GROUP BY status').bind(s.org.id, sinceOf(s.range)).all<{ status: string; n: number }>();
+      let claimWhere = 'c.organization_id=? AND c.created_at>=?';
+      const claimValues: (string | number)[] = [s.org.id, sinceOf(s.range)];
+      if (s.q.projectId) { claimWhere += ' AND e.project_id=?'; claimValues.push(s.q.projectId); }
+      if (s.q.applicationId) { claimWhere += ' AND es.application_id=?'; claimValues.push(s.q.applicationId); }
+      const claimRows = await c.env.DB.prepare(`SELECT c.status,COUNT(*) n FROM roulette_prize_claims c JOIN experiences e ON e.id=c.experience_id AND e.organization_id=c.organization_id JOIN experience_spins es ON es.id=c.spin_id AND es.organization_id=c.organization_id WHERE ${claimWhere} GROUP BY c.status`).bind(...claimValues).all<{ status: string; n: number }>();
       if (spinRows.results.some((row) => row.outcome !== 'prize' && row.outcome !== 'no_prize')) return null;
       const successfulSpins = spinRows.results.reduce((sum, row) => sum + Number(row.n), 0);
       const prizeWins = spinRows.results.find((row) => row.outcome === 'prize')?.n ?? 0;
@@ -163,6 +167,27 @@ analyticsRoutes.get('/breakdown', async (c) => {
       .bind(...s.values)
       .all();
     return c.json({ dimension: d, items: rows.results });
+  }
+  if (d === 'prize' && s.q.applicationId) {
+    const application = await c.env.DB.prepare('SELECT application_type applicationType FROM applications WHERE id=? AND organization_id=?').bind(s.q.applicationId, s.org.id).first<{ applicationType: string }>();
+    if (application?.applicationType === 'roulette') {
+      try {
+        let spinWhere = "s.organization_id=? AND s.created_at>=? AND s.outcome_type='prize' AND s.application_id=?";
+        const spinValues: (string | number)[] = [s.org.id, sinceOf(s.range), s.q.applicationId];
+        if (s.q.projectId) { spinWhere += ' AND a.project_id=?'; spinValues.push(s.q.projectId); }
+        const spinRows = await c.env.DB.prepare(`SELECT s.prize_id prizeId,e.published_config publishedConfig,e.draft_config draftConfig FROM experience_spins s JOIN experiences e ON e.id=s.experience_id AND e.organization_id=s.organization_id JOIN applications a ON a.id=s.application_id AND a.organization_id=s.organization_id WHERE ${spinWhere}`).bind(...spinValues).all<{ prizeId: string; publishedConfig: string | null; draftConfig: string | null }>();
+        const counts = new Map<string, number>();
+        for (const row of spinRows.results) {
+          let name = row.prizeId;
+          try {
+            const config = JSON.parse(row.publishedConfig ?? row.draftConfig ?? '{}') as { prizes?: Array<{ id?: string; name?: string }> };
+            name = config.prizes?.find((prize) => prize.id === row.prizeId)?.name ?? name;
+          } catch { /* keep the stable prize id */ }
+          counts.set(name, (counts.get(name) ?? 0) + 1);
+        }
+        return c.json({ dimension: d, items: [...counts].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value })) });
+      } catch { /* fall through to the legacy event breakdown for older fixtures */ }
+    }
   }
   if (d !== 'game' && d !== 'prize' && d !== 'result' && d !== 'reason')
     return c.json(
