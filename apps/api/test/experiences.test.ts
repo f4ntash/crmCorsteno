@@ -5,7 +5,7 @@ import { validDraftConfig } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
 type AccessPeriod = { id: string; experience_id: string; organization_id: string; starts_at: string; ends_at: string; source: string; created_at: string; created_by: string | null; note: string | null };
-function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null, role = 'owner', initialAccessPeriods: AccessPeriod[] = []) {
+function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', initialPublished: string | null = null, role = 'owner', initialAccessPeriods: AccessPeriod[] = [], platformRole = 'user') {
   const experiences: E[] = [
     { id: 'a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette', status: initialStatus, schema_version: 1, draft_config: initialDraft, published_config: initialPublished, starts_at: null, ends_at: null, created_at: '2026-01-01', updated_at: '2026-01-01' },
     { id: 'b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette', status: 'draft', schema_version: 1, draft_config: '{}', published_config: null, starts_at: null, ends_at: null, created_at: '2026-01-02', updated_at: '2026-01-02' },
@@ -19,7 +19,7 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
       __sql: sql, __args: args,
       async first<T>() {
         if (sql.includes('experience_prize_inventory') && sql.includes('stock_mode')) { const item = inventory.find((x) => x.experience_id === args[0] && x.prize_id === args[1]); return item ? { stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count } as T : null as T; }
-        if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platform_role: 'user', expires_at: Date.now() + 10000 } as T;
+        if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platformRole, expires_at: Date.now() + 10000 } as T;
         if (sql.includes('experience_participation')) { const isDevice = args[2] === 'device'; const id = args[3]; const matches = spins.filter((x) => x.experienceId === args[0] && x.organizationId === args[1] && (isDevice ? x.participantDeviceId === id : x.participantSessionId === id)); const latest = matches.at(-1); return matches.length ? { spin_count: matches.length, last_spin_at: latest?.createdAt ?? null } as T : null as T; }
         if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role } as T;
         if (sql.includes('FROM experiences')) { const e = experiences.find((x) => sql.includes('slug=?') ? x.slug === args[0] : x.id === args[0] && x.organization_id === args[1]); return e ? { ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at } as T : null as T; }
@@ -63,7 +63,7 @@ describe('experiences tenant isolation and validation', () => {
   });
 
   it('manages tenant-scoped immutable commercial access periods', async () => {
-    const env = fixture();
+    const env = fixture('{"segments":[]}', 'draft', null, 'owner', [], 'corsteno_admin');
     const created = await request('/experiences/a/access-periods', env, { method: 'POST', body: JSON.stringify({ starts_at: '2099-01-01T00:00:00Z', ends_at: '2099-02-01T00:00:00Z', note: 'Launch' }) });
     expect(created.status).toBe(201);
     expect(await created.json()).toEqual(expect.objectContaining({ status: 'scheduled', period: expect.objectContaining({ source: 'manual', note: 'Launch' }) }));

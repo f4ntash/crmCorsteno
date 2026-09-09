@@ -11,11 +11,11 @@ type DbState = {
   access: any[];
 };
 
-function fixture(role = 'owner') {
+function fixture(role = 'owner', platformRole = 'corsteno_admin') {
   const state: DbState = {
     plans: [
-      { id: 'plan-month', code: 'monthly', name: 'Monthly', description: 'Example', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 125000, currency: 'ARS', active: 1 },
-      { id: 'plan-off', code: 'off', name: 'Inactive', description: null, billingInterval: 'yearly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 1, currency: 'USD', active: 0 },
+      { id: 'plan-month', code: 'monthly', name: 'Monthly', description: 'Example', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 125000, currency: 'ARS', active: 1, pricingMode: 'paid', availableForSale: 1 },
+      { id: 'plan-off', code: 'off', name: 'Inactive', description: null, billingInterval: 'yearly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 1, currency: 'USD', active: 0, pricingMode: 'paid', availableForSale: 0 },
     ],
     experiences: [{ id: 'exp-a', organization_id: 'org-a', name: 'A', slug: 'a' }, { id: 'exp-b', organization_id: 'org-b', name: 'B', slug: 'b' }],
     subscriptions: [], periods: [], links: [], access: [],
@@ -25,7 +25,7 @@ function fixture(role = 'owner') {
       return { bind(...args: any[]) {
         const statement: any = { __sql: sql, __args: args };
         statement.first = async () => {
-          if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user', email: 'u@example.com', name: 'User', platform_role: 'user', expires_at: Date.now() + 60000 };
+          if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user', email: 'u@example.com', name: 'User', platformRole, expires_at: Date.now() + 60000 };
           if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role };
           if (sql.includes('FROM plans')) return state.plans.find((p) => p.id === args[0]) ?? null;
           if (sql.includes('subscription_periods') && sql.includes('idempotency_key')) return state.periods.find((p) => p.subscriptionId === args[0] && p.organizationId === args[1] && p.idempotencyKey === args[2]) ?? null;

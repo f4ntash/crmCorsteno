@@ -298,6 +298,7 @@ experienceRoutes.get('/:id/access-periods', async (c) => {
 });
 
 experienceRoutes.post('/:id/access-periods', async (c) => {
+  if (!['super_admin', 'corsteno_admin'].includes(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform commercial operator required' } }, 403);
   const organizationId = c.get('organization').id;
   const id = c.req.param('id');
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();

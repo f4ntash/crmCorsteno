@@ -4,7 +4,7 @@ import app from '../src';
 import { createMercadoPagoProvider } from '../src/payments/mercado-pago';
 
 function subscription(overrides: Record<string, unknown> = {}) {
-  return { id: 'sub-a', organizationId: 'org-a', planId: 'plan-a', status: 'active', startsAt: '2026-01-01T00:00:00.000Z', currentPeriodStart: '2026-01-01T00:00:00.000Z', currentPeriodEnd: '2026-10-01T00:00:00.000Z', cancelAtPeriodEnd: 0, priceAmountMinor: 125000, currency: 'ARS', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, planCode: 'pro', planName: 'Pro', planDescription: null, ...overrides };
+  return { id: 'sub-a', organizationId: 'org-a', planId: 'plan-a', status: 'active', startsAt: '2026-01-01T00:00:00.000Z', currentPeriodStart: '2026-01-01T00:00:00.000Z', currentPeriodEnd: '2026-10-01T00:00:00.000Z', cancelAtPeriodEnd: 0, priceAmountMinor: 125000, currency: 'ARS', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, planCode: 'pro', planName: 'Pro', planDescription: null, pricingMode: 'paid', ...overrides };
 }
 
 function fixture(row = subscription()) {

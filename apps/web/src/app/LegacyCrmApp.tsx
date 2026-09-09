@@ -74,7 +74,7 @@ function Shell() {
           <Route path="experiences" element={<ExperiencesPage org={o} canCreate={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
           <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} />} />
           <Route path="commercial" element={<CommercialPage org={o} canManageCatalog={['super_admin', 'corsteno_admin'].includes(m.user.platformRole)} />} />
-          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} />} />
+          <Route path="subscriptions" element={<SubscriptionsPage org={o} canManage={m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false} canManageCommercial={['super_admin', 'corsteno_admin'].includes(m.user.platformRole)} />} />
           <Route
             path="*"
             element={
