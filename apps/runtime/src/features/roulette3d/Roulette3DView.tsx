@@ -25,10 +25,21 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability }
   const [arStatus, setArStatus] = useState<ARCapabilityStatus>('unknown');
   const [arState, setArState] = useState<ARExperienceState | null>(null);
   const [arError, setArError] = useState('');
-  const [participated, setParticipated] = useState(false);
+  const participationKey = `corsteno:participated:${slug}`;
+  const [participated, setParticipated] = useState(() => {
+    try { return window.localStorage.getItem(participationKey) === '1'; } catch { return false; }
+  });
+  const [availability, setAvailability] = useState(prizeAvailability);
   const pendingResult = useRef<SpinResult | null>(null);
   const analytics = useRef(createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
   const participant = useRef(getParticipantIdentity());
+  useEffect(() => setAvailability(prizeAvailability), [prizeAvailability]);
+  useEffect(() => { if (result?.prizeAvailability) setAvailability(result.prizeAvailability); }, [result]);
+  useEffect(() => {
+    if (!result) return;
+    setParticipated(true);
+    try { window.localStorage.setItem(participationKey, '1'); } catch { /* storage is optional */ }
+  }, [result, participationKey]);
   const audio = useRef(new RouletteAudio()); const haptics = useRef(new RouletteHaptics());
   const effects = { sound: config.effects?.sound ?? true, vibration: config.effects?.vibration ?? true, celebration: config.effects?.celebration ?? true };
   useEffect(() => { analytics.current.trackViewOnce(); }, [slug]);
@@ -36,7 +47,7 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability }
   useEffect(() => {
     if (!containerRef.current) return;
     try {
-      const engine = new Roulette3D({ ...config, prizeAvailability }, { onXRFrame: (time, frame) => xrManagerRef.current?.update(time, frame), onTick: (final) => { if (effects.sound) audio.current.tick(final); if (effects.vibration && final) haptics.current.tick(); }, onSpinStart: () => { setWaiting(false); setSpinning(true); }, onSpinComplete: (index) => { const final = pendingResult.current; engine.highlightSegment(index, true); window.setTimeout(() => { if (final?.prize && effects.celebration) engine.celebrate(true); if (effects.sound) { if (final?.prize) audio.current.win(); else audio.current.neutral(); } if (effects.vibration) haptics.current.finish(Boolean(final?.prize)); analytics.current.track('roulette_spin_completed', { experienceId: slug, spinId: final?.spinId }); setWaiting(false); setSpinning(false); setResult(final); }, window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 220); } });
+      const engine = new Roulette3D({ ...config, prizeAvailability: availability }, { onXRFrame: (time, frame) => xrManagerRef.current?.update(time, frame), onTick: (final) => { if (effects.sound) audio.current.tick(final); if (effects.vibration && final) haptics.current.tick(); }, onSpinStart: () => { setWaiting(false); setSpinning(true); }, onSpinComplete: (index) => { const final = pendingResult.current; engine.highlightSegment(index, true); window.setTimeout(() => { if (final?.prize && effects.celebration) engine.celebrate(true); if (effects.sound) { if (final?.prize) audio.current.win(); else audio.current.neutral(); } if (effects.vibration) haptics.current.finish(Boolean(final?.prize)); analytics.current.track('roulette_spin_completed', { experienceId: slug, spinId: final?.spinId }); setWaiting(false); setSpinning(false); setResult(final); }, window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 220); } });
       engineRef.current = engine;
       engine.mount(containerRef.current);
       return () => { xrManagerRef.current?.dispose(); xrManagerRef.current = undefined; engineRef.current = undefined; engine.dispose(); };
@@ -45,7 +56,7 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability }
       setFallback(true);
       return undefined;
     }
-  }, [config]);
+  }, [config, availability]);
   function handleARState(state: ARExperienceState) { setArState(state === 'ended' ? null : state); if (state === 'placed') analytics.current.track('roulette_ar_placed', { experienceId: slug }); if (state === 'ended') analytics.current.track('roulette_ar_session_ended', { experienceId: slug }); }
   async function enterAR() { const engine = engineRef.current; if (!engine || arStatus !== 'supported' || !subscriptionHasFeature(entitlements, 'webxr_ar')) return; setArError(''); analytics.current.track('roulette_ar_open_click', { experienceId: slug }); const manager = new XRManager(engine, { onState: handleARState, onError: () => setArError('No pudimos iniciar AR. Podés seguir jugando en modo 3D.'), onSelectAfterPlacement: () => { void spin(); } }); xrManagerRef.current = manager; try { await manager.enter(); analytics.current.track('roulette_ar_session_started', { experienceId: slug }); } catch { xrManagerRef.current = undefined; setArState(null); setArError('No pudimos iniciar AR. Podés seguir jugando en modo 3D.'); } }
   async function leaveAR() { if (!xrManagerRef.current) return; await xrManagerRef.current.leave(); xrManagerRef.current = undefined; }

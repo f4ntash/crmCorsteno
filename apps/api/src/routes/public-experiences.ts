@@ -145,7 +145,9 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_prize_won', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, prize: prize.name, prizeId: prize.id, spinId });
       const prizeResult = segment.prizeId === null ? null : config.prizes.find((item) => item.id === segment.prizeId) ?? null;
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_completed', c.req.header('X-Anonymous-User-Id') ?? null, c.req.header('X-Session-Id') ?? null, { experienceId: row.id, spinId, prize: prize.name, prizeId: prize.id });
-      return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null, claim });
+      const remaining = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: string; stockAvailable: number | null }>();
+      const prizeAvailability = Object.fromEntries(remaining.results.map((item) => [item.prizeId, item.stockMode === 'limited' && (item.stockAvailable ?? 0) <= 0 ? 'sold_out' : 'available']));
+      return c.json({ spinId, segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: prizeResult ? { id: prizeResult.id, name: prizeResult.name, iconUrl: prizeResult.iconUrl ?? null } : null, claim, prizeAvailability });
     }
     const segmentIndex = selectOutcomeSegment(outcome, secureRandomValue());
     const segment = config.segments[segmentIndex]!;
