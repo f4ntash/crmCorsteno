@@ -1,0 +1,49 @@
+/* Commercial operations use the shared dark tokens, with denser information hierarchy. */
+main.page:not(.experiences-page):has(> .experience-list) { max-width: 1180px; }
+main.page:not(.experiences-page):has(> .experience-list) > .page-heading { margin-bottom: 24px; }
+main.page:not(.experiences-page):has(> .experience-list) > .page-heading > div:first-child > p:not(.eyebrow) { max-width: 650px; margin: 10px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list { display: grid; gap: 12px; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card { display: grid; grid-template-columns: minmax(180px, 1.25fr) minmax(130px, .8fr) auto auto; gap: 14px 20px; align-items: start; padding: 18px 20px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card h2 { margin: 0; font-size: 16px; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; overflow-wrap: anywhere; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > strong { color: var(--text); font-size: 19px; letter-spacing: -.02em; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > div:nth-last-child(2) { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--border); }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > div:nth-last-child(2) ul { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 10px; padding-left: 18px; color: var(--text-secondary); font-size: 12px; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > button { grid-column: 1 / -1; justify-self: start; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > form label:nth-child(2) { grid-column: 1 / -1; }
+main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > form label:nth-child(n+6) { display: flex; grid-template-columns: 18px 1fr; align-items: center; gap: 8px; }
+main.page:not(.experiences-page):has(> .experience-list) .modal-actions { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 14px; }
+
+.onboarding-page { max-width: 1080px; }
+.onboarding-page .page-heading { margin-bottom: 24px; }
+.onboarding-page .onboarding-card { max-width: 900px; padding: 24px; background: var(--surface-1); }
+.onboarding-page .onboarding-card-heading { margin-bottom: 20px; }
+.onboarding-page .onboarding-card-heading h2 { font-size: 18px; }
+.onboarding-page .onboarding-fields { gap: 14px; }
+.onboarding-page .onboarding-support { padding: 12px 14px; border-left: 2px solid var(--accent); background: var(--surface-2); }
+.onboarding-page .onboarding-actions { margin-top: 24px; }
+
+.subscriptions-page > .experience-list > .experience-card > .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.subscriptions-page > .experience-list > .experience-card > .modal-actions button:first-child { flex-basis: 100%; justify-content: flex-start; }
+.subscriptions-page > .experience-list > .experience-card > div:last-child { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--border); }
+.subscriptions-page .empty { max-width: none; margin-top: 12px; padding: 22px 20px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-1); }
+.subscriptions-page .modal-backdrop { background: rgba(4, 7, 10, .78); }
+.subscriptions-page .modal { width: min(100%, 560px); }
+.subscriptions-page .modal > h2 { margin-bottom: 4px; }
+.subscriptions-page .modal form { display: grid; gap: 16px; }
+.subscriptions-page .modal fieldset { max-height: 260px; overflow-y: auto; }
+
+@media (max-width: 800px) {
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card { grid-template-columns: minmax(0, 1fr) auto; }
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > strong { grid-column: 1; }
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > .status { grid-column: 2; grid-row: 1; }
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > form { grid-template-columns: 1fr; }
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card > form label:nth-child(2) { grid-column: auto; }
+}
+@media (max-width: 560px) {
+  main.page:not(.experiences-page):has(> .experience-list) > .experience-list > .experience-card { padding: 16px; }
+  .onboarding-page .onboarding-card { padding: 18px; }
+  .subscriptions-page > .experience-list > .experience-card > .modal-actions { align-items: stretch; flex-direction: column; }
+  .subscriptions-page > .experience-list > .experience-card > .modal-actions button { width: 100%; }
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import '../analytics.css';
+import '../commercial.css';
 import '../home.css';
 import '../experiences.css';
 import '../permission.css';
