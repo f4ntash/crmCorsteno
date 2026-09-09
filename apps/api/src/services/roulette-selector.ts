@@ -23,6 +23,11 @@ export function selectRouletteOutcome(outcomes: readonly RouletteOutcome[], rand
   return outcomes[outcomes.length - 1]!;
 }
 
+export function selectLocalAcceptanceOutcome(outcomes: readonly RouletteOutcome[], randomValue: number, environment: string, forcedPrizeId?: string) {
+  if (environment === 'development' && forcedPrizeId) return outcomes.find((outcome) => outcome.prizeId === forcedPrizeId) ?? selectRouletteOutcome(outcomes, randomValue);
+  return selectRouletteOutcome(outcomes, randomValue);
+}
+
 export function buildRouletteOutcomes(config: { prizes: readonly PrizeRule[]; segments: readonly SegmentRule[] }, inventory: ReadonlyMap<string, InventoryRule>) {
   const groups = new Map<string, number[]>();
   for (let index = 0; index < config.segments.length; index += 1) {

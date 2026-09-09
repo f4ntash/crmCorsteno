@@ -18,6 +18,7 @@ export interface Env {
   APP_VERSION: string;
   WEB_ORIGIN?: string;
   WEB_ORIGINS?: string;
+  LOCAL_ACCEPTANCE_PRIZE_ID?: string;
   PUBLIC_ORIGINS?: string;
   DB: D1Database;
   EXPERIENCE_ASSETS?: R2Bucket;

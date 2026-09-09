@@ -3,7 +3,7 @@ import type { Env } from '../index';
 import { getEffectiveExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { normalizeParticipationConfig, parseJson, validDraftConfig, type DraftConfig } from './experiences';
-import { buildRouletteOutcomes, secureRandomValue, selectOutcomeSegment, selectRouletteOutcome } from '../services/roulette-selector';
+import { buildRouletteOutcomes, secureRandomValue, selectLocalAcceptanceOutcome, selectOutcomeSegment } from '../services/roulette-selector';
 import { generateClaimCode } from '../services/prize-claims';
 import { getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 
@@ -122,7 +122,7 @@ publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
       trackExperienceEvent(c.env.DB, row.id, row.organization_id, row.name, 'roulette_spin_blocked', null, null, { experienceId: row.id, reason: blocked.reason });
       return c.json(blocked, blocked.reason === 'identity_required' ? 400 : 429);
     }
-    const outcome = selectRouletteOutcome(outcomes, secureRandomValue());
+    const outcome = selectLocalAcceptanceOutcome(outcomes, secureRandomValue(), c.env.ENVIRONMENT, c.env.LOCAL_ACCEPTANCE_PRIZE_ID);
     if (outcome.prizeId !== null) {
       const prize = config.prizes.find((item) => item.id === outcome.prizeId)!;
       const stock = inventory.get(prize.id);

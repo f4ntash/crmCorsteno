@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildRouletteOutcomes, secureRandomIndex, selectRouletteOutcome, selectRouletteSegment } from '../src/services/roulette-selector';
+import { buildRouletteOutcomes, secureRandomIndex, selectLocalAcceptanceOutcome, selectRouletteOutcome, selectRouletteSegment } from '../src/services/roulette-selector';
 
 describe('roulette selector', () => {
+  it('forces only a configured local development prize and never in production', () => {
+    const outcomes = [{ prizeId: 'prize-1', weight: 1, segmentIndices: [0] }, { prizeId: null, weight: 1, segmentIndices: [1] }];
+    expect(selectLocalAcceptanceOutcome(outcomes, 0.99, 'development', 'prize-1')?.prizeId).toBe('prize-1');
+    expect(selectLocalAcceptanceOutcome(outcomes, 0.99, 'production', 'prize-1')?.prizeId).toBeNull();
+  });
   it.each([6, 8, 10])('maps injected random values uniformly for %i segments', (count) => {
     const config = { segments: Array.from({ length: count }) };
     expect(selectRouletteSegment(config, 0)).toBe(0);
