@@ -43,6 +43,7 @@ export function ExperienceDetailPage({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [redemptionAvailable, setRedemptionAvailable] = useState(false);
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (!id || !org) return;
     setLoading(true);
@@ -58,6 +59,29 @@ export function ExperienceDetailPage({
       )))
       .catch(() => setRedemptionAvailable(false));
   }, [id, org]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const warnBeforeSpaNavigation = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest('a') : null;
+      if (!target || target.target === '_blank' || !target.href) return;
+      const next = new URL(target.href, window.location.href);
+      if (next.origin !== window.location.origin || (next.pathname === window.location.pathname && next.search === window.location.search)) return;
+      if (!window.confirm('Hay cambios sin guardar. ¿Querés salir de esta experiencia?')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    document.addEventListener('click', warnBeforeSpaNavigation, true);
+    return () => {
+      window.removeEventListener('beforeunload', warnBeforeUnload);
+      document.removeEventListener('click', warnBeforeSpaNavigation, true);
+    };
+  }, [dirty]);
   if (loading) return <main className="page"><div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando experiencia…</div></main>;
   if (!id || !experience) return <main className="page"><div className="empty"><h2>No se pudo cargar la experiencia.</h2>{loadError && <p className="error">{loadError}</p>}<button className="secondary" onClick={() => navigate('/app/experiences')}>Volver a experiencias</button></div></main>;
   const Editor =
@@ -80,7 +104,7 @@ export function ExperienceDetailPage({
     </header>
     <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a><a href="#results">Resultados</a></nav>
     <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={`${runtime}/r/${encodeURIComponent(experience.slug)}`} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublishControls organizationId={org} canPublish={canManage} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
-    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canManage} canAdjustInventory={canManage} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
+    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canManage} canAdjustInventory={canManage} onDirtyChange={setDirty} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
     <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>
   </main>;
 }

@@ -23,12 +23,14 @@ export function RouletteEditor({
   redemptionAvailable = false,
   canEdit = true,
   canAdjustInventory = true,
+  onDirtyChange,
 }: {
   org: string;
   id: string;
   redemptionAvailable?: boolean;
   canEdit?: boolean;
   canAdjustInventory?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   return (
     <div
@@ -40,11 +42,11 @@ export function RouletteEditor({
           Esta experiencia es de solo lectura para tu rol.
         </p>
       )}
-      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canEdit} canAdjustInventory={canAdjustInventory} />
+      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} canEdit={canEdit} canAdjustInventory={canAdjustInventory} onDirtyChange={onDirtyChange} />
     </div>
   );
 }
-function RouletteEditorContent({ org, id, redemptionAvailable, canEdit, canAdjustInventory }: { org: string; id: string; redemptionAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean }) {
+function RouletteEditorContent({ org, id, redemptionAvailable, canEdit, canAdjustInventory, onDirtyChange }: { org: string; id: string; redemptionAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean; onDirtyChange?: (dirty: boolean) => void }) {
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,6 +75,9 @@ function RouletteEditorContent({ org, id, redemptionAvailable, canEdit, canAdjus
       .inventory(id, org)
       .then((result) => setInventory(result.items))
       .catch(() => setInventory([]));
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!org) return;
     apiRequest<Experience & { draftConfig: unknown }>(`/experiences/${id}`, org)

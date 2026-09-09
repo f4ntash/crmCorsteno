@@ -40,7 +40,7 @@
 .roulette-3d-preview { position: relative; display: grid; place-items: center; width: 100%; height: min(72vh,680px); min-height: 390px; overflow: hidden; border-radius: var(--radius-md); background: radial-gradient(circle at 50% 38%,#263b50 0,#111923 62%,#0b1118 100%); color: #b7c9da; }
 .roulette-3d-preview canvas { display: block; width: 100%; height: 100%; }
 .roulette-3d-preview > span { font-size: 13px; }
-.spin-history { margin: 24px auto; max-width: 1200px; }
+.spin-history { width: 100%; min-width: 0; box-sizing: border-box; margin: 24px auto; max-width: 1200px; }
 .spin-history-table { overflow-x: auto; }
 .spin-history-row { display: grid; min-width: 680px; grid-template-columns: 1.4fr 1fr 1.4fr .7fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .spin-history-head { color: var(--text-secondary); font-size: .8rem; text-transform: uppercase; }
@@ -95,8 +95,9 @@
 .prize-editor > small { grid-column: span 1; color: var(--text-secondary); font-size: 11px; }
 .prize-editor > label.secondary { align-self: end; min-height: 42px; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); cursor: pointer; text-align: center; }
 .workspace-results { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .75fr); gap: 18px; align-items: start; }
+.workspace-results > * { min-width: 0; }
 .workspace-results .card { margin: 0; }
-.claims-panel { display: grid; gap: 14px; }
+.claims-panel { display: grid; min-width: 0; gap: 14px; }
 .claims-panel h2 { margin: 0; }
 .claim-search { display: flex; gap: 8px; }
 .claim-search button { flex: 0 0 auto; }
