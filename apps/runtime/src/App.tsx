@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Roulette3DView } from './features/roulette3d/Roulette3DView';
 import { publicExperiencesApi, type PublicExperienceResponse } from './api/publicExperiencesApi';
 import './claim.css';
+import { resolveRuntimeConfig } from './config/runtimeConfig';
 
 
 function Viewer() {
@@ -12,7 +13,8 @@ function Viewer() {
   if (state.loading) return <main><p>Cargando experiencia…</p></main>;
   if (state.error || !state.data) return <main><h1>No pudimos cargar esta experiencia.</h1></main>;
   if (!state.data.active) return <main><h1>{state.data.reason === 'scheduled' ? 'Esta experiencia todavía no está disponible.' : state.data.reason === 'expired' ? 'Esta experiencia finalizó.' : 'Esta experiencia no está disponible.'}</h1></main>;
-  const config = state.data.experience!.config;
+  const experience = state.data.experience!;
+  const config = resolveRuntimeConfig(experience.config, experience.featureEntitlements);
   return <main><Roulette3DView config={config} slug={slug ?? ''} entitlements={state.data.experience?.featureEntitlements} prizeAvailability={state.data.experience?.prizeAvailability} /></main>;
 }
 

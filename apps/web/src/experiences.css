@@ -111,3 +111,10 @@
 @media (max-width: 1180px) { .experiences-page .experience-card { grid-template-columns: minmax(180px,1fr) auto auto auto; } .experiences-page .experience-dates { grid-column: 1 / 4; } .experiences-page .configure { grid-column: 4; grid-row: 1; } }
 @media (max-width: 800px) { .editor-grid { grid-template-columns: 1fr; } .preview-panel { order: -1; } .segment-editor { grid-template-columns: 1fr auto auto; } }
 @media (max-width: 600px) { .experiences-page .experience-card { grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 16px 0; } .experiences-page .experience-card > .status:not(.access-status) { grid-column: 1; grid-row: 2; } .experiences-page .access-status { grid-column: 2; grid-row: 2; } .experiences-page .experience-dates { grid-column: 1 / -1; grid-row: 3; } .experiences-page .configure { grid-column: 2; grid-row: 1; } }
+.branding-content-section{display:grid;gap:12px;margin:18px 0;padding:14px;border:1px solid var(--border,#2a3440);border-radius:12px;background:color-mix(in srgb,var(--surface,#111820) 82%,transparent)}
+.branding-content-section h4{margin:0;font-size:1rem}
+.branding-upload-grid,.branding-copy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.branding-upload{display:flex;align-items:center;justify-content:center;min-height:42px;cursor:pointer}
+.branding-content-section textarea{min-height:76px;resize:vertical}
+.campaign-preview{display:grid;justify-items:center;gap:8px;padding:12px;border-radius:14px;background-size:cover;background-position:center;color:#f3f6f9}.campaign-preview>img{max-width:140px;max-height:48px;object-fit:contain}.campaign-preview>strong{font-size:1.05rem}.campaign-preview>span{text-align:center;font-size:.85rem}.campaign-preview .roulette-3d-preview{width:100%}
+@media(max-width:720px){.branding-upload-grid,.branding-copy-grid{grid-template-columns:1fr}}
