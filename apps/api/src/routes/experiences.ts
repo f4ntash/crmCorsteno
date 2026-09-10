@@ -4,6 +4,7 @@ import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
+import { buildRouletteOutcomes } from '../services/roulette-selector';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -211,6 +212,42 @@ export function validParticipationConfig(value: unknown) {
     && (config.cooldownSeconds === undefined || typeof config.cooldownSeconds === 'number' && Number.isInteger(config.cooldownSeconds) && config.cooldownSeconds >= 0 && config.cooldownSeconds <= 604800);
 }
 
+export type PublishReadinessIssue = { code: string; path: string; message: string };
+
+export function validateRoulettePublishReadiness(value: unknown): PublishReadinessIssue[] {
+  if (!validDraftConfig(value)) {
+    const config = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    if (!config) return [{ code: 'CONFIG_MISSING', path: 'config', message: 'Falta configurar la ruleta.' }];
+    const issues: PublishReadinessIssue[] = [];
+    if (config.schemaVersion !== 1) issues.push({ code: 'CONFIG_VERSION', path: 'schemaVersion', message: 'La configuración de la ruleta no es compatible.' });
+    if (!Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) issues.push({ code: 'SEGMENT_COUNT', path: 'segments', message: 'La ruleta debe tener entre 6 y 10 segmentos.' });
+    if (!Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5) issues.push({ code: 'PRIZE_COUNT', path: 'prizes', message: 'Debe existir al menos un premio configurado.' });
+    if (Array.isArray(config.segments) && Array.isArray(config.prizes)) {
+      const prizeIds = new Set(config.prizes.filter((item) => item && typeof item === 'object' && !Array.isArray(item)).map((item) => (item as Record<string, unknown>).id).filter((id): id is string => typeof id === 'string'));
+      const invalidSegment = config.segments.some((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+        const segment = item as Record<string, unknown>;
+        return typeof segment.id !== 'string' || typeof segment.color !== 'string' || (segment.prizeId !== null && !prizeIds.has(segment.prizeId as string));
+      });
+      if (invalidSegment) issues.push({ code: 'SEGMENTS_INVALID', path: 'segments', message: 'Hay segmentos inválidos o con premios inexistentes.' });
+      const invalidPrize = config.prizes.some((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+        const prize = item as Record<string, unknown>;
+        return typeof prize.id !== 'string' || typeof prize.name !== 'string' || !prize.name.trim();
+      });
+      if (invalidPrize) issues.push({ code: 'PRIZES_INVALID', path: 'prizes', message: 'Hay premios incorrectamente configurados.' });
+    }
+    return issues.length ? issues : [{ code: 'CONFIG_INVALID', path: 'config', message: 'La configuración de la ruleta está incompleta.' }];
+  }
+  const config = value as DraftConfig;
+  const inventory = new Map(config.prizes.map((prize) => {
+    const normalized = normalizePrizeConfig(prize);
+    return [normalized.id, { stockMode: normalized.stockMode, stockAvailable: normalized.stockMode === 'limited' ? normalized.initialStock ?? 0 : null, deliveredCount: 0 }] as const;
+  }));
+  const outcomes = buildRouletteOutcomes(config, inventory);
+  return outcomes.length ? [] : [{ code: 'NO_USABLE_OUTCOME', path: 'segments', message: 'Falta configurar un resultado válido.' }];
+}
+
 async function syncPrizeInventory(db: D1Database, experienceId: string, config: DraftConfig) {
   for (const prize of config.prizes) {
     const normalized = normalizePrizeConfig(prize);
@@ -282,11 +319,14 @@ experienceRoutes.post('/:id/publish', async (c) => {
   const organizationId = c.get('organization').id;
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
-  const draft = parseJson(row.draftConfig as string | null);
-  if (!validDraftConfig(draft)) return c.json(bad('Invalid roulette draft_config'), 400);
-  const snapshot = JSON.stringify(draft);
+  let draft: JsonValue | null;
+  try { draft = parseJson(row.draftConfig as string | null); } catch { draft = null; }
+  const readinessIssues = validateRoulettePublishReadiness(draft);
+  if (readinessIssues.length) return c.json({ error: { code: 'PUBLISH_NOT_READY', message: 'La experiencia no está lista para publicar.', issues: readinessIssues } }, 422);
+  const readyDraft = draft as DraftConfig;
+  const snapshot = JSON.stringify(readyDraft);
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
-  await syncPrizeInventory(c.env.DB, id, draft);
+  await syncPrizeInventory(c.env.DB, id, readyDraft);
   await ensureAnalyticsApplication(c.env.DB, id, organizationId, String(row.name ?? 'Roulette'));
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }

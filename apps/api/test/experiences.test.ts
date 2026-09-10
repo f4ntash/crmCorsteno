@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import app from '../src';
-import { validDraftConfig } from '../src/routes/experiences';
+import { validDraftConfig, validateRoulettePublishReadiness } from '../src/routes/experiences';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
 type AccessPeriod = { id: string; experience_id: string; organization_id: string; starts_at: string; ends_at: string; source: string; created_at: string; created_by: string | null; note: string | null };
@@ -150,7 +150,26 @@ describe('experience publishing', () => {
   });
   it('rejects invalid drafts and experiences from another organization', async () => {
     expect((await request('/experiences/b/publish', fixture(validDraft), { method: 'POST' })).status).toBe(404);
-    expect((await request('/experiences/a/publish', fixture('{"segments":[]}'), { method: 'POST' })).status).toBe(400);
+    const response = await request('/experiences/a/publish', fixture('{"segments":[]}'), { method: 'POST' });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual(expect.objectContaining({ error: expect.objectContaining({ code: 'PUBLISH_NOT_READY', issues: expect.arrayContaining([expect.objectContaining({ code: 'SEGMENT_COUNT' })]) }) }));
+  });
+  it('keeps incomplete drafts saveable while blocking publish readiness', async () => {
+    expect(validateRoulettePublishReadiness({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio' }], segments: [] })).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'SEGMENT_COUNT' })]));
+    const env = fixture();
+    expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ draft_config: { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio' }], segments: sixSegments() } }) })).status).toBe(200);
+  });
+  it('blocks configurations without a usable outcome', async () => {
+    const config = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio', enabled: true, stockMode: 'limited', initialStock: 0 }], segments: sixSegments() };
+    const response = await request('/experiences/a/publish', fixture(JSON.stringify(config)), { method: 'POST' });
+    expect(response.status).toBe(422);
+    expect((await response.json() as any).error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'NO_USABLE_OUTCOME', message: 'Falta configurar un resultado válido.' })]));
+  });
+  it('publishes valid, no-prize, disabled-prize, and individually sold-out configurations when playable', async () => {
+    const noPrize = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio' }], segments: sixSegments().map((segment) => ({ ...segment, prizeId: null })) };
+    expect((await request('/experiences/a/publish', fixture(JSON.stringify(noPrize)), { method: 'POST' })).status).toBe(200);
+    const mixed = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'sold', name: 'Agotado', enabled: true, stockMode: 'limited' as const, initialStock: 0 }, { id: 'valid', name: 'Disponible', enabled: true, stockMode: 'unlimited' as const }, { id: 'disabled', name: 'Deshabilitado', enabled: false }], segments: sixSegments().map((segment, index) => ({ ...segment, prizeId: index < 2 ? 'sold' : index < 4 ? 'valid' : 'disabled' })) };
+    expect((await request('/experiences/a/publish', fixture(JSON.stringify(mixed)), { method: 'POST' })).status).toBe(200);
   });
 });
 
@@ -270,7 +289,7 @@ describe('authoritative experience spin history', () => {
     const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 1 }], segments: sixSegments() }); const env = fixture(limited); expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200); const spinResult = await spin(env); const item = (await history(env)).items[0]; expect(item).toMatchObject({ id: spinResult.spinId, prizeId: 'prize-1', outcomeType: 'prize' }); expect((env as any).__inventoryEvents).toEqual([expect.objectContaining({ spinId: spinResult.spinId, type: 'prize_delivered', quantity: 1 })]); const inventory = await request('/experiences/a/inventory', env); expect((await inventory.json() as { items: Array<{ stockAvailable: number; deliveredCount: number }> }).items[0]).toMatchObject({ stockAvailable: 0, deliveredCount: 1 });
   });
   it('does not create a successful history row for exhausted limited stock', async () => {
-    const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 0 }], segments: sixSegments() }); const env = fixture(limited); expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200); const response = await request('/public/experiences/a/spin', env, { method: 'POST' }); expect(response.status).toBe(200); expect(await response.json()).toEqual({ active: false, reason: 'unavailable' }); expect((await history(env)).items).toHaveLength(0);
+    const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 0 }], segments: sixSegments() }); const env = fixture(limited, 'published', limited); expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(422); const response = await request('/public/experiences/a/spin', env, { method: 'POST' }); expect(response.status).toBe(200); expect(await response.json()).toEqual({ active: false, reason: 'unavailable' }); expect((await history(env)).items).toHaveLength(0);
   });
   it('recovers the same active claim after a runtime refresh without creating another claim', async () => { const ids = { device: '11111111-1111-4111-8111-111111111111', session: '33333333-3333-4333-8333-333333333333' }; const config = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', redemption: { enabled: true } }], segments: sixSegments(), participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } }); const env = fixture(config, 'published', config); const spin = await request('/public/experiences/a/spin', env, { method: 'POST', body: JSON.stringify({ deviceId: ids.device, sessionId: ids.session }) }); expect(spin.status).toBe(200); const first = await spin.json() as { spinId: string }; const recovered = await request('/public/experiences/a', env, { headers: { 'X-Anonymous-User-Id': ids.device, 'X-Session-Id': ids.session } }); expect(recovered.status).toBe(200); expect(await recovered.json()).toEqual(expect.objectContaining({ experience: expect.objectContaining({ recovery: expect.objectContaining({ spinId: first.spinId, claim: expect.objectContaining({ status: 'active' }) }) }) })); expect((env as any).__claims).toHaveLength(1); });
   it('recovers an already redeemed claim as redeemed and never for invalid identity', async () => { const ids = { device: '11111111-1111-4111-8111-111111111111', session: '33333333-3333-4333-8333-333333333333' }; const config = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', redemption: { enabled: true } }], segments: sixSegments(), participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } }); const env = fixture(config, 'published', config); await request('/public/experiences/a/spin', env, { method: 'POST', body: JSON.stringify({ deviceId: ids.device, sessionId: ids.session }) }); const claimId = (env as any).__claims[0].id; const redeemed = await request(`/experiences/a/claims/${claimId}/redeem`, env, { method: 'POST' }); expect(redeemed.status).toBe(200); (env as any).__claims[0].status = 'redeemed'; const recovered = await request('/public/experiences/a', env, { headers: { 'X-Anonymous-User-Id': ids.device, 'X-Session-Id': ids.session } }); expect((await recovered.json() as any).experience.recovery.claim.status).toBe('redeemed'); const invalid = await request('/public/experiences/a', env, { headers: { 'X-Anonymous-User-Id': 'invalid-device', 'X-Session-Id': ids.session } }); expect((await invalid.json() as any).experience.recovery).toBeUndefined(); });
