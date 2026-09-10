@@ -8,6 +8,7 @@ import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
 import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { ProbabilitySummary } from './ProbabilitySummary';
+import { calculateEffectiveRouletteProbabilities } from '@corsteno/types';
 
 type Inventory = {
   prizeId: string;
@@ -19,6 +20,7 @@ type Inventory = {
   stockAvailable: number | null;
   deliveredCount: number;
 };
+type PrizeOperations = { wins: number; claimsGenerated: number; claimsRedeemed: number; claimsPending: number };
 export function RouletteEditor({
   org,
   id,
@@ -52,6 +54,7 @@ export function RouletteEditor({
 }
 function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable, canEdit, canAdjustInventory, onDirtyChange }: { org: string; id: string; redemptionAvailable: boolean; brandingAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean; onDirtyChange?: (dirty: boolean) => void }) {
   const [inventory, setInventory] = useState<Inventory[]>([]);
+  const [operations, setOperations] = useState<Record<string, PrizeOperations>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -80,6 +83,15 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
       .inventory(id, org)
       .then((result) => setInventory(result.items))
       .catch(() => setInventory([]));
+  const reloadOperations = () => Promise.allSettled([
+    experiencesApi.spins(id, org, { limit: 1 }),
+    experiencesApi.claims(id, org),
+  ]).then(([spinsResult, claimsResult]) => {
+    const next: Record<string, PrizeOperations> = {};
+    if (spinsResult.status === 'fulfilled') Object.entries(spinsResult.value.summary.byPrize ?? {}).forEach(([prizeId, wins]) => { next[prizeId] = { wins, claimsGenerated: 0, claimsRedeemed: 0, claimsPending: 0 }; });
+    if (claimsResult.status === 'fulfilled') Object.entries(claimsResult.value.summary.byPrize ?? {}).forEach(([prizeId, counts]) => { next[prizeId] = { ...(next[prizeId] ?? { wins: 0 }), claimsGenerated: counts.generated, claimsRedeemed: counts.redeemed, claimsPending: counts.pending }; });
+    setOperations(next);
+  });
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
@@ -88,7 +100,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
     apiRequest<Experience & { draftConfig: unknown }>(`/experiences/${id}`, org)
       .then((experience) => {
         reset(experience.draftConfig);
-        void reloadInventory();
+        void Promise.all([reloadInventory(), reloadOperations()]);
       })
       .catch(() => setError('No se pudo cargar la experiencia.'))
       .finally(() => setLoading(false));
@@ -174,6 +186,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
     },
   };
   const previewUrl = `${runtimeBaseUrl}/test/experiences/${encodeURIComponent(id)}?org=${encodeURIComponent(org)}&returnTo=${encodeURIComponent(window.location.href)}`;
+  const probabilityByPrize = new Map(calculateEffectiveRouletteProbabilities(draft, new Map(inventory.map((item) => [item.prizeId, item]))).outcomes.filter((outcome) => outcome.prizeId !== null).map((outcome) => [outcome.prizeId!, outcome.probability]));
   return (
     <div className="roulette-workspace">
       <div className="editor-grid roulette-config-grid">
@@ -294,6 +307,8 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
               key={prize.id}
               prize={prize}
               inventory={inventory.find((x) => x.prizeId === prize.id)}
+              operations={operations[prize.id]}
+              probability={probabilityByPrize.get(prize.id)}
               experienceId={id}
               organizationId={org}
               redemptionAvailable={redemptionAvailable}
@@ -368,16 +383,17 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
           const entry = inventory.find((x) => x.prizeId === prize.id);
           return (
             <div className="inventory-row" key={prize.id}>
-              <span>{prize.name}</span>
+              <span className="inventory-prize-name">{prize.iconUrl && <img src={prize.iconUrl} alt="" width="32" height="32" />}{prize.name}</span>
               <span>{prize.enabled === false ? 'Inactivo' : 'Activo'}</span>
               <span>Peso {prize.weight ?? 1}</span>
               <span>
                 {entry?.stockMode === 'unlimited' ||
-                prize.stockMode !== 'limited'
+                (entry?.stockMode === undefined && prize.stockMode !== 'limited')
                   ? 'Ilimitado'
                   : `${entry?.stockAvailable ?? 0} disponibles`}
               </span>
-              <span>{entry?.deliveredCount ?? 0} entregados</span>
+              <span>{entry?.deliveredCount ?? 0} ganados</span>
+              {operations[prize.id] && <span className="inventory-claim-summary">{operations[prize.id]!.claimsGenerated} claims · {operations[prize.id]!.claimsPending} pendientes · {operations[prize.id]!.claimsRedeemed} canjeados</span>}
               {prize.stockMode === 'limited' && (
                 <>
                   <button
@@ -430,8 +446,9 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
                 onChange={(e) => setAmount(e.target.value)}
               />
             </label>
+            {(() => { const current = inventory.find((entry) => entry.prizeId === adjusting.prizeId)?.stockAvailable ?? 0; const change = Number(amount); const next = Number.isInteger(change) ? current + adjusting.sign * change : current; return <p className="field-help">Stock actual: <strong>{current}</strong> → después: <strong>{next}</strong>{next < 0 && ' · No puede quedar negativo'}</p>; })()}
             {adjustError && <p className="error">{adjustError}</p>}
-            <button onClick={() => void adjust()}>Confirmar</button>
+            <button disabled={(() => { const current = inventory.find((entry) => entry.prizeId === adjusting.prizeId)?.stockAvailable ?? 0; const value = Number(amount); return !Number.isInteger(value) || value < 1 || current + adjusting.sign * value < 0; })()} onClick={() => void adjust()}>Confirmar</button>
             <button className="secondary" onClick={() => setAdjusting(null)}>
               Cancelar
             </button>
@@ -447,6 +464,8 @@ function PrizeEditor({
   experienceId,
   organizationId,
   redemptionAvailable,
+  operations,
+  probability,
   onChange,
 }: {
   prize: Prize;
@@ -454,6 +473,8 @@ function PrizeEditor({
   experienceId: string;
   organizationId: string;
   redemptionAvailable: boolean;
+  operations?: PrizeOperations;
+  probability?: number;
   onChange: (prize: Prize) => void;
 }) {
   const [error, setError] = useState('');
@@ -483,6 +504,7 @@ function PrizeEditor({
   }
   return (
     <div className="prize-editor">
+      <div className="prize-operations-summary"><div className="prize-operations-title">{prize.iconUrl && <img src={prize.iconUrl} alt="" width="32" height="32" />}<strong>{prize.name || 'Premio sin nombre'}</strong></div><span>{probability === undefined ? 'Sin posibilidad de salir' : `${probability.toFixed(1)}% de probabilidad efectiva`}</span><span>{prize.enabled === false ? 'Premio desactivado' : (inventory?.stockMode ?? prize.stockMode ?? 'unlimited') === 'limited' ? `Stock limitado: ${inventory?.stockAvailable ?? 0} restantes${(inventory?.stockAvailable ?? 0) <= 0 ? ' · Agotado' : (inventory?.stockAvailable ?? 0) <= 3 ? ' · Stock bajo' : ''}` : 'Stock ilimitado'}</span>{operations && <small>{operations.wins} ganados · {operations.claimsGenerated} claims · {operations.claimsPending} pendientes · {operations.claimsRedeemed} canjeados</small>}</div>
       <input
         value={prize.name}
         onChange={(e) => onChange({ ...prize, name: e.target.value })}

@@ -104,8 +104,9 @@ experienceRoutes.get('/:id/claims', async (c) => {
   if (query.prizeId) { where += ' AND prize_id=?'; values.push(query.prizeId); }
   const rows = await c.env.DB.prepare(`SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset).all<Record<string, unknown>>();
   const summary = await c.env.DB.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status='redeemed' THEN 1 ELSE 0 END) redeemed FROM roulette_prize_claims WHERE ${where}`).bind(...values).first<{ total: number; redeemed: number | null }>();
+  const byPrizeRows = await c.env.DB.prepare(`SELECT prize_id prizeId,COUNT(*) generated,SUM(CASE WHEN status='redeemed' THEN 1 ELSE 0 END) redeemed FROM roulette_prize_claims WHERE ${where} GROUP BY prize_id`).bind(...values).all<{ prizeId: string; generated: number; redeemed: number | null }>();
   const total = Number(summary?.total ?? rows.results.length);
-  return c.json({ items: rows.results.map(presentClaim), summary: { generated: total, redeemed: Number(summary?.redeemed ?? 0), pending: Math.max(0, total - Number(summary?.redeemed ?? 0)) }, pagination: { limit, offset, total, nextOffset: rows.results.length === limit ? offset + limit : null } });
+  return c.json({ items: rows.results.map(presentClaim), summary: { generated: total, redeemed: Number(summary?.redeemed ?? 0), pending: Math.max(0, total - Number(summary?.redeemed ?? 0)), byPrize: Object.fromEntries(byPrizeRows.results.map((row) => [row.prizeId, { generated: Number(row.generated), redeemed: Number(row.redeemed ?? 0), pending: Math.max(0, Number(row.generated) - Number(row.redeemed ?? 0)) }])) }, pagination: { limit, offset, total, nextOffset: rows.results.length === limit ? offset + limit : null } });
 });
 
 experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
@@ -506,8 +507,9 @@ experienceRoutes.get('/:id/spins', async (c) => {
   if (query.to) { where += ' AND created_at<=?'; values.push(query.to); }
   const rows = await c.env.DB.prepare(`SELECT id,experience_id experienceId,organization_id organizationId,application_id applicationId,segment_id segmentId,segment_index segmentIndex,prize_id prizeId,outcome_type outcomeType,created_at createdAt FROM experience_spins WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset).all<ExperienceSpin>();
   const total = await c.env.DB.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN outcome_type='prize' THEN 1 ELSE 0 END) prizesWon FROM experience_spins WHERE ${where}`).bind(...values).first<{ total: number; prizesWon: number | null }>();
+  const byPrizeRows = await c.env.DB.prepare(`SELECT prize_id prizeId,COUNT(*) won FROM experience_spins WHERE ${where} AND outcome_type='prize' AND prize_id IS NOT NULL GROUP BY prize_id`).bind(...values).all<{ prizeId: string; won: number }>();
   const totalCount = Number(total?.total ?? rows.results.length);
-  return c.json({ items: rows.results, summary: { completed: totalCount, prizesWon: Number(total?.prizesWon ?? 0) }, pagination: { limit, offset, total: totalCount, nextOffset: rows.results.length === limit ? offset + limit : null } });
+  return c.json({ items: rows.results, summary: { completed: totalCount, prizesWon: Number(total?.prizesWon ?? 0), byPrize: Object.fromEntries(byPrizeRows.results.map((row) => [row.prizeId, Number(row.won)])) }, pagination: { limit, offset, total: totalCount, nextOffset: rows.results.length === limit ? offset + limit : null } });
 });
 
 experienceRoutes.get('/:id', async (c) => {
