@@ -4,6 +4,7 @@ import { apiRequest } from '../../../shared/api/client';
 import { commercialApi, type Plan } from '../../commercial/api';
 import { experiencesApi } from '../../experiences/api';
 import { rouletteTemplates } from '../../roulette/templates';
+import { publicExperienceUrl } from '../../../shared/runtime/publicExperienceUrl';
 
 type Mode = 'later' | 'offline' | 'free' | 'courtesy' | 'configure';
 type Created = {
@@ -151,6 +152,7 @@ export function ClientOnboardingPage() {
     }
   }
   const selectedPlan = plans.find((plan) => plan.id === planId);
+  const publicUrl = created ? publicExperienceUrl(created.slug) : '';
   return (
     <main className="page onboarding-page">
       <div className="page-heading onboarding-heading">
@@ -380,12 +382,12 @@ export function ClientOnboardingPage() {
           <>
             <header className="onboarding-card-heading">
               <h2>6. QR listo</h2>
-              <p className="onboarding-url">{`${import.meta.env.VITE_RUNTIME_BASE_URL ?? 'http://localhost:5174'}/r/${encodeURIComponent(created.slug)}`}</p>
+              <p className="onboarding-url">{publicUrl}</p>
             </header>
             <div className="onboarding-actions">
               <a
                 className="button"
-                href={`${import.meta.env.VITE_RUNTIME_BASE_URL ?? 'http://localhost:5174'}/r/${encodeURIComponent(created.slug)}`}
+                href={publicUrl}
                 target="_blank"
                 rel="noreferrer"
               >
