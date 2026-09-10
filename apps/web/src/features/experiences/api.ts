@@ -105,13 +105,15 @@ export const experiencesApi = {
     ).toString();
     return apiRequest<{
       items: ExperienceSpin[];
-      pagination: { limit: number; offset: number; nextOffset: number | null };
+      summary: { completed: number; prizesWon: number };
+      pagination: { limit: number; offset: number; total: number; nextOffset: number | null };
     }>(`/experiences/${id}/spins${query ? `?${query}` : ''}`, organizationId);
   },
   claims: (id: string, organizationId: string, code?: string) =>
     apiRequest<{
       items: PrizeClaim[];
-      pagination: { nextOffset: number | null };
+      summary: { generated: number; redeemed: number; pending: number };
+      pagination: { limit: number; offset: number; total: number; nextOffset: number | null };
     }>(
       `/experiences/${id}/claims${code ? `?code=${encodeURIComponent(code)}` : ''}`,
       organizationId,

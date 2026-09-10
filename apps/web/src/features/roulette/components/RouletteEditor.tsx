@@ -362,7 +362,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
           </div>
         </section>
       </div>
-      <section className="card inventory-panel">
+      <section id="inventory" className="card inventory-panel">
         <div className="workspace-section-heading"><div><h3>Inventario operativo en vivo</h3><p className="field-help">Los ajustes cambian el saldo actual; republicar no lo reinicia.</p></div></div>
         {draft.prizes.map((prize) => {
           const entry = inventory.find((x) => x.prizeId === prize.id);
