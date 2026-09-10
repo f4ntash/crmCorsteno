@@ -13,7 +13,7 @@ import type { ARExperienceState } from '../xr/ARExperience';
 import type { CommercialEntitlements } from '@corsteno/types';
 import { subscriptionHasFeature } from '../../api/commercialEntitlements';
 
-export function Roulette3DView({ config, slug, entitlements, prizeAvailability }: { config: Roulette3DConfig; slug: string; entitlements?: CommercialEntitlements; prizeAvailability?: Record<string, 'available' | 'sold_out'> }) {
+export function Roulette3DView({ config, slug, entitlements, prizeAvailability, initialResult }: { config: Roulette3DConfig; slug: string; entitlements?: CommercialEntitlements; prizeAvailability?: Record<string, 'available' | 'sold_out'>; initialResult?: SpinResult }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Roulette3D | undefined>(undefined);
   const xrManagerRef = useRef<XRManager | undefined>(undefined);
@@ -21,15 +21,15 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability }
   const [spinning, setSpinning] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<SpinResult | null>(null);
   const [arStatus, setArStatus] = useState<ARCapabilityStatus>('unknown');
   const [arState, setArState] = useState<ARExperienceState | null>(null);
   const [arError, setArError] = useState('');
   const participationKey = `corsteno:participated:${slug}`;
   const [participated, setParticipated] = useState(() => {
-    try { return window.localStorage.getItem(participationKey) === '1'; } catch { return false; }
+    try { return Boolean(initialResult) || window.localStorage.getItem(participationKey) === '1'; } catch { return Boolean(initialResult); }
   });
   const [availability, setAvailability] = useState(prizeAvailability);
+  const [result, setResult] = useState<SpinResult | null>(initialResult ?? null);
   const pendingResult = useRef<SpinResult | null>(null);
   const analytics = useRef(createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
   const participant = useRef(getParticipantIdentity());

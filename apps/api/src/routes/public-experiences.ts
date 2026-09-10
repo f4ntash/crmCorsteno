@@ -97,9 +97,24 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   let config: unknown;
   try { config = parseJson(row.published_config); } catch { return c.json({ active: false, reason: 'unavailable' }, 503); }
   if (!config || !validDraftConfig(config)) return c.json({ active: false, reason: 'unavailable' }, 503);
-  const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: string; stockAvailable: number | null }>();
-  const prizeAvailability = Object.fromEntries(inventoryRows.results.map((item) => [item.prizeId, item.stockMode === 'limited' && (item.stockAvailable ?? 0) <= 0 ? 'sold_out' : 'available']));
-  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at, featureEntitlements: entitlements, prizeAvailability } });
+  const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable FROM experience_prize_inventory WHERE experience_id=?').bind(row.id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null }>();
+  const prizeAvailability = Object.fromEntries(inventoryRows.results.map((item) => [item.prizeId, item.stockMode === 'limited' && (item.stockAvailable ?? 0) <= 0 ? 'sold_out' : 'available'])) as Record<string, 'available' | 'sold_out'>;
+  const inventory = new Map(inventoryRows.results.map((item) => [item.prizeId, { ...item, deliveredCount: 0 }]));
+  const configuredWinningPrize = config.prizes.some((prize) => prize.enabled !== false && config.segments.some((segment) => segment.prizeId === prize.id));
+  const hasAvailableWinningPrize = buildRouletteOutcomes(config, inventory).some((outcome) => outcome.prizeId !== null);
+  if (configuredWinningPrize && !hasAvailableWinningPrize) return c.json({ active: false, reason: 'sold_out' });
+  let recovery: { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null; claim: { code: string; status: 'active' | 'redeemed' }; prizeAvailability: Record<string, 'available' | 'sold_out'> } | undefined;
+  const deviceId = c.req.header('X-Anonymous-User-Id') ?? null;
+  const sessionId = c.req.header('X-Session-Id') ?? null;
+  if (validParticipantId(deviceId) && validParticipantId(sessionId)) {
+    const recovered = await c.env.DB.prepare('SELECT s.id spinId,s.segment_id segmentId,s.segment_index segmentIndex,s.prize_id prizeId,c.code,c.status FROM experience_spins s JOIN roulette_prize_claims c ON c.spin_id=s.id AND c.experience_id=s.experience_id AND c.organization_id=s.organization_id WHERE s.experience_id=? AND s.organization_id=? AND s.participant_device_id=? AND s.participant_session_id=? AND c.status IN (\'active\',\'redeemed\') ORDER BY s.created_at DESC LIMIT 1').bind(row.id, row.organization_id, deviceId, sessionId).first<{ spinId: string; segmentId: string; segmentIndex: number; prizeId: string; code: string; status: 'active' | 'redeemed' }>();
+    if (recovered) {
+      const segment = config.segments[recovered.segmentIndex];
+      const prize = config.prizes.find((item) => item.id === recovered.prizeId);
+      if (segment && prize) recovery = { spinId: recovered.spinId, segmentIndex: recovered.segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null }, claim: { code: recovered.code, status: recovered.status }, prizeAvailability };
+    }
+  }
+  return c.json({ active: true, experience: { id: row.id, type: row.type, config, startsAt: row.starts_at, endsAt: row.ends_at, featureEntitlements: entitlements, prizeAvailability, recovery } });
 });
 
 publicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
