@@ -1,4 +1,4 @@
-export type RoulettePrize = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; redemption?: { enabled?: boolean } };
+export type RoulettePrize = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null; redemption?: { enabled?: boolean } };
 export type RouletteSegment = { id: string; color: string; prizeId: string | null };
 export type RouletteParticipation = { maxSpinsPerDevice: number | null; maxSpinsPerSession: number | null; cooldownSeconds: number };
 export type RouletteBranding = { logoUrl?: string | null; backgroundImageUrl?: string | null };

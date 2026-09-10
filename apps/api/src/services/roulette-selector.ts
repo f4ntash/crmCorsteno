@@ -1,8 +1,8 @@
-export type RouletteOutcome = { prizeId: string | null; weight: number; segmentIndices: readonly number[] };
+import { buildEffectiveRouletteOutcomes } from '@corsteno/types';
+import type { RouletteEffectiveOutcome } from '@corsteno/types';
+
+export type RouletteOutcome = RouletteEffectiveOutcome;
 type RouletteSelectionConfig = { segments: readonly unknown[] };
-type PrizeRule = { id: string; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null };
-type SegmentRule = { prizeId: string | null; weight?: number };
-type InventoryRule = { stockMode: 'limited' | 'unlimited'; stockAvailable: number | null; deliveredCount: number };
 
 const UINT32_RANGE = 0x1_0000_0000;
 
@@ -28,29 +28,7 @@ export function selectLocalAcceptanceOutcome(outcomes: readonly RouletteOutcome[
   return selectRouletteOutcome(outcomes, randomValue);
 }
 
-export function buildRouletteOutcomes(config: { prizes: readonly PrizeRule[]; segments: readonly SegmentRule[] }, inventory: ReadonlyMap<string, InventoryRule>) {
-  const groups = new Map<string, number[]>();
-  for (let index = 0; index < config.segments.length; index += 1) {
-    const key = config.segments[index]!.prizeId ?? '__no_prize__';
-    const group = groups.get(key);
-    if (group) group.push(index);
-    else groups.set(key, [index]);
-  }
-  const outcomes: RouletteOutcome[] = [];
-  for (const prize of config.prizes) {
-    const segmentIndices = groups.get(prize.id);
-    if (!segmentIndices || prize.enabled === false || (prize.weight ?? 1) <= 0) continue;
-    const stock = inventory.get(prize.id);
-    const legacyLimited = prize.stockMode === undefined && prize.stockLimit !== undefined && prize.stockLimit !== null;
-    const stockMode = stock?.stockMode ?? prize.stockMode ?? (legacyLimited ? 'limited' : 'unlimited');
-    const stockAvailable = stock?.stockAvailable ?? (stockMode === 'limited' ? prize.initialStock ?? prize.stockLimit ?? 0 : null);
-    if (stockMode === 'limited' && (stockAvailable ?? 0) <= 0) continue;
-    outcomes.push({ prizeId: prize.id, weight: prize.weight ?? 1, segmentIndices });
-  }
-  const noPrizeSegments = groups.get('__no_prize__');
-  if (noPrizeSegments) outcomes.push({ prizeId: null, weight: 1, segmentIndices: noPrizeSegments });
-  return outcomes;
-}
+export const buildRouletteOutcomes = buildEffectiveRouletteOutcomes;
 
 export function selectOutcomeSegment(outcome: RouletteOutcome, randomValue: number) {
   if (!outcome.segmentIndices.length) throw new Error('roulette outcome has no segments');

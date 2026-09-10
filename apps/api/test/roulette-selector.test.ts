@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRouletteOutcomes, secureRandomIndex, selectLocalAcceptanceOutcome, selectRouletteOutcome, selectRouletteSegment } from '../src/services/roulette-selector';
+import { calculateEffectiveRouletteProbabilities } from '@corsteno/types';
 
 describe('roulette selector', () => {
   it('forces only a configured local development prize and never in production', () => {
@@ -41,5 +42,20 @@ describe('roulette selector', () => {
     ]);
     const outcomes = buildRouletteOutcomes({ prizes: [{ id: 'limited-empty' }, { id: 'unlimited' }, { id: 'disabled', enabled: false }], segments: [{ prizeId: 'limited-empty' }, { prizeId: 'unlimited' }, { prizeId: 'disabled' }, { prizeId: null }] }, inventory);
     expect(outcomes.map((x) => x.prizeId)).toEqual(['unlimited', null]);
+  });
+
+  it('calculates effective probabilities from the exact selector outcomes', () => {
+    const config = { prizes: [{ id: 'a', weight: 3 }, { id: 'b', weight: 1 }], segments: [{ prizeId: 'a' }, { prizeId: 'b' }, { prizeId: null }] };
+    const inventory = new Map();
+    const outcomes = buildRouletteOutcomes(config, inventory);
+    const calculation = calculateEffectiveRouletteProbabilities(config, inventory);
+    expect(calculation.outcomes.map(({ prizeId, weight, segmentIndices }) => ({ prizeId, weight, segmentIndices }))).toEqual(outcomes);
+    expect(calculation.outcomes.map((item) => item.probability)).toEqual([60, 20, 20]);
+    expect(calculation.totalWeight).toBe(5);
+    expect(calculation.outcomes.reduce((sum, item) => sum + item.probability, 0)).toBeCloseTo(100);
+  });
+
+  it('returns no probability for an incomplete configuration', () => {
+    expect(calculateEffectiveRouletteProbabilities({ prizes: [{ id: 'a' }], segments: [] }, new Map())).toEqual({ totalWeight: 0, outcomes: [] });
   });
 });

@@ -10,20 +10,12 @@ import { RouletteHaptics } from './RouletteHaptics';
 import { getARCapabilities, type ARCapabilityStatus } from '../xr/xrCapabilities';
 import { XRManager } from '../xr/XRManager';
 import type { ARExperienceState } from '../xr/ARExperience';
-import type { CommercialEntitlements } from '@corsteno/types';
+import { buildEffectiveRouletteOutcomes, type CommercialEntitlements } from '@corsteno/types';
 import { subscriptionHasFeature } from '../../api/commercialEntitlements';
 
 export function simulateTestSpin(config: Roulette3DConfig, prizeAvailability?: Record<string, 'available' | 'sold_out'>): SpinResult {
-  const groups = new Map<string, number[]>();
-  config.segments.forEach((segment, index) => { const key = segment.prizeId ?? '__no_prize__'; groups.set(key, [...(groups.get(key) ?? []), index]); });
-  const outcomes: Array<{ prizeId: string | null; weight: number; segmentIndices: number[] }> = [];
-  for (const prize of config.prizes) {
-    const segmentIndices = groups.get(prize.id);
-    if (!segmentIndices || prize.enabled === false || (prize.weight ?? 1) <= 0 || prizeAvailability?.[prize.id] === 'sold_out') continue;
-    outcomes.push({ prizeId: prize.id, weight: prize.weight ?? 1, segmentIndices });
-  }
-  const noPrizeSegments = groups.get('__no_prize__');
-  if (noPrizeSegments) outcomes.push({ prizeId: null, weight: 1, segmentIndices: noPrizeSegments });
+  const inventory = new Map(config.prizes.map((prize) => [prize.id, { stockMode: prizeAvailability?.[prize.id] === 'sold_out' ? 'limited' as const : 'unlimited' as const, stockAvailable: prizeAvailability?.[prize.id] === 'sold_out' ? 0 : null, deliveredCount: 0 }]));
+  const outcomes = buildEffectiveRouletteOutcomes(config, inventory);
   const totalWeight = outcomes.reduce((total, outcome) => total + outcome.weight, 0);
   let cursor = Math.random() * totalWeight;
   const outcome = outcomes.find((item) => { cursor -= item.weight; return cursor < 0; }) ?? outcomes[outcomes.length - 1];

@@ -7,6 +7,7 @@ import type { RoulettePrize as Prize } from '../types';
 import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
 import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
+import { ProbabilitySummary } from './ProbabilitySummary';
 
 type Inventory = {
   prizeId: string;
@@ -338,6 +339,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
               />
             </div>
           ))}
+          <ProbabilitySummary draft={draft} inventory={inventory} valid={valid} />
           </fieldset><div className="save-row">
             {dirty && <span className="dirty">Cambios sin guardar</span>}
             {message && <span className="success">{message}</span>}
