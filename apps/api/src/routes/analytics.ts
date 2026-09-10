@@ -109,6 +109,18 @@ analyticsRoutes.get('/summary', async (c) => {
       return { successfulSpins, prizeWins, noPrize, claimsGenerated, claimsRedeemed };
     } catch { return null; }
   })();
+  const rouletteInsights = await (async () => {
+    try {
+      if (!s.q.applicationId) return undefined;
+      const application = await c.env.DB.prepare('SELECT application_type applicationType FROM applications WHERE id=? AND organization_id=?').bind(s.q.applicationId, s.org.id).first<{ applicationType: string }>();
+      if (application?.applicationType !== 'roulette') return undefined;
+      const completed = operational?.successfulSpins ?? count('roulette_spin_completed');
+      const won = operational?.prizeWins ?? count('roulette_prize_won');
+      const claimsGenerated = operational?.claimsGenerated ?? 0;
+      const claimsRedeemed = operational?.claimsRedeemed ?? 0;
+      return { participants: u?.n ?? 0, completedSpins: completed, winRate: completed ? won / completed : null, prizesWon: won, claimsGenerated, claimsRedeemed, redemptionRate: claimsGenerated ? claimsRedeemed / claimsGenerated : null, blockedParticipation: count('roulette_spin_blocked'), claimsApplicable: claimsGenerated > 0 };
+    } catch { return undefined; }
+  })();
   const last = await c.env.DB.prepare(
     `SELECT MAX(occurred_at) lastActivityAt FROM events WHERE ${s.where}`,
   )
@@ -155,6 +167,7 @@ analyticsRoutes.get('/summary', async (c) => {
       prizeConversion: started ? count('prize_won') / started : 0,
       rouletteConversion: count('experience_view') ? (operational?.successfulSpins ?? count('roulette_spin_started')) / count('experience_view') : 0,
     },
+    rouletteInsights,
   });
 });
 analyticsRoutes.get('/activity', async (c) => {
@@ -189,16 +202,25 @@ analyticsRoutes.get('/breakdown', async (c) => {
         const spinValues: (string | number)[] = [s.org.id, sinceIsoOf(s.range), s.q.applicationId];
         if (s.q.projectId) { spinWhere += ' AND a.project_id=?'; spinValues.push(s.q.projectId); }
         const spinRows = await c.env.DB.prepare(`SELECT s.prize_id prizeId,e.published_config publishedConfig,e.draft_config draftConfig FROM experience_spins s JOIN experiences e ON e.id=s.experience_id AND e.organization_id=s.organization_id JOIN applications a ON a.id=s.application_id AND a.organization_id=s.organization_id WHERE ${spinWhere}`).bind(...spinValues).all<{ prizeId: string; publishedConfig: string | null; draftConfig: string | null }>();
-        const counts = new Map<string, number>();
+        const counts = new Map<string, { prizeId: string; name: string; wins: number }>();
         for (const row of spinRows.results) {
           let name = row.prizeId;
           try {
             const config = JSON.parse(row.publishedConfig ?? row.draftConfig ?? '{}') as { prizes?: Array<{ id?: string; name?: string }> };
             name = config.prizes?.find((prize) => prize.id === row.prizeId)?.name ?? name;
           } catch { /* keep the stable prize id */ }
-          counts.set(name, (counts.get(name) ?? 0) + 1);
+          const current = counts.get(row.prizeId) ?? { prizeId: row.prizeId, name, wins: 0 };
+          current.wins += 1;
+          current.name = name;
+          counts.set(row.prizeId, current);
         }
-        return c.json({ dimension: d, items: [...counts].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value })) });
+        let claimWhere = 'c.organization_id=? AND c.created_at>=? AND es.application_id=?';
+        const claimValues: (string | number)[] = [s.org.id, sinceIsoOf(s.range), s.q.applicationId];
+        if (s.q.projectId) { claimWhere += ' AND a.project_id=?'; claimValues.push(s.q.projectId); }
+        const claimRows = await c.env.DB.prepare(`SELECT c.prize_id prizeId,COUNT(*) generated,SUM(CASE WHEN c.status='redeemed' THEN 1 ELSE 0 END) redeemed FROM roulette_prize_claims c JOIN experience_spins es ON es.id=c.spin_id AND es.organization_id=c.organization_id JOIN applications a ON a.id=es.application_id AND a.organization_id=es.organization_id WHERE ${claimWhere} GROUP BY c.prize_id`).bind(...claimValues).all<{ prizeId: string; generated: number; redeemed: number | null }>();
+        const claims = new Map(claimRows.results.map((row) => [row.prizeId, { generated: Number(row.generated), redeemed: Number(row.redeemed ?? 0) }]));
+        const totalWins = [...counts.values()].reduce((sum, item) => sum + item.wins, 0);
+        return c.json({ dimension: d, items: [...counts.values()].sort((a, b) => b.wins - a.wins).slice(0, 10).map((item) => { const claim = claims.get(item.prizeId); const generated = claim?.generated ?? 0; const redeemed = claim?.redeemed ?? 0; return { name: item.name, value: item.wins, prizeId: item.prizeId, wins: item.wins, shareOfWins: totalWins ? item.wins / totalWins : null, claimsGenerated: generated, pending: Math.max(0, generated - redeemed), redeemed, redemptionRate: generated ? redeemed / generated : null, claimsApplicable: claims.size > 0 }; }) });
       } catch { /* fall through to the legacy event breakdown for older fixtures */ }
     }
   }

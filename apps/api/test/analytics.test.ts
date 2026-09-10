@@ -186,7 +186,7 @@ function database(state: TestState): D1Database {
                     item.organizationId === args[1] &&
                     (!args[2] || item.projectId === args[2]),
                 );
-                return valid ? ({ id: args[0] } as T) : (null as T);
+                return valid ? ({ id: args[0], applicationType: args[0] === 'roulette-app' ? 'roulette' : 'generic' } as T) : (null as T);
               }
               if (sql.includes('COUNT(DISTINCT anonymous_user_id)'))
                 return {
@@ -385,6 +385,7 @@ describe('Analytics deterministic summary', () => {
       prizeConversion: 1 / 3,
       rouletteConversion: 0,
     });
+    expect((result.body as typeof result.body & { rouletteInsights?: unknown }).rouletteInsights).toBeUndefined();
   });
   it('uses zero-safe rates when no games started', async () => {
     const result = await request<{
@@ -407,6 +408,7 @@ describe('Analytics deterministic summary', () => {
     const result = await request<{ totals: Record<string, number>; rates: Record<string, number> }>('/analytics/summary?range=all&projectId=a1&applicationId=roulette-app', state(events, [{ organizationId: 'org-a', applicationId: 'roulette-app', outcome: 'prize' }]));
     expect(result.body.totals).toMatchObject({ uniqueUsers: 1, sessions: 1, rouletteSpinsStarted: 1, rouletteSpinsCompleted: 1, roulettePrizesWon: 1, rouletteNoPrize: 0 });
     expect(result.body.rates.rouletteConversion).toBe(1);
+    expect((result.body as typeof result.body & { rouletteInsights: { participants: number; completedSpins: number; prizesWon: number; winRate: number | null; claimsApplicable: boolean } }).rouletteInsights).toMatchObject({ participants: 1, completedSpins: 1, prizesWon: 1, winRate: 1, claimsApplicable: false });
   });
 
   it('exposes blocked participation and AR metrics for roulette applications', async () => {
