@@ -6,6 +6,7 @@ import type { Experience } from '../../experiences/types';
 import type { RoulettePrize as Prize } from '../types';
 import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
+import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 
 type Inventory = {
   prizeId: string;
@@ -171,6 +172,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
       ...draft.effects,
     },
   };
+  const previewUrl = `${runtimeBaseUrl}/test/experiences/${encodeURIComponent(id)}?org=${encodeURIComponent(org)}&returnTo=${encodeURIComponent(window.location.href)}`;
   return (
     <div className="roulette-workspace">
       <div className="editor-grid roulette-config-grid">
@@ -349,7 +351,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
           </div>
         </section>
         <section className="card preview-panel roulette-preview-panel">
-          <h3>Vista previa 3D</h3><p className="field-help">Previsualización del borrador; no publica cambios.</p>
+          <h3>Vista previa 3D</h3><p className="field-help">Previsualización del borrador; no publica cambios.</p><button type="button" className="secondary" onClick={() => { if (dirty) { setMessage('Guardá el borrador para probar los últimos cambios.'); return; } window.open(previewUrl, '_blank', 'noopener,noreferrer'); }}>Probar experiencia</button>
           <div className="campaign-preview" style={{ backgroundColor: preview.backgroundColor, ...(preview.branding?.backgroundImageUrl ? { backgroundImage: `linear-gradient(#0d141bcc,#0d141bcc), url("${preview.branding.backgroundImageUrl}")` } : {}) }}>
             {preview.branding?.logoUrl && <img src={preview.branding.logoUrl} alt="Logo de la experiencia" />}
             {preview.content?.title && <strong>{preview.content.title}</strong>}

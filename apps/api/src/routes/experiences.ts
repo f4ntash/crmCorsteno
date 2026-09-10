@@ -314,6 +314,26 @@ experienceRoutes.post('/:id/assets', async (c) => {
   return c.json({ url: `${new URL(c.req.url).origin}/assets/${key}`, key }, 201);
 });
 
+experienceRoutes.get('/:id/preview', async (c) => {
+  const id = c.req.param('id');
+  const organizationId = c.get('organization').id;
+  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  if (row.type !== 'roulette') return c.json({ error: { code: 'NOT_FOUND', message: 'Roulette preview not found' } }, 404);
+  let config: JsonValue | null;
+  try { config = parseJson(row.draftConfig as string | null); } catch { config = null; }
+  if (!validDraftConfig(config)) return c.json({ error: { code: 'PREVIEW_NOT_READY', message: 'El borrador todavía no está listo para probar.' } }, 422);
+  const inventoryRows = await c.env.DB.prepare('SELECT prize_id prizeId, stock_mode stockMode, stock_available stockAvailable FROM experience_prize_inventory WHERE experience_id=?').bind(id).all<{ prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null }>();
+  const byPrize = new Map(inventoryRows.results.map((item) => [item.prizeId, item]));
+  const prizeAvailability = Object.fromEntries(config.prizes.map((prize) => {
+    const normalized = normalizePrizeConfig(prize);
+    const inventory = byPrize.get(prize.id);
+    const available = inventory?.stockMode === 'limited' ? (inventory.stockAvailable ?? 0) > 0 : normalized.stockMode !== 'limited' || (normalized.initialStock ?? 0) > 0;
+    return [prize.id, available ? 'available' : 'sold_out'];
+  })) as Record<string, 'available' | 'sold_out'>;
+  return c.json({ config, prizeAvailability, featureEntitlements: await getExperienceEntitlements(c.env.DB, id, organizationId) });
+});
+
 experienceRoutes.post('/:id/publish', async (c) => {
   const id = c.req.param('id');
   const organizationId = c.get('organization').id;

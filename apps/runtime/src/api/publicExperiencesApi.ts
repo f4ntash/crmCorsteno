@@ -22,6 +22,7 @@ async function request<T>(path: string, init?: RequestInit, allowedStatuses: num
 }
 
 export const publicExperiencesApi = {
+  getPreview: (experienceId: string, organizationId: string) => request<{ config: Roulette3DConfig; prizeAvailability?: Record<string, 'available' | 'sold_out'>; featureEntitlements: CommercialEntitlements }>(`/experiences/${encodeURIComponent(experienceId)}/preview`, { credentials: 'include', headers: { 'X-Organization-Id': organizationId } }),
   getExperience: (slug: string, identity?: { deviceId: string; sessionId: string }) => request<PublicExperienceResponse>(`/public/experiences/${encodeURIComponent(slug)}`, identity ? { headers: { 'X-Anonymous-User-Id': identity.deviceId, 'X-Session-Id': identity.sessionId } } : undefined, [404]),
   spin: (slug: string, identity: { deviceId: string; sessionId: string }) => request<SpinResult>(`/public/experiences/${encodeURIComponent(slug)}/spin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity) }),
 };

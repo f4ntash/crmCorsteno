@@ -1,4 +1,4 @@
-export type Roulette3DPrize = { id: string; name: string; iconUrl?: string | null; redemption?: { enabled?: boolean } };
+export type Roulette3DPrize = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null; redemption?: { enabled?: boolean } };
 export type Roulette3DSegment = { id: string; color: string; prizeId: string | null };
 export type Roulette3DBranding = { logoUrl?: string | null; backgroundImageUrl?: string | null };
 export type Roulette3DContent = { title?: string; intro?: string; spinButtonLabel?: string; winMessage?: string; noPrizeMessage?: string };

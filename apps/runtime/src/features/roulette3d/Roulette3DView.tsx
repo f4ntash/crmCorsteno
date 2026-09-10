@@ -13,7 +13,26 @@ import type { ARExperienceState } from '../xr/ARExperience';
 import type { CommercialEntitlements } from '@corsteno/types';
 import { subscriptionHasFeature } from '../../api/commercialEntitlements';
 
-export function Roulette3DView({ config, slug, entitlements, prizeAvailability, initialResult }: { config: Roulette3DConfig; slug: string; entitlements?: CommercialEntitlements; prizeAvailability?: Record<string, 'available' | 'sold_out'>; initialResult?: SpinResult }) {
+export function simulateTestSpin(config: Roulette3DConfig, prizeAvailability?: Record<string, 'available' | 'sold_out'>): SpinResult {
+  const groups = new Map<string, number[]>();
+  config.segments.forEach((segment, index) => { const key = segment.prizeId ?? '__no_prize__'; groups.set(key, [...(groups.get(key) ?? []), index]); });
+  const outcomes: Array<{ prizeId: string | null; weight: number; segmentIndices: number[] }> = [];
+  for (const prize of config.prizes) {
+    const segmentIndices = groups.get(prize.id);
+    if (!segmentIndices || prize.enabled === false || (prize.weight ?? 1) <= 0 || prizeAvailability?.[prize.id] === 'sold_out') continue;
+    outcomes.push({ prizeId: prize.id, weight: prize.weight ?? 1, segmentIndices });
+  }
+  const noPrizeSegments = groups.get('__no_prize__');
+  if (noPrizeSegments) outcomes.push({ prizeId: null, weight: 1, segmentIndices: noPrizeSegments });
+  const totalWeight = outcomes.reduce((total, outcome) => total + outcome.weight, 0);
+  let cursor = Math.random() * totalWeight;
+  const outcome = outcomes.find((item) => { cursor -= item.weight; return cursor < 0; }) ?? outcomes[outcomes.length - 1];
+  const segmentIndex = outcome ? outcome.segmentIndices[Math.min(outcome.segmentIndices.length - 1, Math.floor(Math.random() * outcome.segmentIndices.length))]! : 0;
+  const prize = outcome?.prizeId ? config.prizes.find((item) => item.id === outcome.prizeId) : undefined;
+  return { spinId: `test-${crypto.randomUUID()}`, segmentIndex, segment: { id: config.segments[segmentIndex]?.id ?? '', prizeId: outcome?.prizeId ?? null }, prize: prize ? { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null } : null, claim: null, prizeAvailability };
+}
+
+export function Roulette3DView({ config, slug, entitlements, prizeAvailability, initialResult, testMode = false }: { config: Roulette3DConfig; slug: string; entitlements?: CommercialEntitlements; prizeAvailability?: Record<string, 'available' | 'sold_out'>; initialResult?: SpinResult; testMode?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Roulette3D | undefined>(undefined);
   const xrManagerRef = useRef<XRManager | undefined>(undefined);
@@ -26,25 +45,27 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability, 
   const [arError, setArError] = useState('');
   const participationKey = `corsteno:participated:${slug}`;
   const [participated, setParticipated] = useState(() => {
+    if (testMode) return false;
     try { return Boolean(initialResult) || window.localStorage.getItem(participationKey) === '1'; } catch { return Boolean(initialResult); }
   });
   const [availability, setAvailability] = useState(prizeAvailability);
   const [result, setResult] = useState<SpinResult | null>(initialResult ?? null);
   const pendingResult = useRef<SpinResult | null>(null);
-  const analytics = useRef(createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
+  const analytics = useRef(testMode ? { track: () => undefined, trackViewOnce: () => undefined } : createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
   const participant = useRef(getParticipantIdentity());
   useEffect(() => setAvailability(prizeAvailability), [prizeAvailability]);
   useEffect(() => { if (result?.prizeAvailability) setAvailability(result.prizeAvailability); }, [result]);
   useEffect(() => {
     if (!result) return;
+    if (testMode) return;
     setParticipated(true);
     try { window.localStorage.setItem(participationKey, '1'); } catch { /* storage is optional */ }
-  }, [result, participationKey]);
+  }, [result, participationKey, testMode]);
   const audio = useRef(new RouletteAudio()); const haptics = useRef(new RouletteHaptics());
   const effects = { sound: config.effects?.sound ?? true, vibration: config.effects?.vibration ?? true, celebration: config.effects?.celebration ?? true };
   const content = { title: 'Ruleta de premios', intro: 'Girá la ruleta y descubrí tu premio.', spinButtonLabel: 'Girar', winMessage: '¡GANASTE!', noPrizeMessage: '¡GRACIAS POR JUGAR!', ...config.content };
   const stageStyle: CSSProperties = config.branding?.backgroundImageUrl ? { backgroundImage: `linear-gradient(#0d141bcc,#0d141bcc), url("${config.branding.backgroundImageUrl}")`, backgroundColor: config.backgroundColor, backgroundSize: 'cover', backgroundPosition: 'center', padding: '18px 12px', boxSizing: 'border-box', borderRadius: 24 } : { backgroundColor: config.backgroundColor, padding: '18px 12px', boxSizing: 'border-box', borderRadius: 24 };
-  useEffect(() => { analytics.current.trackViewOnce(); }, [slug]);
+  useEffect(() => { if (!testMode) analytics.current.trackViewOnce(); }, [slug, testMode]);
   useEffect(() => { let active = true; void getARCapabilities().then((capabilities) => { if (active) setArStatus(capabilities.status); }); return () => { active = false; }; }, []);
   useEffect(() => {
     if (!containerRef.current) return;
@@ -67,8 +88,8 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability, 
     return <div className="roulette-stage" style={stageStyle}>{config.branding?.logoUrl && <img src={config.branding.logoUrl} alt="" style={{ maxWidth: 'min(220px, 70vw)', maxHeight: 72, objectFit: 'contain' }} />}{content.title && <h1 style={{ margin: 0, textAlign: 'center' }}>{content.title}</h1>}{content.intro && <p style={{ margin: 0, textAlign: 'center', whiteSpace: 'pre-line' }}>{content.intro}</p>}<RoulettePreview segments={segments} backgroundColor={config.backgroundColor} /><button className="spin-cta" type="button" disabled={waiting} onClick={() => void fallbackSpin()}>{waiting ? 'Preparando…' : content.spinButtonLabel}</button>{result && <RouletteResult result={result} config={config} onCta={ctaClick} />}</div>;
   }
   function displaySpinError(error: unknown) { if (error instanceof ParticipationBlockedError) { if (error.details.reason === 'cooldown' && error.details.retryAt) { const minutes = Math.max(1, Math.ceil((new Date(error.details.retryAt).getTime() - Date.now()) / 60000)); setError(`Podés volver a girar en ${minutes} min.`); } else if (error.details.reason === 'session_limit') setError('Ya utilizaste todas tus participaciones.'); else if (error.details.reason === 'identity_required') setError('No pudimos validar tu participación anónima.'); else setError('Ya participaste en esta experiencia.'); } else setError((error as Error).message); }
-  async function fallbackSpin() { if (waiting || participated) return; audio.current.unlock(); analytics.current.track('roulette_spin_click', { experienceId: slug }); setWaiting(true); try { const spinResult = await publicExperiencesApi.spin(slug, participant.current); analytics.current.track('roulette_spin_started', { experienceId: slug, spinId: spinResult.spinId }); analytics.current.track('roulette_spin_completed', { experienceId: slug, spinId: spinResult.spinId }); setResult(spinResult); setParticipated(true); } catch (e) { displaySpinError(e); } finally { setWaiting(false); } }
-  async function spin() { if (waiting || spinning || participated || (arState !== null && arState !== 'placed')) return; audio.current.unlock(); analytics.current.track('roulette_spin_click', { experienceId: slug }); setWaiting(true); setError(''); setResult(null); engineRef.current?.clearCelebration(); try { const spinResult = await publicExperiencesApi.spin(slug, participant.current); analytics.current.track('roulette_spin_started', { experienceId: slug, spinId: spinResult.spinId }); pendingResult.current = spinResult; if (!engineRef.current?.spinTo(spinResult.segmentIndex)) throw new Error('No se pudo iniciar el giro.'); } catch (e) { pendingResult.current = null; setWaiting(false); displaySpinError(e); } }
+  async function fallbackSpin() { if (waiting || (!testMode && participated)) return; audio.current.unlock(); setWaiting(true); setError(''); if (testMode) { setResult(simulateTestSpin(config, availability)); setWaiting(false); return; } analytics.current.track('roulette_spin_click', { experienceId: slug }); try { const spinResult = await publicExperiencesApi.spin(slug, participant.current); analytics.current.track('roulette_spin_started', { experienceId: slug, spinId: spinResult.spinId }); analytics.current.track('roulette_spin_completed', { experienceId: slug, spinId: spinResult.spinId }); setResult(spinResult); setParticipated(true); } catch (e) { displaySpinError(e); } finally { setWaiting(false); } }
+  async function spin() { if (waiting || spinning || (!testMode && participated) || (arState !== null && arState !== 'placed')) return; audio.current.unlock(); setWaiting(true); setError(''); setResult(null); engineRef.current?.clearCelebration(); if (testMode) { pendingResult.current = simulateTestSpin(config, availability); if (!engineRef.current?.spinTo(pendingResult.current.segmentIndex)) { setResult(pendingResult.current); setWaiting(false); } return; } analytics.current.track('roulette_spin_click', { experienceId: slug }); try { const spinResult = await publicExperiencesApi.spin(slug, participant.current); analytics.current.track('roulette_spin_started', { experienceId: slug, spinId: spinResult.spinId }); pendingResult.current = spinResult; if (!engineRef.current?.spinTo(spinResult.segmentIndex)) throw new Error('No se pudo iniciar el giro.'); } catch (e) { pendingResult.current = null; setWaiting(false); displaySpinError(e); } }
   function ctaClick() { analytics.current.track('roulette_result_cta_click', { experience: slug, prizeId: result?.prize?.id ?? null, spinId: result?.spinId }); }
-  return <div className="roulette-stage" style={stageStyle}>{config.branding?.logoUrl && <img src={config.branding.logoUrl} alt="" style={{ maxWidth: 'min(220px, 70vw)', maxHeight: 72, objectFit: 'contain' }} />}{content.title && <h1 style={{ margin: 0, textAlign: 'center' }}>{content.title}</h1>}{content.intro && <p style={{ margin: 0, textAlign: 'center', whiteSpace: 'pre-line' }}>{content.intro}</p>}<div ref={containerRef} className="roulette-3d" role="img" aria-label={content.title || 'Ruleta de premios'} />{arStatus === 'supported' && subscriptionHasFeature(entitlements, 'webxr_ar') && !arState && <button className="ar-cta" type="button" onClick={() => void enterAR()}>Ver en AR</button>}{arState && <div className="ar-overlay" role="status"><p>{arState === 'searching' ? 'Mové el teléfono para encontrar una superficie.' : arState === 'ready' ? 'Tocá para colocar la ruleta.' : 'Ruleta colocada. Tocá Girar o la pantalla para jugar.'}</p>{arState === 'ended' ? null : <button className="secondary-cta" type="button" onClick={() => void leaveAR()}>Salir de AR</button>}</div>}<button className="spin-cta" type="button" disabled={waiting || spinning || participated || (arState !== null && arState !== 'placed')} onClick={() => void spin()}>{waiting ? 'Preparando…' : spinning ? 'Girando…' : participated ? 'Ya participaste' : content.spinButtonLabel}</button>{participated && <p role="status">Ya participaste en esta experiencia.</p>}{arError && <p className="roulette-error" role="alert">{arError}</p>}{error && <p className="roulette-error" role="alert">{error}</p>}{result && <RouletteResult result={result} config={{ ...config, content }} onCta={ctaClick} />}</div>;
+  return <div className="roulette-stage" style={stageStyle}>{testMode && <p role="status" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }}>MODO PRUEBA</p>}{config.branding?.logoUrl && <img src={config.branding.logoUrl} alt="" style={{ maxWidth: 'min(220px, 70vw)', maxHeight: 72, objectFit: 'contain' }} />}{content.title && <h1 style={{ margin: 0, textAlign: 'center' }}>{content.title}</h1>}{content.intro && <p style={{ margin: 0, textAlign: 'center', whiteSpace: 'pre-line' }}>{content.intro}</p>}<div ref={containerRef} className="roulette-3d" role="img" aria-label={content.title || 'Ruleta de premios'} />{arStatus === 'supported' && subscriptionHasFeature(entitlements, 'webxr_ar') && !arState && <button className="ar-cta" type="button" onClick={() => void enterAR()}>Ver en AR</button>}{arState && <div className="ar-overlay" role="status"><p>{arState === 'searching' ? 'Mové el teléfono para encontrar una superficie.' : arState === 'ready' ? 'Tocá para colocar la ruleta.' : 'Ruleta colocada. Tocá Girar o la pantalla para jugar.'}</p>{arState === 'ended' ? null : <button className="secondary-cta" type="button" onClick={() => void leaveAR()}>Salir de AR</button>}</div>}<button className="spin-cta" type="button" disabled={waiting || spinning || (!testMode && participated) || (arState !== null && arState !== 'placed')} onClick={() => void spin()}>{waiting ? 'Preparando…' : spinning ? 'Girando…' : !testMode && participated ? 'Ya participaste' : content.spinButtonLabel}</button>{!testMode && participated && <p role="status">Ya participaste en esta experiencia.</p>}{arError && <p className="roulette-error" role="alert">{arError}</p>}{error && <p className="roulette-error" role="alert">{error}</p>}{result && <RouletteResult result={result} config={{ ...config, content }} onCta={ctaClick} />}</div>;
 }

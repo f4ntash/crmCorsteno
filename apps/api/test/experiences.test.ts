@@ -138,6 +138,14 @@ describe('experience prize assets', () => {
 
 describe('experience publishing', () => {
   const validDraft = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() });
+  it('serves the saved draft through an authenticated preview without writing business data', async () => {
+    const env = fixture(validDraft);
+    const response = await request('/experiences/a/preview', env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ config: JSON.parse(validDraft), prizeAvailability: expect.any(Object) }));
+    expect((env as any).__spins).toHaveLength(0);
+    expect((await app.fetch(new Request('http://localhost/experiences/a/preview'), env)).status).toBe(401);
+  });
   it('publishes a snapshot and keeps it stable while draft changes', async () => {
     const env = fixture(validDraft);
     const published = await request('/experiences/a/publish', env, { method: 'POST' });
