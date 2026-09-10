@@ -116,6 +116,11 @@ export const experiencesApi = {
       `/experiences/${id}/claims${code ? `?code=${encodeURIComponent(code)}` : ''}`,
       organizationId,
     ),
+  lookupClaim: (organizationId: string, code: string) =>
+    apiRequest<{ experienceId: string; claim: PrizeClaim }>(
+      `/experiences/claims/lookup?code=${encodeURIComponent(code)}`,
+      organizationId,
+    ),
   redeemClaim: (id: string, organizationId: string, claimId: string) =>
     apiRequest<PrizeClaim>(
       `/experiences/${id}/claims/${claimId}/redeem`,

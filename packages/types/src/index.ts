@@ -65,3 +65,4 @@ export function formatMoneyFromMinor(amountMinor: number, currency: string, loca
 
 export * from './commercial';
 export * from './roulette';
+export * from './claimQr';

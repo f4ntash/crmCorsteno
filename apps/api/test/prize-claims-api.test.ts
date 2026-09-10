@@ -5,6 +5,7 @@ function environment(role = 'owner', organizationId = 'org-a') {
   let status = 'active';
   const claim = {
     id: 'claim-1',
+    experienceId: 'experience-1',
     code: 'ABCD2345-EFGH6789',
     prizeId: 'prize-1',
     prizeName: 'Remera',
@@ -85,6 +86,13 @@ function request(
 }
 
 describe('roulette prize claim operations', () => {
+  it('looks up a claim without redeeming it', async () => {
+    const env = environment();
+    const response = await request('/experiences/claims/lookup?code=abcd2345-efgh6789', env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ experienceId: 'experience-1', claim: expect.objectContaining({ status: 'active', code: 'ABCD2345-EFGH6789' }) });
+    expect((await request('/experiences/experience-1/claims/claim-1/redeem', env, { method: 'POST' })).status).toBe(200);
+  });
   it('lists, redeems exactly once, and rejects a second redemption', async () => {
     const env = environment();
     expect(

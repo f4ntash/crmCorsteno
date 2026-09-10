@@ -81,6 +81,14 @@ experienceRoutes.post('/claims/redeem', async (c) => {
   return c.json({ prizeName: claim.prizeName, experienceId: claim.experienceId, status: 'redeemed', redeemedAt: new Date().toISOString() });
 });
 
+experienceRoutes.get('/claims/lookup', async (c) => {
+  const code = c.req.query('code')?.trim().toUpperCase().replace(/\s+/g, '') ?? '';
+  if (!code || code.length > 64) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
+  const claim = await c.env.DB.prepare('SELECT id,experience_id experienceId,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE code=? AND organization_id=?').bind(code, c.get('organization').id).first<Record<string, unknown>>();
+  if (!claim) return c.json({ error: { code: 'NOT_FOUND', message: 'No encontramos un claim con ese código.' } }, 404);
+  return c.json({ experienceId: claim.experienceId, claim: presentClaim(claim) });
+});
+
 experienceRoutes.get('/:id/claims', async (c) => {
   const experienceId = c.req.param('id');
   const organizationId = c.get('organization').id;
