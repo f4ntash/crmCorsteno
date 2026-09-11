@@ -11,6 +11,7 @@ import '../home.css';
 import '../experiences.css';
 import '../permission.css';
 import '../team.css';
+import '../reports.css';
 import { apiRequest } from '../shared/api/client';
 import type { Me } from '../features/auth/types';
 import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
@@ -26,6 +27,7 @@ import { TeamPage } from '../features/team/TeamPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
 import { AttentionPage } from '../features/attention/AttentionPage';
 import { AssetLibraryPage } from '../features/assets/AssetLibraryPage';
+import { ReportsPage } from '../features/reports/ReportsPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -63,6 +65,7 @@ function Shell() {
           <NavLink end className={navClass} to="/app">Resumen</NavLink>
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>}
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>}
+          {currentPermissions.includes('analytics.read') && <NavLink className={navClass} to="/app/reports">Reportes</NavLink>}
           {canRedeem && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
           {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity">Actividad</NavLink>}
           {currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/attention">Atención</NavLink>}
@@ -107,6 +110,7 @@ function Shell() {
         <Routes>
           <Route index element={<Home org={o} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator} />} />
           <Route path="analytics" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <Analytics org={o} />} />
+          <Route path="reports" element={currentPermissions.includes('analytics.read') ? <ReportsPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="experiences" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
           <Route path="experiences/:id" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
           <Route path="commercial" element={platformOperator ? <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />

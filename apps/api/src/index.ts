@@ -14,6 +14,7 @@ import { commercialRoutes } from './routes/commercial';
 import { paymentWebhookRoutes } from './routes/payment-webhooks';
 import { assetRoutes } from './routes/assets';
 import { attentionRoutes } from './routes/attention';
+import { reportsRoutes } from './routes/reports';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -146,5 +147,6 @@ app.get(
 );
 
 app.route('/attention', attentionRoutes);
+app.route('/reports', reportsRoutes);
 app.route('/', appDataRoutes);
 export default app;

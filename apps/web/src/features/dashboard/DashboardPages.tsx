@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { apiDownload, apiRequest } from '../../shared/api/client';
+import { downloadCsv } from '../reports/download';
 export { OperationsHome as Home } from './OperationsHome';
 
 type Project = { id: string; name: string };
@@ -57,7 +58,6 @@ const displayLabels: Record<string, string> = {
 };
 function readableLabel(value: string) { const key = value.trim().toLowerCase().replaceAll(' ', '_'); return displayLabels[value] ?? displayLabels[key] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function typeLabel(type?: string) { return type === 'webar' ? 'WebAR' : type === 'game' ? 'Juego' : type === 'roulette' ? 'Ruleta' : 'General'; }
-function exportFileSlug(value: string) { const slug = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); return slug || 'experiencia'; }
 function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { return <div className="analytics-kpi"><small>{label}</small><b>{formatMetricValue(value)}</b></div>; }
 function SectionHeading({ eyebrow, title, detail }: { eyebrow?: string; title: string; detail?: string }) { return <div className="analytics-section-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2>{detail && <p>{detail}</p>}</div></div>; }
 function StatusPanel({ kind, children }: { kind: 'loading' | 'empty' | 'error'; children: React.ReactNode }) { return <div className={`analytics-state analytics-state-${kind}`} role={kind === 'error' ? 'alert' : undefined}>{kind === 'loading' && <span className="loading-mark" />}{children}</div>; }
@@ -184,14 +184,7 @@ export function Analytics({ org }: { org: string }) {
     try {
       const query = new URLSearchParams({ range, applicationId: application, ...(project ? { projectId: project } : {}) });
       const blob = await apiDownload(`/analytics/roulette-export?${query.toString()}`, org);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `corsteno-${exportFileSlug(scopeName)}-resultados-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadCsv(blob, scopeName, 'resultados');
     } catch (exportFailure) {
       setExportError((exportFailure as Error).message);
     } finally {

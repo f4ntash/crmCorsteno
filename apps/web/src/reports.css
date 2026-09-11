@@ -1,0 +1,15 @@
+.reports-page { display: grid; gap: 20px; }
+.reports-toolbar { display: grid; gap: 14px; }
+.reports-inline-error, .reports-success { margin: 0; font-size: 12px; }
+.reports-inline-error { color: var(--warning); }
+.reports-success { color: var(--success); }
+.reports-list { display: grid; gap: 14px; }
+.reports-list > .section-heading { align-items: end; }
+.reports-list > .section-heading > span { color: var(--text-muted); font-size: 12px; text-align: right; }
+.report-list { display: grid; gap: 10px; }
+.report-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+.report-row h2 { margin: 0; font-size: 16px; }
+.report-row p { margin: 5px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
+.report-row small { display: block; margin-top: 8px; color: var(--text-muted); font-size: 11px; }
+.report-row button { min-width: 132px; }
+@media (max-width: 600px) { .reports-list > .section-heading { align-items: start; } .reports-list > .section-heading > span { text-align: left; } .report-row { grid-template-columns: 1fr; gap: 14px; } .report-row button { width: 100%; } }

@@ -14,6 +14,7 @@ describe('organization role permissions', () => {
   it('preserves existing role behavior and gives admins redemption access', () => {
     expect(hasPermission('viewer', 'organization.read')).toBe(true);
     expect(hasPermission('member', 'crm.read')).toBe(true);
+    expect(hasPermission('member', 'analytics.read')).toBe(true);
     expect(hasPermission('member', 'activity.read')).toBe(true);
     expect(hasPermission('viewer', 'activity.read')).toBe(false);
     expect(hasPermission('member', 'claims.redeem')).toBe(false);
