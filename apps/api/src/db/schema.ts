@@ -455,3 +455,18 @@ export const experienceChannels = sqliteTable(
     index('experience_channels_organization').on(t.organizationId, t.experienceId),
   ],
 );
+
+export const channelContent = sqliteTable(
+  'channel_content',
+  {
+    channelId: text('channel_id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    profileKey: text('profile_key').notNull(),
+    profileVersion: integer('profile_version').notNull().default(1),
+    draftContent: text('draft_content').notNull(),
+    publishedContent: text('published_content'),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+    ...timestamps,
+  },
+  (t) => [index('channel_content_organization').on(t.organizationId, t.updatedAt)],
+);

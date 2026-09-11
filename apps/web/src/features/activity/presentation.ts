@@ -77,6 +77,9 @@ export function formatActivity(item: ActivityPresentationItem) {
     case 'channel.deactivated': return `${actor} desactivó el canal ${name}`;
     case 'channel.experience.linked': return `${actor} conectó ${experienceName} a ${channelName}`;
     case 'channel.experience.unlinked': return `${actor} desconectó ${experienceName} de ${channelName}`;
+    case 'channel.content_profile.assigned': return `${actor} preparó el perfil de contenido de ${channelName}`;
+    case 'channel.content.draft_updated': return `${actor} actualizó el borrador de contenido de ${channelName}`;
+    case 'channel.content.published': return `${actor} publicó el contenido de ${channelName}`;
     default: return `${actor} registró una acción en ${resourceLabel(item.resourceType)}`;
   }
 }

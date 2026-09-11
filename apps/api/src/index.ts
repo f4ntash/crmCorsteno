@@ -18,6 +18,7 @@ import { attentionRoutes } from './routes/attention';
 import { reportsRoutes } from './routes/reports';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
+import { channelContentRoutes } from './routes/channel-content';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -62,7 +63,7 @@ app.use('*', async (c, next) => {
   return cors({
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
     credentials: true,
-    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id'],
   })(c, next);
 });
@@ -76,6 +77,7 @@ app.route('/analytics', analyticsRoutes);
 app.route('/experiences', catalogRoutes);
 app.route('/experiences', experienceRoutes);
 app.route('/channels', channelRoutes);
+app.route('/channels', channelContentRoutes);
 app.route('/public', publicExperienceRoutes);
 app.route('/public', roulettePublicExperienceRoutes);
 app.route('/', paymentWebhookRoutes);

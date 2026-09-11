@@ -13,6 +13,7 @@ import '../permission.css';
 import '../team.css';
 import '../reports.css';
 import '../channels.css';
+import '../site-content.css';
 import { apiRequest } from '../shared/api/client';
 import type { Me } from '../features/auth/types';
 import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
@@ -161,7 +162,7 @@ function Shell() {
           <Route path="attention" element={currentPermissions.includes('crm.read') ? <AttentionPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="assets" element={currentPermissions.includes('assets.read') ? <AssetLibraryPage org={o} canManage={currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
           <Route path="channels" element={currentPermissions.includes('crm.read') ? <ChannelsPage org={o} canManage={canManage} /> : <Navigate to="/app" replace />} />
-          <Route path="channels/:id" element={currentPermissions.includes('crm.read') ? <ChannelDetailPage org={o} canManage={canManage} /> : <Navigate to="/app" replace />} />
+          <Route path="channels/:id" element={currentPermissions.includes('crm.read') ? <ChannelDetailPage org={o} canManage={canManage} canAssignContentProfile={platformOperator} canManageAssets={platformOperator || currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
           <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"

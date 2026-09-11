@@ -20,6 +20,7 @@ export type ConfigEditorProps = {
   saveMessage?: string;
   saveError?: string;
   secondaryAction?: ReactNode;
+  assetContext?: { org: string; canUpload?: boolean };
   onDirtyChange?: (dirty: boolean) => void;
 };
 
@@ -41,6 +42,7 @@ export function ConfigEditor({
   saveMessage,
   saveError,
   secondaryAction,
+  assetContext,
   onDirtyChange,
 }: ConfigEditorProps) {
   const { dirty, reset } = useConfigEditorState(initialValues, values);
@@ -89,6 +91,7 @@ export function ConfigEditor({
         errors={resolvedErrors}
         showValidation={shouldValidate}
         disabled={isReadOnly}
+        assetContext={assetContext}
       />;
       if (section.collapsible) return <details className="config-editor-section" key={section.id} open>
         <summary className="config-editor-section-heading"><span><strong>{section.title}</strong>{section.description && <small>{section.description}</small>}</span></summary>

@@ -5,7 +5,8 @@ import { ApiError } from '../../shared/api/client';
 import { Dialog } from '../../shared/ui/Dialog';
 import { experiencesApi } from '../experiences/api';
 import type { Experience } from '../experiences/types';
-import { channelsApi, channelTypeLabels, isHttpUrl, type Channel } from './api';
+import { channelsApi, channelTypeLabels, isHttpUrl, type Channel, type ChannelContent } from './api';
+import { SiteContentEditor } from './SiteContentEditor';
 
 const experienceTypeLabels: Record<string, string> = {
   roulette: 'Roulette',
@@ -16,7 +17,7 @@ function experienceLabel(experience: Pick<Experience, 'type'>) {
   return experienceTypeLabels[experience.type] ?? experience.type;
 }
 
-export function ChannelDetailPage({ org, canManage }: { org: string; canManage: boolean }) {
+export function ChannelDetailPage({ org, canManage, canAssignContentProfile = false, canManageAssets = false }: { org: string; canManage: boolean; canAssignContentProfile?: boolean; canManageAssets?: boolean }) {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [channel, setChannel] = useState<Channel>();
@@ -30,6 +31,10 @@ export function ChannelDetailPage({ org, canManage }: { org: string; canManage: 
   const [selectedExperience, setSelectedExperience] = useState('');
   const [loadingExperiences, setLoadingExperiences] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const [content, setContent] = useState<ChannelContent>();
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState('');
+  const [assigningProfile, setAssigningProfile] = useState(false);
 
   async function load() {
     if (!org || !id) return;
@@ -39,6 +44,18 @@ export function ChannelDetailPage({ org, canManage }: { org: string; canManage: 
       const result = await channelsApi.get(id, org);
       setChannel(result);
       setForm({ name: result.name, url: result.url ?? '', status: result.status });
+      setContent(undefined);
+      setContentError('');
+      if (result.type !== 'hosted_runtime') {
+        setContentLoading(true);
+        try {
+          setContent(await channelsApi.getContent(result.id, org));
+        } catch (cause) {
+          setContentError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el contenido.');
+        } finally {
+          setContentLoading(false);
+        }
+      }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el sitio o canal.');
     } finally {
@@ -47,6 +64,19 @@ export function ChannelDetailPage({ org, canManage }: { org: string; canManage: 
   }
 
   useEffect(() => { void load(); }, [org, id]);
+
+  async function assignProfile() {
+    if (!channel || assigningProfile || !canAssignContentProfile) return;
+    setAssigningProfile(true);
+    setContentError('');
+    try {
+      setContent(await channelsApi.assignContentProfile(channel.id, org, 'marketing-basic-v1'));
+    } catch (cause) {
+      setContentError(cause instanceof ApiError ? cause.message : 'No se pudo preparar el contenido.');
+    } finally {
+      setAssigningProfile(false);
+    }
+  }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -148,6 +178,10 @@ export function ChannelDetailPage({ org, canManage }: { org: string; canManage: 
           {experiences.length ? <div className="linked-experience-list">{experiences.map((experience) => <div className="linked-experience-row" key={experience.id}><div><Link to={`/app/experiences/${experience.id}`}><strong>{experience.name}</strong></Link><small>{experienceLabel(experience)} · {experience.status === 'published' ? 'Publicada' : 'Borrador'}</small></div>{canManage && <button type="button" className="button button-quiet" onClick={() => void unlink(experience)}>Desconectar</button>}</div>)}</div> : <div className="empty channel-empty"><h3>No hay experiencias conectadas.</h3><p>Conectá una experiencia existente para dejar registrado este destino.</p></div>}
         </section>
       </div>
+      <section className="card site-content-card">
+        <div className="channel-detail-heading"><div><p className="eyebrow">CONTENIDO DEL SITIO</p><h2>Contenido editable</h2></div>{channel.type !== 'hosted_runtime' && content?.profile && <span className="content-profile-label">Perfil preparado</span>}</div>
+        {channel.type === 'hosted_runtime' ? <p className="field-help">El canal alojado por Corsteno sigue usando la configuración publicada de la experiencia. Este editor está reservado para sitios externos o creados por Corsteno.</p> : contentLoading ? <p className="loading-state"><span className="loading-mark" />Cargando contenido…</p> : contentError && !content ? <div><p className="error" role="alert">{contentError}</p><button type="button" className="button button-secondary" onClick={() => void load()}>Reintentar</button></div> : content?.profile ? <SiteContentEditor org={org} channel={channel} content={content} canEdit={canManage} canManageAssets={canManageAssets} onContentChange={setContent} /> : <div className="site-content-unassigned"><p>Este sitio todavía no tiene un perfil de contenido editable.</p>{canAssignContentProfile ? <button type="button" onClick={() => void assignProfile()} disabled={assigningProfile}>{assigningProfile ? 'Preparando…' : 'Preparar contenido editable'}</button> : <small>El equipo de Corsteno debe preparar el perfil antes de que puedas cargar contenido.</small>}{contentError && <p className="error" role="alert">{contentError}</p>}</div>}
+      </section>
       <Dialog open={connectOpen} title="Conectar experiencia" description="Solo podés elegir experiencias de la organización actual." onClose={() => !loadingExperiences && setConnectOpen(false)}>
         <form onSubmit={connect}>
           {availableExperiences.length ? <label>Experiencia<select autoFocus value={selectedExperience} onChange={(event) => setSelectedExperience(event.target.value)}><option value="">Elegí una experiencia</option>{availableExperiences.map((experience) => <option value={experience.id} key={experience.id}>{experience.name} · {experienceLabel(experience)}</option>)}</select></label> : <p className="field-help">No hay experiencias disponibles para conectar.</p>}

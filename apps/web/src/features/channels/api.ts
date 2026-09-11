@@ -24,6 +24,36 @@ export type Channel = {
   experiences?: ChannelExperience[];
 };
 
+export type SiteContentFieldDefinition = {
+  key: string;
+  type: 'text' | 'textarea' | 'image' | 'url' | 'boolean';
+  label: string;
+  description?: string;
+  placeholder?: string;
+  required?: boolean;
+  maxLength?: number;
+};
+export type SiteContentProfile = {
+  key: string;
+  version: number;
+  name: string;
+  description: string;
+  sections: Array<{ id: string; title: string; description?: string; fields: SiteContentFieldDefinition[] }>;
+};
+export type SiteContent = {
+  hero: { title: string; description: string; image: string | null; ctaLabel: string; ctaUrl: string };
+  promotion: { enabled: boolean; title: string; description: string; image: string | null; ctaLabel: string; ctaUrl: string };
+};
+export type ChannelContent = {
+  supported: boolean;
+  channel: Pick<Channel, 'id' | 'name' | 'type'>;
+  profile: SiteContentProfile | null;
+  draftContent: SiteContent | null;
+  publishedContent: SiteContent | null;
+  publishedAt: number | null;
+  hasUnpublishedChanges: boolean;
+};
+
 export const channelTypeLabels: Record<ChannelType, string> = {
   external_site: 'Sitio existente',
   corsteno_site: 'Sitio creado por Corsteno',
@@ -46,4 +76,8 @@ export const channelsApi = {
   update: (id: string, organizationId: string, body: { name?: string; status?: ChannelStatus; url?: string | null }) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   linkExperience: (id: string, organizationId: string, experienceId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/experiences`, organizationId, { method: 'POST', body: JSON.stringify({ experienceId }) }),
   unlinkExperience: (id: string, organizationId: string, experienceId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/experiences/${encodeURIComponent(experienceId)}`, organizationId, { method: 'DELETE' }),
+  getContent: (id: string, organizationId: string) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content`, organizationId),
+  assignContentProfile: (id: string, organizationId: string, profileKey: string) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content-profile`, organizationId, { method: 'PUT', body: JSON.stringify({ profileKey }) }),
+  saveContent: (id: string, organizationId: string, content: SiteContent) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content`, organizationId, { method: 'PATCH', body: JSON.stringify({ content }) }),
+  publishContent: (id: string, organizationId: string) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content/publish`, organizationId, { method: 'POST' }),
 };

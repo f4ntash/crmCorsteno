@@ -10,6 +10,8 @@ type ConfigFieldBase = {
 
 export type ConfigFieldDefinition =
   | (ConfigFieldBase & { type: 'text' | 'textarea'; minLength?: number; maxLength?: number })
+  | (ConfigFieldBase & { type: 'url'; maxLength?: number })
+  | (ConfigFieldBase & { type: 'image'; categories?: string[] })
   | (ConfigFieldBase & { type: 'number'; min?: number; max?: number; integer?: boolean; step?: number })
   | (ConfigFieldBase & { type: 'boolean' })
   | (ConfigFieldBase & { type: 'select'; options: ConfigFieldOption[] })
@@ -30,6 +32,20 @@ export function validateConfigField(field: ConfigFieldDefinition, value: unknown
     if (field.minLength !== undefined && value.length < field.minLength) return `Usá al menos ${field.minLength} caracteres.`;
     if (field.maxLength !== undefined && value.length > field.maxLength) return `Usá hasta ${field.maxLength} caracteres.`;
   }
+  if (field.type === 'url') {
+    if (typeof value !== 'string') return 'Ingresá un destino válido.';
+    if (field.maxLength !== undefined && value.length > field.maxLength) return `Usá hasta ${field.maxLength} caracteres.`;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.split('').some((character) => character.charCodeAt(0) < 32) || trimmed.includes('\\')) return 'Ingresá un destino válido.';
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return undefined;
+    try {
+      const parsed = new URL(trimmed);
+      if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) return 'Usá una URL http://, https:// o una ruta del sitio.';
+    } catch {
+      return 'Usá una URL http://, https:// o una ruta del sitio.';
+    }
+  }
   if (field.type === 'number') {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 'Ingresá un número válido.';
     if (field.min !== undefined && value < field.min) return `El valor mínimo es ${field.min}.`;
@@ -37,7 +53,7 @@ export function validateConfigField(field: ConfigFieldDefinition, value: unknown
     if (field.integer && !Number.isInteger(value)) return 'Ingresá un número entero.';
   }
   if (field.type === 'select' && (typeof value !== 'string' || !field.options.some((option) => option.value === value))) return 'Elegí una opción válida.';
-  if (field.type === 'asset' && typeof value !== 'string') return 'Seleccioná un archivo válido.';
+  if ((field.type === 'asset' || field.type === 'image') && typeof value !== 'string') return 'Seleccioná un archivo válido.';
   return undefined;
 }
 
