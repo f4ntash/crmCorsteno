@@ -2,7 +2,7 @@ import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { apiRequest } from '../../shared/api/client';
+import { apiDownload, apiRequest } from '../../shared/api/client';
 export { OperationsHome as Home } from './OperationsHome';
 
 type Project = { id: string; name: string };
@@ -57,6 +57,7 @@ const displayLabels: Record<string, string> = {
 };
 function readableLabel(value: string) { const key = value.trim().toLowerCase().replaceAll(' ', '_'); return displayLabels[value] ?? displayLabels[key] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function typeLabel(type?: string) { return type === 'webar' ? 'WebAR' : type === 'game' ? 'Juego' : type === 'roulette' ? 'Ruleta' : 'General'; }
+function exportFileSlug(value: string) { const slug = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); return slug || 'experiencia'; }
 function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { return <div className="analytics-kpi"><small>{label}</small><b>{formatMetricValue(value)}</b></div>; }
 function SectionHeading({ eyebrow, title, detail }: { eyebrow?: string; title: string; detail?: string }) { return <div className="analytics-section-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2>{detail && <p>{detail}</p>}</div></div>; }
 function StatusPanel({ kind, children }: { kind: 'loading' | 'empty' | 'error'; children: React.ReactNode }) { return <div className={`analytics-state analytics-state-${kind}`} role={kind === 'error' ? 'alert' : undefined}>{kind === 'loading' && <span className="loading-mark" />}{children}</div>; }
@@ -123,7 +124,9 @@ export function Analytics({ org }: { org: string }) {
     [results, setResults] = useState<Item[]>([]),
     [topEvents, setTopEvents] = useState<Item[]>([]),
     [blocked, setBlocked] = useState<Item[]>([]),
-    [error, setError] = useState(false);
+    [error, setError] = useState(false),
+    [exporting, setExporting] = useState(false),
+    [exportError, setExportError] = useState('');
   useEffect(() => {
     setProject('');
     setApplication('');
@@ -174,6 +177,27 @@ export function Analytics({ org }: { org: string }) {
   const selectedApp = apps.find((app) => app.id === application);
   const scopeType = selectedApp?.applicationType ?? 'generic';
   const scopeName = selectedApp?.name ?? (project ? projects.find((item) => item.id === project)?.name ?? 'Proyecto seleccionado' : 'Todas las aplicaciones');
+  async function exportRoulette() {
+    if (!application || scopeType !== 'roulette' || exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      const query = new URLSearchParams({ range, applicationId: application, ...(project ? { projectId: project } : {}) });
+      const blob = await apiDownload(`/analytics/roulette-export?${query.toString()}`, org);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `corsteno-${exportFileSlug(scopeName)}-resultados-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (exportFailure) {
+      setExportError((exportFailure as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
   if (error)
     return (
       <main className="page analytics-page">
@@ -183,7 +207,7 @@ export function Analytics({ org }: { org: string }) {
     );
   return (
     <main className="page analytics-page">
-      <div className="analytics-header"><div><p className="eyebrow">RESULTADOS / DATOS REALES</p><h1>Resultados</h1><p className="page-description">Una lectura clara de la actividad de tus experiencias.</p></div><div className="scope-summary"><small>ALCANCE ACTUAL</small><strong>{scopeName}</strong><span>{typeLabel(scopeType)} · {range === '24h' ? 'Últimas 24 horas' : range === '7d' ? 'Últimos 7 días' : range === '30d' ? 'Últimos 30 días' : 'Todo el período'}</span></div></div>
+      <div className="analytics-header"><div><p className="eyebrow">RESULTADOS / DATOS REALES</p><h1>Resultados</h1><p className="page-description">Una lectura clara de la actividad de tus experiencias.</p></div><div className="analytics-header-actions"><div className="scope-summary"><small>ALCANCE ACTUAL</small><strong>{scopeName}</strong><span>{typeLabel(scopeType)} · {range === '24h' ? 'Últimas 24 horas' : range === '7d' ? 'Últimos 7 días' : range === '30d' ? 'Últimos 30 días' : 'Todo el período'}</span></div>{application && scopeType === 'roulette' && <button type="button" className="secondary" onClick={() => void exportRoulette()} disabled={exporting}>{exporting ? 'Exportando…' : 'Exportar CSV'}</button>}</div></div>
       <section className="analytics-toolbar" aria-label="Filtros de resultados"><div className="toolbar-heading"><strong>Filtrar resultados</strong><span>Los datos se actualizan al cambiar un filtro.</span></div><div className="filters">
         <label>
           Período
@@ -209,7 +233,7 @@ export function Analytics({ org }: { org: string }) {
           Aplicación
           <select
             value={application}
-            onChange={(e) => setApplication(e.target.value)}
+            onChange={(e) => { setApplication(e.target.value); setExportError(''); }}
           >
             <option value="">Todas las aplicaciones</option>
             {apps.map((a) => (
@@ -220,6 +244,7 @@ export function Analytics({ org }: { org: string }) {
           </select>
         </label>
       </div></section>
+      {exportError && <p className="analytics-export-error" role="alert">No se pudo exportar el CSV: {exportError}</p>}
       {!s ? (
         <StatusPanel kind="loading">Cargando resultados…</StatusPanel>
       ) : (

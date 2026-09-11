@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { requireAuth, requireOrganization } from '../auth/middleware';
+import type { MiddlewareHandler } from 'hono';
+import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 type Range = '24h' | '7d' | '30d' | 'all';
 type Metric = 'users' | 'events' | 'games' | 'prizes';
@@ -61,6 +62,152 @@ const run = (
   c.env.DB.prepare(sql)
     .bind(...values)
     .all<{ event_name: string; n: number }>();
+
+type RouletteExportContext = {
+  id: string;
+  name: string;
+  applicationId: string | null;
+  type: string;
+  applicationType: string | null;
+  publishedConfig: string | null;
+  draftConfig: string | null;
+};
+type RouletteExportSpin = {
+  createdAt: string;
+  experienceId: string;
+  experienceName: string;
+  outcomeType: 'prize' | 'no_prize';
+  prizeId: string | null;
+  claimPrizeName: string | null;
+  claimCode: string | null;
+  claimStatus: 'active' | 'redeemed' | null;
+  redeemedAt: string | null;
+};
+type RouletteBlockedEvent = { occurredAt: number; properties: string | null };
+type RouletteExportRow = {
+  occurredAt: string;
+  experience: string;
+  resultType: 'win' | 'no_prize' | 'blocked';
+  prizeName: string;
+  claimCode: string;
+  claimStatus: string;
+  redeemedAt: string;
+  blockReason: string;
+};
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value === null || value === undefined ? '' : String(value);
+  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
+export function rouletteResultsCsv(rows: RouletteExportRow[]) {
+  const header = ['fecha_hora_utc', 'experiencia', 'tipo_resultado', 'premio', 'codigo_claim', 'estado_claim', 'canjeado_en_utc', 'motivo_bloqueo'];
+  return `\uFEFF${[header, ...rows.map((row) => [row.occurredAt, row.experience, row.resultType, row.prizeName, row.claimCode, row.claimStatus, row.redeemedAt, row.blockReason])].map((line) => line.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
+
+function utcIso(value: string | number) {
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
+  }
+  const raw = String(value);
+  const normalized = typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)
+    ? `${raw.replace(' ', 'T')}Z`
+    : raw;
+  const date = new Date(normalized);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : raw;
+}
+
+function prizeNames(configValue: string | null) {
+  const names = new Map<string, string>();
+  try {
+    const config = configValue ? JSON.parse(configValue) as { prizes?: Array<{ id?: unknown; name?: unknown }> } : null;
+    for (const prize of config?.prizes ?? []) {
+      if (typeof prize.id === 'string' && typeof prize.name === 'string') names.set(prize.id, prize.name);
+    }
+  } catch { /* The export still includes the authoritative spin and claim fields. */ }
+  return names;
+}
+
+function eventProperties(value: string | null) {
+  try {
+    const parsed = value ? JSON.parse(value) as Record<string, unknown> : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+function exportFileSlug(value: string) {
+  const slug = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'experiencia';
+}
+
+const analyticsRead = requireOrganizationPermission('analytics.read') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Vars }>;
+
+analyticsRoutes.get('/roulette-export', analyticsRead, async (c) => {
+  const query = c.req.query();
+  const organizationId = c.get('organization').id;
+  const applicationId = query.applicationId?.trim() || null;
+  const experienceId = query.experienceId?.trim() || null;
+  if (!applicationId && !experienceId) return c.json({ error: { code: 'BAD_REQUEST', message: 'Seleccioná una aplicación o experiencia Roulette.' } }, 400);
+
+  const application = applicationId
+    ? await c.env.DB.prepare(`SELECT id,name,project_id projectId,application_type applicationType FROM applications WHERE id=? AND organization_id=?${query.projectId ? ' AND project_id=?' : ''}`).bind(...(query.projectId ? [applicationId, organizationId, query.projectId] : [applicationId, organizationId])).first<{ id: string; name: string; projectId: string; applicationType: string }>()
+    : null;
+  if (applicationId && !application) return c.json({ error: { code: 'NOT_FOUND', message: 'Aplicación no encontrada.' } }, 404);
+  if (application && application.applicationType !== 'roulette') return c.json({ error: { code: 'ROULETTE_EXPORT_NOT_AVAILABLE', message: 'La exportación CSV solo está disponible para aplicaciones Roulette.' } }, 422);
+
+  const experienceValues: (string | number)[] = [organizationId];
+  let experienceWhere = 'e.organization_id=? AND e.type=\'roulette\'';
+  if (applicationId) { experienceWhere += ' AND e.application_id=?'; experienceValues.push(applicationId); }
+  if (experienceId) { experienceWhere += ' AND e.id=?'; experienceValues.push(experienceId); }
+  if (query.projectId) { experienceWhere += ' AND a.project_id=?'; experienceValues.push(query.projectId); }
+  const experiences = await c.env.DB.prepare(`SELECT e.id,e.name,e.application_id applicationId,e.type,a.application_type applicationType,e.published_config publishedConfig,e.draft_config draftConfig FROM experiences e LEFT JOIN applications a ON a.id=e.application_id AND a.organization_id=e.organization_id WHERE ${experienceWhere} ORDER BY e.created_at ASC`).bind(...experienceValues).all<RouletteExportContext>();
+  if (experienceId && !experiences.results.length) return c.json({ error: { code: 'NOT_FOUND', message: 'Experiencia no encontrada.' } }, 404);
+  if (experienceId && experiences.results[0]?.applicationType && experiences.results[0].applicationType !== 'roulette') return c.json({ error: { code: 'ROULETTE_EXPORT_NOT_AVAILABLE', message: 'La exportación CSV solo está disponible para experiencias Roulette.' } }, 422);
+
+  const range = rangeOf(query.range);
+  const spinValues: (string | number)[] = [organizationId, sinceIsoOf(range)];
+  let spinWhere = 's.organization_id=? AND datetime(s.created_at)>=datetime(?) AND e.type=\'roulette\'';
+  if (applicationId) { spinWhere += ' AND s.application_id=?'; spinValues.push(applicationId); }
+  if (experienceId) { spinWhere += ' AND s.experience_id=?'; spinValues.push(experienceId); }
+  if (query.projectId) { spinWhere += ' AND a.project_id=?'; spinValues.push(query.projectId); }
+  const spins = await c.env.DB.prepare(`SELECT s.created_at createdAt,s.experience_id experienceId,e.name experienceName,s.outcome_type outcomeType,s.prize_id prizeId,c.prize_name claimPrizeName,c.code claimCode,c.status claimStatus,c.redeemed_at redeemedAt FROM experience_spins s JOIN experiences e ON e.id=s.experience_id AND e.organization_id=s.organization_id LEFT JOIN applications a ON a.id=e.application_id AND a.organization_id=e.organization_id LEFT JOIN roulette_prize_claims c ON c.spin_id=s.id AND c.experience_id=s.experience_id AND c.organization_id=s.organization_id WHERE ${spinWhere} ORDER BY s.created_at ASC,s.id ASC`).bind(...spinValues).all<RouletteExportSpin>();
+
+  const scopedApplicationId = applicationId ?? experiences.results[0]?.applicationId ?? null;
+  const blockedValues: (string | number)[] = [organizationId, scopedApplicationId ?? ''];
+  const blockedWhere = 'organization_id=? AND application_id=? AND event_name=\'roulette_spin_blocked\' AND occurred_at>=?';
+  blockedValues.push(sinceOf(range));
+  const blockedEvents = scopedApplicationId
+    ? await c.env.DB.prepare(`SELECT occurred_at occurredAt,properties FROM events WHERE ${blockedWhere} ORDER BY occurred_at ASC`).bind(...blockedValues).all<RouletteBlockedEvent>()
+    : { results: [] as RouletteBlockedEvent[] };
+
+  const contextById = new Map(experiences.results.map((item) => [item.id, item]));
+  const namesByExperience = new Map(experiences.results.map((item) => [item.id, prizeNames(item.publishedConfig ?? item.draftConfig)]));
+  const rows: RouletteExportRow[] = spins.results.map((spin) => ({
+    occurredAt: utcIso(spin.createdAt),
+    experience: spin.experienceName,
+    resultType: spin.outcomeType === 'prize' ? 'win' : 'no_prize',
+    prizeName: spin.claimPrizeName ?? (spin.prizeId ? namesByExperience.get(spin.experienceId)?.get(spin.prizeId) ?? '' : ''),
+    claimCode: spin.claimCode ?? '',
+    claimStatus: spin.claimStatus ?? '',
+    redeemedAt: spin.redeemedAt ? utcIso(spin.redeemedAt) : '',
+    blockReason: '',
+  }));
+  for (const event of blockedEvents.results) {
+    const properties = eventProperties(event.properties);
+    const blockedExperienceId = typeof properties.experienceId === 'string' ? properties.experienceId : null;
+    if (experienceId && blockedExperienceId !== experienceId) continue;
+    const context = blockedExperienceId ? contextById.get(blockedExperienceId) : experiences.results.length === 1 ? experiences.results[0] : undefined;
+    rows.push({ occurredAt: utcIso(event.occurredAt), experience: context?.name ?? '', resultType: 'blocked', prizeName: '', claimCode: '', claimStatus: '', redeemedAt: '', blockReason: typeof properties.reason === 'string' ? properties.reason : '' });
+  }
+  rows.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+
+  const label = experiences.results.length === 1 ? experiences.results[0]!.name : application?.name ?? 'roulette';
+  const filename = `corsteno-${exportFileSlug(label)}-resultados-${new Date().toISOString().slice(0, 10)}.csv`;
+  return new Response(rouletteResultsCsv(rows), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"`, 'Cache-Control': 'no-store' } });
+});
+
 analyticsRoutes.get('/summary', async (c) => {
   const s = await scope(c);
   const rows = (await run(
