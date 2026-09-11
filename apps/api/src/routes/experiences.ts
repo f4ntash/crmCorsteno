@@ -5,10 +5,13 @@ import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
-import { buildRouletteOutcomes } from '../services/roulette-selector';
+import { resolveExperienceType } from '../services/experience-types';
+import { normalizePrizeConfig, validDraftConfig, type DraftConfig } from '../services/roulette-config';
 import { recordActivityBestEffort } from '../services/activity';
 import { validateImageFile } from '../services/assets';
 export { sanitizeSvg } from '../services/assets';
+export { normalizeParticipationConfig, normalizePrizeConfig, validDraftConfig, validAssetUrl, validateRoulettePublishReadiness } from '../services/roulette-config';
+export type { DraftConfig, ParticipationConfig, PrizeConfig, PublishReadinessIssue } from '../services/roulette-config';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -42,14 +45,6 @@ export type ExperienceSpin = {
   outcomeType: 'prize' | 'no_prize';
   createdAt: string;
 };
-
-export type ParticipationConfig = {
-  maxSpinsPerDevice: number | null;
-  maxSpinsPerSession: number | null;
-  cooldownSeconds: number;
-};
-export type PrizeConfig = { id: string; name: string; iconUrl?: string | null; enabled?: boolean; weight?: number; stockMode?: 'limited' | 'unlimited'; initialStock?: number; stockLimit?: number | null; redemption?: { enabled?: boolean } };
-export type DraftConfig = { schemaVersion: 1; backgroundColor: string; branding?: { logoUrl?: string | null; backgroundImageUrl?: string | null }; content?: { title?: string; intro?: string; spinButtonLabel?: string; winMessage?: string; noPrizeMessage?: string }; prizes: PrizeConfig[]; segments: Array<{ id: string; color: string; prizeId: string | null; weight?: number }>; effects?: { sound?: boolean; vibration?: boolean; celebration?: boolean }; resultCta?: { enabled?: boolean; label?: string; url?: string }; participation?: Partial<ParticipationConfig> };
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -194,12 +189,8 @@ function datesValid(startsAt: string | null | undefined, endsAt: string | null |
 function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
-const HEX = /^#[0-9a-f]{6}$/i;
-const ASSET_PATH = /^\/assets\/organizations\/[A-Za-z0-9_-]+\/(?:experiences\/[A-Za-z0-9_-]+|assets)\/[0-9a-f-]+\.(png|jpg|jpeg|webp|svg)$/i;
-export function validAssetUrl(value: unknown) {
-  if (typeof value !== 'string') return false;
-  if (ASSET_PATH.test(value)) return true;
-  try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && ASSET_PATH.test(url.pathname) && !url.username && !url.password; } catch { return false; }
+function unsupportedExperienceType() {
+  return { error: { code: 'UNSUPPORTED_EXPERIENCE_TYPE', message: 'El tipo de experiencia no está soportado.' } };
 }
 export function assetReferencesBelongToOrganization(value: unknown, organizationId: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return true;
@@ -213,84 +204,6 @@ export function assetReferencesBelongToOrganization(value: unknown, organization
     if (typeof ref !== 'string') return true;
     try { return new URL(ref, 'http://localhost').pathname.startsWith(prefix); } catch { return false; }
   });
-}
-export function validDraftConfig(value: unknown): value is DraftConfig {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const config = value as Record<string, unknown>;
-  if (!validParticipationConfig(config.participation)) return false;
-  if (config.schemaVersion !== 1 || typeof config.backgroundColor !== 'string' || !HEX.test(config.backgroundColor) || !Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5 || !Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) return false;
-  const ids = new Set<string>();
-  if (config.effects !== undefined && (typeof config.effects !== 'object' || config.effects === null || Object.values(config.effects as Record<string, unknown>).some((v) => typeof v !== 'boolean'))) return false;
-  const branding = config.branding;
-  if (branding !== undefined && (typeof branding !== 'object' || branding === null || Array.isArray(branding))) return false;
-  if (branding && Object.entries(branding as Record<string, unknown>).some(([key, item]) => !['logoUrl', 'backgroundImageUrl'].includes(key) || (item !== null && !validAssetUrl(item)))) return false;
-  const content = config.content;
-  const contentLengths: Record<string, number> = { title: 120, intro: 500, spinButtonLabel: 40, winMessage: 240, noPrizeMessage: 240 };
-  if (content !== undefined && (typeof content !== 'object' || content === null || Array.isArray(content) || Object.entries(content as Record<string, unknown>).some(([key, item]) => !(key in contentLengths) || (item !== undefined && typeof item !== 'string') || (typeof item === 'string' && item.length > contentLengths[key]!)))) return false;
-  if (config.prizes.some((prize) => { const redemption = (prize as Record<string, unknown>).redemption; return redemption !== undefined && (typeof redemption !== 'object' || redemption === null || Array.isArray(redemption) || typeof (redemption as Record<string, unknown>).enabled !== 'boolean'); })) return false;
-  if (config.resultCta !== undefined) { const cta = config.resultCta as Record<string, unknown>; if (typeof cta !== 'object' || cta === null || (cta.enabled !== undefined && typeof cta.enabled !== 'boolean') || (cta.label !== undefined && (typeof cta.label !== 'string' || cta.label.length > 80)) || (cta.url !== undefined && (typeof cta.url !== 'string' || !/^https?:\/\//i.test(cta.url) || cta.url.length > 2048))) return false; }
-  for (const prize of config.prizes) { if (typeof prize !== 'object' || prize === null || Array.isArray(prize)) return false; const item = prize as Record<string, unknown>; const legacyStock = item.stockLimit; if (typeof item.id !== 'string' || ids.has(item.id) || !item.id || typeof item.name !== 'string' || !item.name.trim() || (item.iconUrl !== undefined && item.iconUrl !== null && !validAssetUrl(item.iconUrl)) || (item.enabled !== undefined && typeof item.enabled !== 'boolean') || (item.weight !== undefined && (!Number.isInteger(item.weight) || Number(item.weight) < 1 || Number(item.weight) > 1000)) || (item.stockMode !== undefined && item.stockMode !== 'limited' && item.stockMode !== 'unlimited') || (item.initialStock !== undefined && (!Number.isInteger(item.initialStock) || Number(item.initialStock) < 0 || Number(item.initialStock) > 1_000_000_000)) || (legacyStock !== undefined && legacyStock !== null && (!Number.isInteger(legacyStock) || Number(legacyStock) < 0 || Number(legacyStock) > 1_000_000_000))) return false; ids.add(item.id); }
-  const segmentIds = new Set<string>();
-  return config.segments.every((segment) => { if (typeof segment !== 'object' || segment === null || Array.isArray(segment)) return false; const item = segment as Record<string, unknown>; return typeof item.id === 'string' && !segmentIds.has(item.id) && !!segmentIds.add(item.id) && typeof item.color === 'string' && HEX.test(item.color) && (item.prizeId === null || (typeof item.prizeId === 'string' && ids.has(item.prizeId))) && (item.weight === undefined || (item.prizeId === null && Number.isInteger(item.weight) && Number(item.weight) >= 1 && Number(item.weight) <= 1000)); });
-}
-
-export function normalizePrizeConfig(prize: PrizeConfig) {
-  const legacyLimited = prize.stockMode === undefined && prize.stockLimit !== undefined && prize.stockLimit !== null;
-  return { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: prize.enabled ?? true, weight: prize.weight ?? 1, stockMode: prize.stockMode ?? (legacyLimited ? 'limited' : 'unlimited'), initialStock: prize.initialStock ?? (legacyLimited ? prize.stockLimit! : undefined) } as const;
-}
-
-export function normalizeParticipationConfig(value: unknown): ParticipationConfig {
-  const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  return {
-    maxSpinsPerDevice: input.maxSpinsPerDevice === null || input.maxSpinsPerDevice === undefined ? null : Number(input.maxSpinsPerDevice),
-    maxSpinsPerSession: input.maxSpinsPerSession === null || input.maxSpinsPerSession === undefined ? null : Number(input.maxSpinsPerSession),
-    cooldownSeconds: input.cooldownSeconds === undefined ? 0 : Number(input.cooldownSeconds),
-  };
-}
-
-export function validParticipationConfig(value: unknown) {
-  if (value === undefined) return true;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const config = value as Record<string, unknown>;
-  const validLimit = (item: unknown) => item === null || item === undefined || typeof item === 'number' && Number.isInteger(item) && item >= 1 && item <= 100;
-  return validLimit(config.maxSpinsPerDevice) && validLimit(config.maxSpinsPerSession)
-    && (config.cooldownSeconds === undefined || typeof config.cooldownSeconds === 'number' && Number.isInteger(config.cooldownSeconds) && config.cooldownSeconds >= 0 && config.cooldownSeconds <= 604800);
-}
-
-export type PublishReadinessIssue = { code: string; path: string; message: string };
-
-export function validateRoulettePublishReadiness(value: unknown): PublishReadinessIssue[] {
-  if (!validDraftConfig(value)) {
-    const config = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-    if (!config) return [{ code: 'CONFIG_MISSING', path: 'config', message: 'Falta configurar la ruleta.' }];
-    const issues: PublishReadinessIssue[] = [];
-    if (config.schemaVersion !== 1) issues.push({ code: 'CONFIG_VERSION', path: 'schemaVersion', message: 'La configuración de la ruleta no es compatible.' });
-    if (!Array.isArray(config.segments) || config.segments.length < 6 || config.segments.length > 10) issues.push({ code: 'SEGMENT_COUNT', path: 'segments', message: 'La ruleta debe tener entre 6 y 10 segmentos.' });
-    if (!Array.isArray(config.prizes) || config.prizes.length < 1 || config.prizes.length > 5) issues.push({ code: 'PRIZE_COUNT', path: 'prizes', message: 'Debe existir al menos un premio configurado.' });
-    if (Array.isArray(config.segments) && Array.isArray(config.prizes)) {
-      const prizeIds = new Set(config.prizes.filter((item) => item && typeof item === 'object' && !Array.isArray(item)).map((item) => (item as Record<string, unknown>).id).filter((id): id is string => typeof id === 'string'));
-      const invalidSegment = config.segments.some((item) => {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
-        const segment = item as Record<string, unknown>;
-        return typeof segment.id !== 'string' || typeof segment.color !== 'string' || (segment.prizeId !== null && !prizeIds.has(segment.prizeId as string));
-      });
-      if (invalidSegment) issues.push({ code: 'SEGMENTS_INVALID', path: 'segments', message: 'Hay segmentos inválidos o con premios inexistentes.' });
-      const invalidPrize = config.prizes.some((item) => {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
-        const prize = item as Record<string, unknown>;
-        return typeof prize.id !== 'string' || typeof prize.name !== 'string' || !prize.name.trim();
-      });
-      if (invalidPrize) issues.push({ code: 'PRIZES_INVALID', path: 'prizes', message: 'Hay premios incorrectamente configurados.' });
-    }
-    return issues.length ? issues : [{ code: 'CONFIG_INVALID', path: 'config', message: 'La configuración de la ruleta está incompleta.' }];
-  }
-  const config = value as DraftConfig;
-  const inventory = new Map(config.prizes.map((prize) => {
-    const normalized = normalizePrizeConfig(prize);
-    return [normalized.id, { stockMode: normalized.stockMode, stockAvailable: normalized.stockMode === 'limited' ? normalized.initialStock ?? 0 : null, deliveredCount: 0 }] as const;
-  }));
-  const outcomes = buildRouletteOutcomes(config, inventory);
-  return outcomes.length ? [] : [{ code: 'NO_USABLE_OUTCOME', path: 'segments', message: 'Falta configurar un resultado válido.' }];
 }
 
 async function syncPrizeInventory(db: D1Database, experienceId: string, config: DraftConfig) {
@@ -364,9 +277,11 @@ experienceRoutes.post('/:id/publish', async (c) => {
   const organizationId = c.get('organization').id;
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const typeDefinition = resolveExperienceType(row.type);
+  if (!typeDefinition) return c.json(unsupportedExperienceType(), 422);
   let draft: JsonValue | null;
   try { draft = parseJson(row.draftConfig as string | null); } catch { draft = null; }
-  const readinessIssues = validateRoulettePublishReadiness(draft);
+  const readinessIssues = typeDefinition.validatePublishReadiness(draft);
   if (readinessIssues.length === 0 && !assetReferencesBelongToOrganization(draft, organizationId)) readinessIssues.push({ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' });
   if (readinessIssues.length) return c.json({ error: { code: 'PUBLISH_NOT_READY', message: 'La experiencia no está lista para publicar.', issues: readinessIssues } }, 422);
   const readyDraft = draft as DraftConfig;
@@ -386,13 +301,16 @@ experienceRoutes.post('/:id/clone', async (c) => {
   const organizationId = c.get('organization').id;
   const source = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(sourceId, organizationId).first<Record<string, unknown>>();
   if (!source) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const typeDefinition = resolveExperienceType(source.type);
+  if (!typeDefinition) return c.json(unsupportedExperienceType(), 422);
   const sourceConfig = source.draftConfig ?? source.publishedConfig;
   if (sourceConfig === null || sourceConfig === undefined) return c.json(bad('Source experience has no configuration'), 422);
   let serializedConfig: string;
   try {
     const parsed = parseJson(sourceConfig as string);
     if (!parsed) return c.json(bad('Source experience has no configuration'), 422);
-    serializedConfig = JSON.stringify(parsed);
+    const reusableConfig = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(parsed) : parsed;
+    serializedConfig = JSON.stringify(reusableConfig);
   } catch {
     return c.json({ error: { code: 'UNPROCESSABLE_ENTITY', message: 'Source experience has invalid configuration' } }, 422);
   }
@@ -494,11 +412,14 @@ experienceRoutes.post('/', async (c) => {
   const endsAt = body.ends_at === null ? null : typeof body.ends_at === 'string' ? body.ends_at : undefined;
   if (!name) return c.json(bad('name is required'), 400);
   if (typeof type !== 'string' || !datesValid(startsAt, endsAt)) return c.json(bad('ends_at must be greater than starts_at'), 400);
+  const typeDefinition = resolveExperienceType(type);
+  if (!typeDefinition) return c.json(unsupportedExperienceType(), 400);
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
   let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'no-prize', name: 'Sin premio', enabled: true, weight: 1, stockMode: 'unlimited' }], segments: [], participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } });
   if (body.draft_config !== undefined) {
-    if (type !== 'roulette' || !validDraftConfig(body.draft_config) || !assetReferencesBelongToOrganization(body.draft_config, c.get('organization').id)) return c.json(bad('Invalid roulette draft_config'), 400);
-    draftConfig = JSON.stringify(body.draft_config);
+    const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body.draft_config) : body.draft_config;
+    if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad(type === 'roulette' ? 'Invalid roulette draft_config' : 'Invalid experience draft_config'), 400);
+    draftConfig = JSON.stringify(normalized);
   }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
@@ -566,7 +487,13 @@ experienceRoutes.patch('/:id', async (c) => {
   for (const [key, column] of allowed) if (key in body) {
     if (key === 'name' && (typeof body[key] !== 'string' || !(body[key] as string).trim())) return c.json(bad('name must be a non-empty string'), 400);
     if (key === 'status' && (typeof body[key] !== 'string' || !STATUSES.includes(body[key] as ExperienceStatus))) return c.json(bad('Invalid status'), 400);
-    if (key === 'draft_config') { if (!validDraftConfig(body[key]) || !assetReferencesBelongToOrganization(body[key], c.get('organization').id)) return c.json(bad('Invalid roulette draft_config'), 400); values.push(JSON.stringify(body[key])); } else values.push(body[key]);
+    if (key === 'draft_config') {
+      const typeDefinition = resolveExperienceType(current.type);
+      if (!typeDefinition) return c.json(unsupportedExperienceType(), 422);
+      const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body[key]) : body[key];
+      if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad(current.type === 'roulette' ? 'Invalid roulette draft_config' : 'Invalid experience draft_config'), 400);
+      values.push(JSON.stringify(normalized));
+    } else values.push(body[key]);
     fields.push(`${column}=?`);
   }
   const starts = ('starts_at' in body ? body.starts_at : current.startsAt) as string | null;
