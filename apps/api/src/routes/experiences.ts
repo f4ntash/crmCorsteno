@@ -201,7 +201,7 @@ export function validAssetUrl(value: unknown) {
   if (ASSET_PATH.test(value)) return true;
   try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && ASSET_PATH.test(url.pathname) && !url.username && !url.password; } catch { return false; }
 }
-function assetReferencesBelongToOrganization(value: unknown, organizationId: string) {
+export function assetReferencesBelongToOrganization(value: unknown, organizationId: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return true;
   const config = value as Record<string, unknown>;
   const refs: unknown[] = [];

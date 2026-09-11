@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import '../analytics.css';
 import '../activity.css';
+import '../attention.css';
 import '../assets.css';
 import '../config-fields.css';
 import '../publication-controls.css';
@@ -23,6 +24,7 @@ import { ClientOnboardingPage } from '../features/onboarding/pages/ClientOnboard
 import { RedeemPage } from '../features/claims/pages/RedeemPage';
 import { TeamPage } from '../features/team/TeamPage';
 import { ActivityPage } from '../features/activity/ActivityPage';
+import { AttentionPage } from '../features/attention/AttentionPage';
 import { AssetLibraryPage } from '../features/assets/AssetLibraryPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
@@ -63,6 +65,7 @@ function Shell() {
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>}
           {canRedeem && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
           {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity">Actividad</NavLink>}
+          {currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/attention">Atención</NavLink>}
           {currentPermissions.includes('assets.read') && <NavLink className={navClass} to="/app/assets">Archivos</NavLink>}
           {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
           {platformOperator && <>
@@ -111,6 +114,7 @@ function Shell() {
           <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
           <Route path="redeem" element={canRedeem ? <RedeemPage org={o} canRedeem /> : <Navigate to="/app" replace />} />
           <Route path="activity" element={currentPermissions.includes('activity.read') ? <ActivityPage org={o} /> : <Navigate to="/app" replace />} />
+          <Route path="attention" element={currentPermissions.includes('crm.read') ? <AttentionPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="assets" element={currentPermissions.includes('assets.read') ? <AssetLibraryPage org={o} canManage={currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
           <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
