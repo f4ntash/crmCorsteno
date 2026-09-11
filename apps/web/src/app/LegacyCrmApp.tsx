@@ -70,6 +70,8 @@ function Shell() {
   if (!m) return <main className="app-loading" aria-live="polite"><span className="loading-mark" />Cargando espacio de trabajo…</main>;
   const platformOperator = ['super_admin', 'corsteno_admin'].includes(m.user.platformRole);
   const currentOrganization = m.memberships.find((x) => x.organizationId === o);
+  const hasOrganizationAccess = m.memberships.length > 0;
+  const showOrganizationSelector = m.memberships.length > 1;
   const currentPermissions = currentOrganization?.permissions ?? [];
   const canManage = currentPermissions.includes('crm.manage');
   const canRedeem = currentPermissions.includes('claims.redeem');
@@ -114,9 +116,9 @@ function Shell() {
           <button ref={navigationTriggerRef} className="button button-icon menu-button" type="button" aria-label="Abrir navegación principal" aria-expanded={navigationOpen} aria-controls="app-navigation" onClick={() => setNavigationOpen(true)}>Menú</button>
           <div className="organization-context">
             <span>{platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
-            <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => setO(e.target.value)}>
+            {showOrganizationSelector ? <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => setO(e.target.value)}>
               {m.memberships.map((x) => <option key={x.organizationId} value={x.organizationId}>{x.organizationName}</option>)}
-            </select>
+            </select> : <strong className="organization-name">{currentOrganization?.organizationName ?? 'Sin organización asignada'}</strong>}
           </div>
           <div className="account-context">
             <span><strong>{m.user.name}</strong><small>{platformOperator ? 'Administrador de plataforma' : currentOrganization?.organizationName}</small></span>
@@ -131,7 +133,11 @@ function Shell() {
             </button>
           </div>
         </header>
-        <Routes>
+        {!hasOrganizationAccess ? <main className="page access-state">
+          <p className="eyebrow">ACCESO / ORGANIZACIÓN</p>
+          <h1>No tenés una organización asignada</h1>
+          <p className="page-description">Tu cuenta todavía no tiene acceso a un espacio de trabajo. Pedile a un administrador que te incorpore a una organización activa.</p>
+        </main> : <Routes key={o}>
           <Route index element={<Home org={o} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator} />} />
           <Route path="analytics" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <Analytics org={o} />} />
           <Route path="reports" element={currentPermissions.includes('analytics.read') ? <ReportsPage org={o} /> : <Navigate to="/app" replace />} />
@@ -154,7 +160,7 @@ function Shell() {
               </main>
             }
           />
-        </Routes>
+        </Routes>}
       </section>
     </div>
   );

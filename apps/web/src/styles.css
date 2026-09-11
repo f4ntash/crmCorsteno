@@ -50,6 +50,7 @@ header { position: sticky; top: 0; z-index: 4; display: flex; min-height: 68px; 
 .organization-context > span { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .organization-context select { width: 100%; min-width: 0; border-color: transparent; background: transparent; color: var(--text); font-weight: 600; }
 .organization-context select:hover { background: var(--surface-2); border-color: var(--border); }
+.organization-context > .organization-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .account-context { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .account-context > span { display: grid; text-align: right; }
 .account-context strong { font-size: 12px; font-weight: 600; }

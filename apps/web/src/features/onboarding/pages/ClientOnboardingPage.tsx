@@ -172,7 +172,8 @@ export function ClientOnboardingPage() {
             <header className="onboarding-card-heading">
               <h2>1. Nuevo cliente</h2>
               <p>
-                La contraseña se usa para generar el hash y no se guarda en
+                Se crea una cuenta administradora para la organización. La
+                contraseña se usa para generar el hash y no se guarda en
                 texto plano.
               </p>
             </header>
@@ -214,6 +215,7 @@ export function ClientOnboardingPage() {
                 />
               </label>
             </div>
+            <p className="onboarding-support">No hay envío de email automático disponible. Entregá el acceso al cliente por un canal seguro.</p>
             <div className="onboarding-actions">
               <button
                 disabled={
@@ -234,7 +236,9 @@ export function ClientOnboardingPage() {
           <>
             <header className="onboarding-card-heading">
               <h2>2. Plan y modalidad</h2>
+              <p>Cuenta administradora creada para {customerEmail}.</p>
             </header>
+            <p className="onboarding-support">La contraseña inicial no vuelve a mostrarse y no se envió por email automáticamente.</p>
             <div className="onboarding-fields onboarding-fields-two">
               <label>
                 Plan
