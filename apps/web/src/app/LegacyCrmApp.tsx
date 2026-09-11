@@ -4,6 +4,7 @@ import '../analytics.css';
 import '../activity.css';
 import '../assets.css';
 import '../config-fields.css';
+import '../publication-controls.css';
 import '../commercial.css';
 import '../home.css';
 import '../experiences.css';

@@ -3,7 +3,7 @@ import { Roulette3DPreview } from './Roulette3DPreview';
 import { apiRequest } from '../../../shared/api/client';
 import { experiencesApi } from '../../experiences/api';
 import type { Experience } from '../../experiences/types';
-import type { RoulettePrize as Prize } from '../types';
+import type { RouletteConfig, RoulettePrize as Prize } from '../types';
 import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
 import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
@@ -59,6 +59,7 @@ export function RouletteEditor({
   canEdit = true,
   canAdjustInventory = true,
   onDirtyChange,
+  onDraftSaved,
 }: {
   org: string;
   id: string;
@@ -67,6 +68,7 @@ export function RouletteEditor({
   canEdit?: boolean;
   canAdjustInventory?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  onDraftSaved?: (draft: RouletteConfig) => void;
 }) {
   return (
     <div
@@ -78,11 +80,11 @@ export function RouletteEditor({
           Esta experiencia es de solo lectura para tu rol.
         </p>
       )}
-      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canEdit} canAdjustInventory={canAdjustInventory} onDirtyChange={onDirtyChange} />
+      <RouletteEditorContent org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canEdit} canAdjustInventory={canAdjustInventory} onDirtyChange={onDirtyChange} onDraftSaved={onDraftSaved} />
     </div>
   );
 }
-function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable, canEdit, canAdjustInventory, onDirtyChange }: { org: string; id: string; redemptionAvailable: boolean; brandingAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean; onDirtyChange?: (dirty: boolean) => void }) {
+function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable, canEdit, canAdjustInventory, onDirtyChange, onDraftSaved }: { org: string; id: string; redemptionAvailable: boolean; brandingAvailable: boolean; canEdit: boolean; canAdjustInventory: boolean; onDirtyChange?: (dirty: boolean) => void; onDraftSaved?: (draft: RouletteConfig) => void }) {
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [operations, setOperations] = useState<Record<string, PrizeOperations>>({});
   const [loading, setLoading] = useState(true);
@@ -158,6 +160,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
         body: JSON.stringify({ draft_config: draft }),
       });
       reset(draft);
+      onDraftSaved?.(draft);
       setContentBaseline({ ...(draft.content ?? {}) });
       setMessage('Borrador guardado.');
     } catch (e) {

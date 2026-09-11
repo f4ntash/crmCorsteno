@@ -1,16 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { apiRequest } from '../../../shared/api/client';
+import { ApiError, apiRequest } from '../../../shared/api/client';
 import { experiencesApi } from '../api';
 import { commercialApi } from '../../commercial/api';
 import { experienceEditors } from '../registry';
-import { PublishControls } from '../components/PublishControls';
+import { PublicationControls, type PublicationReadinessIssue } from '../../../shared/publication/PublicationControls';
 import { SpinHistory } from '../components/SpinHistory';
 import { ClaimsPanel } from '../components/ClaimsPanel';
 import { AccessPeriodPanel } from '../components/AccessPeriodPanel';
 import { RouletteOperationsOverview } from '../components/RouletteOperationsOverview';
 import { publicExperienceUrl, runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 type LegacyJson = ReturnType<JSON['parse']>;
+type ExperienceDetail = {
+  id: string;
+  type: string;
+  slug: string;
+  name: string;
+  status: string;
+  effective_status: 'draft' | 'published' | 'paused' | 'scheduled' | 'active' | 'expired';
+  access_status?: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  draftConfig: unknown;
+  publishedConfig: unknown;
+};
+
 async function get<T = LegacyJson>(
   path: string,
   org?: string,
@@ -18,6 +32,12 @@ async function get<T = LegacyJson>(
 ) {
   return apiRequest<T>(path, org, init);
 }
+
+function readinessFrom(error: unknown) {
+  if (!(error instanceof ApiError) || !Array.isArray(error.details)) return [];
+  return error.details.filter((issue): issue is PublicationReadinessIssue => !!issue && typeof issue === 'object' && typeof (issue as { message?: unknown }).message === 'string');
+}
+
 export function ExperienceDetailPage({
   org,
   permissions,
@@ -31,23 +51,17 @@ export function ExperienceDetailPage({
   const navigate = useNavigate();
   const id =
     location.pathname.match(/^\/app\/experiences\/([^/]+)$/)?.[1] ?? '';
-  const [experience, setExperience] = useState<{
-    id: string;
-    type: string;
-    slug: string;
-    name: string;
-    status: string;
-    effective_status: 'draft' | 'published' | 'paused' | 'scheduled' | 'active' | 'expired';
-    access_status?: string;
-    startsAt: string | null;
-    endsAt: string | null;
-    draftConfig?: { prizes?: Array<{ id: string; name: string }> };
-  }>();
+  const [experience, setExperience] = useState<ExperienceDetail>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [redemptionAvailable, setRedemptionAvailable] = useState(false);
   const [brandingAvailable, setBrandingAvailable] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [publicationMessage, setPublicationMessage] = useState('');
+  const [publicationError, setPublicationError] = useState('');
+  const [readinessIssues, setReadinessIssues] = useState<PublicationReadinessIssue[]>([]);
   useEffect(() => {
     if (!id || !org) return;
     setLoading(true);
@@ -96,7 +110,9 @@ export function ExperienceDetailPage({
   if (!id || !experience) return <main className="page"><div className="empty"><h2>No se pudo cargar la experiencia.</h2>{loadError && <p className="error">{loadError}</p>}<button className="secondary" onClick={() => navigate('/app/experiences')}>Volver a experiencias</button></div></main>;
   const Editor =
     experienceEditors[experience.type as keyof typeof experienceEditors];
-  const prizes = experience.draftConfig?.prizes ?? [];
+  const prizes = experience.draftConfig && typeof experience.draftConfig === 'object' && !Array.isArray(experience.draftConfig) && Array.isArray((experience.draftConfig as { prizes?: unknown }).prizes)
+    ? (experience.draftConfig as { prizes: Array<{ id: string; name: string }> }).prizes
+    : [];
   async function clone() {
     if (!window.confirm('Se creará una nueva experiencia en estado borrador. Los giros, premios obtenidos y stock no se copiarán. ¿Continuar?')) return;
     try {
@@ -113,6 +129,38 @@ export function ExperienceDetailPage({
     if (dirty) { window.alert('Guardá el borrador para probar los últimos cambios.'); return; }
     window.open(previewUrl, '_blank', 'noopener,noreferrer');
   };
+  const hasUnpublishedChanges = JSON.stringify(experience.draftConfig) !== JSON.stringify(experience.publishedConfig);
+  async function publish() {
+    if (publishing) return;
+    setPublishing(true);
+    setPublicationMessage('');
+    setPublicationError('');
+    setReadinessIssues([]);
+    try {
+      const updated = await get<ExperienceDetail>(`/experiences/${id}/publish`, org, { method: 'POST' });
+      setExperience((current) => current ? { ...current, ...updated, access_status: current.access_status } : updated);
+      setPublicationMessage('Publicado correctamente.');
+    } catch (error) {
+      const issues = readinessFrom(error);
+      setReadinessIssues(issues);
+      if (!issues.length) setPublicationError((error as Error).message);
+    } finally {
+      setPublishing(false);
+    }
+  }
+  async function saveAvailability(startsAt: string | null, endsAt: string | null) {
+    if (availabilitySaving) return;
+    setAvailabilitySaving(true);
+    try {
+      const updated = await get<ExperienceDetail>(`/experiences/${id}`, org, {
+        method: 'PATCH',
+        body: JSON.stringify({ starts_at: startsAt, ends_at: endsAt }),
+      });
+      setExperience((current) => current ? { ...current, ...updated, access_status: current.access_status } : updated);
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  }
   return <main className="page experience-workspace">
     <header className="experience-workspace-header">
       <div><p className="eyebrow">EXPERIENCIA / OPERACIÓN</p><h1>{experience.name}</h1><p className="page-description">Configuración, disponibilidad y resultados de esta experiencia.</p></div>
@@ -121,8 +169,8 @@ export function ExperienceDetailPage({
     {location.state && typeof location.state === 'object' && 'cloneNotice' in location.state && <p className="clone-notice" role="status">{String((location.state as { cloneNotice?: unknown }).cloneNotice)}</p>}
     <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a><a href="#results">Resultados</a></nav>
     {experience.type === 'roulette' && <RouletteOperationsOverview id={id} org={org} slug={experience.slug} status={experience.effective_status} accessStatus={experience.access_status} startsAt={experience.startsAt} endsAt={experience.endsAt} publicUrl={publicUrl} onTest={openPreview} />}
-    <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublishControls organizationId={org} canPublish={canManage} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
-    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canManage} canAdjustInventory={canManage} onDirtyChange={setDirty} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
+    <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublicationControls status={experience.effective_status} accessStatus={experience.access_status} hasUnpublishedChanges={hasUnpublishedChanges} canPublish={canManage} onPublish={publish} publishing={publishing} readinessIssues={readinessIssues} startsAt={experience.startsAt} endsAt={experience.endsAt} canEditAvailability={canManage} availabilitySaving={availabilitySaving} onSaveAvailability={saveAvailability} showStatus={false} readOnly={!canManage} message={publicationMessage} error={publicationError} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
+    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canManage} canAdjustInventory={canManage} onDirtyChange={setDirty} onDraftSaved={(draft) => { setExperience((current) => current ? { ...current, draftConfig: draft } : current); setReadinessIssues([]); setPublicationError(''); }} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
     <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>
   </main>;
 }
