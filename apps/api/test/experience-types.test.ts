@@ -8,6 +8,7 @@ import {
   type ExperienceTypeDefinition,
 } from '../src/services/experience-types';
 import { validDraftConfig, validateRoulettePublishReadiness } from '../src/services/roulette-config';
+import { rouletteDraftFieldErrors } from '@corsteno/types';
 
 describe('experience type registry', () => {
   it('keeps Roulette validation behind the registered type definition', () => {
@@ -33,5 +34,28 @@ describe('experience type registry', () => {
     expect(validateExperiencePublishReadiness(secondType.type, draft.value, registry)).toMatchObject({ definition: secondType, issues: [] });
     expect(validateExperienceDraft('missing-type', {}, registry)).toMatchObject({ definition: null, valid: false });
     expect(validateExperiencePublishReadiness('missing-type', {}, registry)).toEqual({ definition: null, issues: [{ code: 'UNSUPPORTED_EXPERIENCE_TYPE', path: 'type', message: 'El tipo de experiencia no está soportado.' }] });
+  });
+});
+
+describe('Roulette editor validation', () => {
+  const base = {
+    schemaVersion: 1,
+    backgroundColor: '#111111',
+    prizes: [{ id: 'p1', name: 'Premio', weight: 1, stockMode: 'unlimited' as const }],
+    segments: Array.from({ length: 6 }, (_, index) => ({ id: `s${index}`, color: '#D6B25E', prizeId: 'p1' })),
+  };
+
+  it('shares concrete field rules with the API validator', () => {
+    const invalid = { ...base, prizes: [{ id: 'p1', name: ' '.repeat(3), weight: -1, stockMode: 'limited' as const, initialStock: -1 }] };
+    expect(Object.keys(rouletteDraftFieldErrors(invalid))).toEqual(expect.arrayContaining(['prizes[0].name', 'prizes[0].weight', 'prizes[0].initialStock']));
+    expect(validDraftConfig(invalid)).toBe(false);
+    expect(validateRoulettePublishReadiness(invalid)).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'prizes[0].weight', code: 'PRIZE_INVALID' })]));
+  });
+
+  it('keeps legacy omitted fields valid while enforcing copy and participation limits', () => {
+    expect(validDraftConfig(base)).toBe(true);
+    expect(validDraftConfig({ ...base, content: {} })).toBe(true);
+    expect(validDraftConfig({ ...base, content: { title: 'x'.repeat(121) } })).toBe(false);
+    expect(validDraftConfig({ ...base, participation: { maxSpinsPerDevice: 0, maxSpinsPerSession: null, cooldownSeconds: 0 } })).toBe(false);
   });
 });

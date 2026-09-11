@@ -429,7 +429,8 @@ experienceRoutes.post('/', async (c) => {
   }
   if (body.draft_config !== undefined) {
     const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body.draft_config) : body.draft_config;
-    if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad('Invalid experience draft_config'), 400);
+    if (!typeDefinition.validateDraft(normalized)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'El borrador tiene campos inválidos.', issues: typeDefinition.validatePublishReadiness(normalized) } }, 400);
+    if (!assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'Los assets deben pertenecer a la organización.', issues: [{ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' }] } }, 400);
     draftConfig = JSON.stringify(normalized);
   }
   const id = crypto.randomUUID();
@@ -503,7 +504,8 @@ experienceRoutes.patch('/:id', async (c) => {
       const typeDefinition = resolveExperienceType(current.type);
       if (!typeDefinition) return c.json(unsupportedExperienceType(), 422);
       const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body[key]) : body[key];
-      if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad('Invalid experience draft_config'), 400);
+      if (!typeDefinition.validateDraft(normalized)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'El borrador tiene campos inválidos.', issues: typeDefinition.validatePublishReadiness(normalized) } }, 400);
+      if (!assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'Los assets deben pertenecer a la organización.', issues: [{ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' }] } }, 400);
       values.push(JSON.stringify(normalized));
     } else values.push(body[key]);
     fields.push(`${column}=?`);

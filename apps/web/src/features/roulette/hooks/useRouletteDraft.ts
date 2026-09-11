@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { rouletteDraftFieldErrors } from '@corsteno/types';
 import type { RouletteConfig, RoulettePrize, RouletteSegment } from '../types';
 
 const palette = ['#D6B25E', '#79A7D3', '#9BC47D', '#C0A1D8', '#D88C8C', '#6FB6A8', '#E0A15B', '#8E9CC8', '#C98BBA', '#A6B66F'];
@@ -25,9 +26,7 @@ export function normalizeRouletteDraft(value: unknown): RouletteConfig {
 }
 
 export function isValidRouletteDraft(draft: RouletteConfig) {
-  const participation = draft.participation ?? { maxSpinsPerDevice: null, maxSpinsPerSession: null, cooldownSeconds: 0 };
-  const validLimit = (value: number | null) => value === null || Number.isInteger(value) && value >= 1 && value <= 100;
-  return /^#[0-9a-f]{6}$/i.test(draft.backgroundColor) && draft.prizes.length >= 1 && draft.prizes.length <= 5 && new Set(draft.prizes.map((p) => p.id)).size === draft.prizes.length && draft.prizes.every((p) => p.name.trim()) && draft.segments.length >= 6 && draft.segments.length <= 10 && draft.segments.every((s) => /^#[0-9a-f]{6}$/i.test(s.color) && (s.prizeId === null || draft.prizes.some((p) => p.id === s.prizeId))) && validLimit(participation.maxSpinsPerDevice) && validLimit(participation.maxSpinsPerSession) && Number.isInteger(participation.cooldownSeconds) && participation.cooldownSeconds >= 0 && participation.cooldownSeconds <= 604800;
+  return Object.keys(rouletteDraftFieldErrors(draft)).length === 0;
 }
 
 export function useRouletteDraft(initialValue?: unknown) {
@@ -39,5 +38,5 @@ export function useRouletteDraft(initialValue?: unknown) {
   const updatePrize = useCallback((index: number, prize: RoulettePrize) => setDraft((d) => ({ ...d, prizes: d.prizes.map((p, i) => i === index ? prize : p) })), []);
   const addPrize = useCallback(() => setDraft((d) => ({ ...d, prizes: [...d.prizes, { id: `prize-${crypto.randomUUID()}`, name: `Premio ${d.prizes.length + 1}`, enabled: true, weight: 1, stockMode: 'unlimited' as const }] })), []);
   const removePrize = useCallback((index: number) => setDraft((d) => { const removed = d.prizes[index]?.id; return { ...d, prizes: d.prizes.filter((_, i) => i !== index), segments: d.segments.map((s) => s.prizeId === removed ? { ...s, prizeId: null } : s) }; }), []);
-  return { draft, setDraft, reset, resize, updateSegment, updatePrize, addPrize, removePrize, dirty: JSON.stringify(draft) !== original, valid: isValidRouletteDraft(draft) };
+  return { draft, setDraft, reset, resize, updateSegment, updatePrize, addPrize, removePrize, dirty: JSON.stringify(draft) !== original, valid: isValidRouletteDraft(draft), validationErrors: rouletteDraftFieldErrors(draft) };
 }

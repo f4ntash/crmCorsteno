@@ -272,6 +272,12 @@ describe('experience publishing', () => {
     const env = fixture();
     expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ draft_config: { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio' }], segments: sixSegments() } }) })).status).toBe(200);
   });
+  it('returns structured field issues when a Roulette draft contains invalid values', async () => {
+    const invalid = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio', weight: -1 }], segments: sixSegments() };
+    const response = await request('/experiences/a', fixture(), { method: 'PATCH', body: JSON.stringify({ draft_config: invalid }) });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(expect.objectContaining({ error: expect.objectContaining({ code: 'INVALID_DRAFT_CONFIG', issues: expect.arrayContaining([expect.objectContaining({ path: 'prizes[0].weight', message: expect.stringContaining('peso') })]) }) }));
+  });
   it('blocks configurations without a usable outcome', async () => {
     const config = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio', enabled: true, stockMode: 'limited', initialStock: 0 }], segments: sixSegments() };
     const response = await request('/experiences/a/publish', fixture(JSON.stringify(config)), { method: 'POST' });
