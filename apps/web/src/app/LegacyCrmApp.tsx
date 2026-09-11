@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'reac
 import '../analytics.css';
 import '../activity.css';
 import '../assets.css';
+import '../config-fields.css';
 import '../commercial.css';
 import '../home.css';
 import '../experiences.css';

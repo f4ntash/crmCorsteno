@@ -1,0 +1,8 @@
+.config-fields { display: grid; gap: 12px; }
+.config-field { display: grid; gap: 7px; min-width: 0; }
+.config-field > label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.config-field-boolean { display: flex !important; align-items: center; gap: 10px; color: var(--text) !important; font-weight: 500 !important; }
+.config-field-boolean input { flex: 0 0 auto; }
+.config-field-description { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.config-field-error { color: #ef9999; font-size: 12px; }
+.config-field-missing { margin: 0; color: #ef9999; font-size: 12px; }

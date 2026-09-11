@@ -10,6 +10,16 @@ import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { ProbabilitySummary } from './ProbabilitySummary';
 import { calculateEffectiveRouletteProbabilities } from '@corsteno/types';
 import { AssetPicker } from '../../assets/AssetPicker';
+import { ConfigFields } from '../../../shared/config/ConfigFields';
+import type { ConfigFieldDefinition } from '../../../shared/config/fields';
+
+const rouletteContentFields: ConfigFieldDefinition[] = [
+  { key: 'title', type: 'text', label: 'Título de la experiencia', maxLength: 120, placeholder: 'Ruleta de premios' },
+  { key: 'intro', type: 'textarea', label: 'Intro e instrucciones', maxLength: 500, placeholder: 'Girá la ruleta y descubrí tu premio.' },
+  { key: 'spinButtonLabel', type: 'text', label: 'Texto del botón de giro', maxLength: 40, placeholder: 'Girar' },
+  { key: 'winMessage', type: 'text', label: 'Mensaje de premio', maxLength: 240, placeholder: '¡GANASTE!' },
+  { key: 'noPrizeMessage', type: 'text', label: 'Mensaje sin premio', maxLength: 240, placeholder: '¡GRACIAS POR JUGAR!' },
+];
 
 type Inventory = {
   prizeId: string;
@@ -186,10 +196,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
               <div><span className="field-label">Imagen de fondo</span><AssetPicker org={org} value={draft.branding?.backgroundImageUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, backgroundImageUrl: url } })} categories={['background', 'image']} canUpload={canEdit && brandingAvailable} disabled={!canEdit || !brandingAvailable} label="Elegir fondo" /></div>
             </div>
             {(draft.branding?.logoUrl || draft.branding?.backgroundImageUrl) && <p className="field-help">Los assets cargados se aplican al runtime al publicar.</p>}
-            <label>Título de la experiencia<input maxLength={120} disabled={!canEdit || !brandingAvailable} value={draft.content?.title ?? ''} placeholder="Ruleta de premios" onChange={(e) => setDraft({ ...draft, content: { ...draft.content, title: e.target.value } })} /></label>
-            <label>Intro e instrucciones<textarea maxLength={500} disabled={!canEdit || !brandingAvailable} value={draft.content?.intro ?? ''} placeholder="Girá la ruleta y descubrí tu premio." onChange={(e) => setDraft({ ...draft, content: { ...draft.content, intro: e.target.value } })} /></label>
-            <label>Texto del botón de giro<input maxLength={40} disabled={!canEdit || !brandingAvailable} value={draft.content?.spinButtonLabel ?? ''} placeholder="Girar" onChange={(e) => setDraft({ ...draft, content: { ...draft.content, spinButtonLabel: e.target.value } })} /></label>
-            <div className="branding-copy-grid"><label>Mensaje de premio<input maxLength={240} disabled={!canEdit || !brandingAvailable} value={draft.content?.winMessage ?? ''} placeholder="¡GANASTE!" onChange={(e) => setDraft({ ...draft, content: { ...draft.content, winMessage: e.target.value } })} /></label><label>Mensaje sin premio<input maxLength={240} disabled={!canEdit || !brandingAvailable} value={draft.content?.noPrizeMessage ?? ''} placeholder="¡GRACIAS POR JUGAR!" onChange={(e) => setDraft({ ...draft, content: { ...draft.content, noPrizeMessage: e.target.value } })} /></label></div>
+            <ConfigFields fields={rouletteContentFields} values={(draft.content ?? {}) as Record<string, unknown>} onChange={(key, value) => setDraft({ ...draft, content: { ...draft.content, [key]: value as string } })} disabled={!canEdit || !brandingAvailable} />
           </section>
           <label>
             Fondo
