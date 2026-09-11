@@ -6,6 +6,7 @@ import { buildAttentionItems, type AttentionExperience, type AttentionReadinessI
 import { getEffectiveExperienceAccessStatus } from '../services/experience-access';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { assetReferencesBelongToOrganization, parseJson, validateRoulettePublishReadiness } from './experiences';
+import { validateProductCatalogPublishReadiness } from '../services/product-catalog';
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -50,9 +51,14 @@ function accessByExperience(rows: readonly AccessPeriodRow[]) {
   return grouped;
 }
 
-function readinessByExperience(rows: readonly ExperienceRow[], organizationId: string) {
+async function readinessByExperience(db: D1Database, rows: readonly ExperienceRow[], organizationId: string) {
   const result = new Map<string, readonly AttentionReadinessIssue[]>();
   for (const row of rows) {
+    if (row.type === 'product-catalog') {
+      const issues = await validateProductCatalogPublishReadiness(db, row.id, organizationId, parseStoredJson(row.draftConfig));
+      if (issues.length) result.set(row.id, issues);
+      continue;
+    }
     if (row.type !== 'roulette') continue;
     const config = parseStoredJson(row.draftConfig);
     const issues = validateRoulettePublishReadiness(config);
@@ -89,10 +95,11 @@ attentionRoutes.get('/', async (c) => {
   const type = c.req.query('type');
   if (type !== undefined && !/^[a-z][a-z0-9_.-]{1,79}$/.test(type)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid attention type' } }, 400);
   const experiences = await c.env.DB.prepare('SELECT id,name,type,status,draft_config draftConfig,published_config publishedConfig,starts_at startsAt,ends_at endsAt,updated_at updatedAt FROM experiences WHERE organization_id=? ORDER BY created_at DESC,id DESC').bind(organizationId).all<ExperienceRow>();
-  const [access, inventory, claims] = await Promise.all([
+  const [access, inventory, claims, catalogProducts] = await Promise.all([
     c.env.DB.prepare('SELECT experience_id experienceId,starts_at startsAt,ends_at endsAt FROM experience_access_periods WHERE organization_id=? ORDER BY starts_at ASC,id ASC').bind(organizationId).all<AccessPeriodRow>(),
     c.env.DB.prepare("SELECT i.experience_id experienceId,i.prize_id prizeId,i.stock_mode stockMode,i.stock_available stockAvailable FROM experience_prize_inventory i JOIN experiences e ON e.id=i.experience_id AND e.organization_id=? WHERE e.type='roulette'").bind(organizationId).all<InventoryRow>(),
     c.env.DB.prepare("SELECT experience_id experienceId,SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) pendingClaims FROM roulette_prize_claims WHERE organization_id=? AND experience_id IN (SELECT id FROM experiences WHERE organization_id=? AND type='roulette') GROUP BY experience_id").bind(organizationId, organizationId).all<ClaimRow>(),
+    c.env.DB.prepare("SELECT experience_id experienceId,visible,stock FROM catalog_products WHERE organization_id=? AND archived_at IS NULL").bind(organizationId).all<{ experienceId: string; visible: number; stock: number }>(),
   ]);
   const groupedAccess = accessByExperience(access.results);
   const attentionExperiences: AttentionExperience[] = experiences.results.map((row) => ({
@@ -108,7 +115,15 @@ attentionRoutes.get('/', async (c) => {
   }));
   const operations = soldOutByExperience(experiences.results, inventory.results);
   for (const claim of claims.results) operations.set(claim.experienceId, { ...(operations.get(claim.experienceId) ?? { soldOutLimitedPrizes: 0 }), pendingClaims: Number(claim.pendingClaims ?? 0) });
-  const allItems = buildAttentionItems({ organizationId, experiences: attentionExperiences, readinessByExperience: readinessByExperience(experiences.results, organizationId), rouletteOperationsByExperience: operations });
+  const catalogOperations = new Map<string, { visibleProducts: number; soldOutProducts: number }>();
+  for (const experience of experiences.results) if (experience.type === 'product-catalog') catalogOperations.set(experience.id, { visibleProducts: 0, soldOutProducts: 0 });
+  for (const product of catalogProducts.results) {
+    const current = catalogOperations.get(product.experienceId) ?? { visibleProducts: 0, soldOutProducts: 0 };
+    if (Number(product.visible) === 1) current.visibleProducts += 1;
+    if (Number(product.visible) === 1 && Number(product.stock) <= 0) current.soldOutProducts += 1;
+    catalogOperations.set(product.experienceId, current);
+  }
+  const allItems = buildAttentionItems({ organizationId, experiences: attentionExperiences, readinessByExperience: await readinessByExperience(c.env.DB, experiences.results, organizationId), rouletteOperationsByExperience: operations, catalogOperationsByExperience: catalogOperations });
   const filtered = allItems.filter((item) => (severity === undefined || item.severity === severity) && (type === undefined || item.type === type));
   return c.json({ items: filtered.slice(0, limit), total: filtered.length, limit, filters: { severity: severity ?? null, type: type ?? null } });
 });

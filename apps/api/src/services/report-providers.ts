@@ -1,6 +1,7 @@
 import { csvDocument, reportFilename } from './report-csv';
 import { reportRangeOf, reportSinceOf } from './report-filters';
 import { exportRouletteResults } from './roulette-report';
+import { exportCatalogInventory } from './catalog-report';
 import { ReportRequestError, type ReportContext, type ReportProvider } from './report-types';
 
 type ApplicationRow = { id: string; name: string; projectName: string; applicationType: string };
@@ -58,6 +59,16 @@ async function rouletteAvailable(context: ReportContext) {
   return Boolean(row);
 }
 
+async function catalogAvailable(context: ReportContext) {
+  const applicationId = context.query.get('applicationId')?.trim() || '';
+  if (applicationId) {
+    const row = await context.db.prepare('SELECT application_type applicationType FROM applications WHERE id=? AND organization_id=?').bind(applicationId, context.organizationId).first<{ applicationType: string }>();
+    return row?.applicationType === 'product-catalog';
+  }
+  const row = await context.db.prepare("SELECT 1 value FROM applications WHERE organization_id=? AND application_type='product-catalog' LIMIT 1").bind(context.organizationId).first();
+  return Boolean(row);
+}
+
 export const genericReportProvider: ReportProvider = () => [{
   id: 'analytics.application-activity.csv',
   title: 'Actividad de aplicación',
@@ -83,7 +94,20 @@ export const rouletteReportProvider: ReportProvider = () => [{
   export: exportRouletteResults,
 }];
 
-export const defaultReportProviders: readonly ReportProvider[] = [genericReportProvider, rouletteReportProvider];
+export const catalogReportProvider: ReportProvider = () => [{
+  id: 'catalog.inventory.csv',
+  title: 'Inventario de productos',
+  description: 'Productos, precios, stock y visibilidad del catálogo seleccionado.',
+  scope: 'application',
+  format: 'csv',
+  requiresApplication: true,
+  applicationTypes: ['product-catalog'],
+  emptyBehavior: 'download',
+  available: catalogAvailable,
+  export: exportCatalogInventory,
+}];
+
+export const defaultReportProviders: readonly ReportProvider[] = [genericReportProvider, rouletteReportProvider, catalogReportProvider];
 
 export function reportDefinitions(context: ReportContext, providers: readonly ReportProvider[] = defaultReportProviders) {
   return providers.flatMap((provider) => provider(context));

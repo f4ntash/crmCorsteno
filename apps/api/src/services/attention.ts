@@ -35,12 +35,17 @@ export type AttentionRouletteOperations = {
   pendingClaims: number;
   soldOutLimitedPrizes: number;
 };
+export type AttentionCatalogOperations = {
+  visibleProducts: number;
+  soldOutProducts: number;
+};
 
 export type AttentionProviderContext = {
   organizationId: string;
   experiences: readonly AttentionExperience[];
   readinessByExperience: ReadonlyMap<string, readonly AttentionReadinessIssue[]>;
   rouletteOperationsByExperience: ReadonlyMap<string, AttentionRouletteOperations>;
+  catalogOperationsByExperience?: ReadonlyMap<string, AttentionCatalogOperations>;
 };
 
 export type AttentionProvider = (context: AttentionProviderContext) => AttentionItem[];
@@ -116,7 +121,19 @@ function rouletteOperationsProvider(context: AttentionProviderContext): Attentio
   });
 }
 
-export const defaultAttentionProviders: readonly AttentionProvider[] = [experienceStatusProvider, rouletteOperationsProvider];
+function catalogOperationsProvider(context: AttentionProviderContext): AttentionItem[] {
+  return context.experiences.flatMap((experience) => {
+    if (experience.type !== 'product-catalog') return [];
+    const operations = context.catalogOperationsByExperience?.get(experience.id);
+    if (!operations) return [];
+    const items: AttentionItem[] = [];
+    if (operations.visibleProducts === 0) items.push({ organizationId: context.organizationId, id: `catalog:${experience.id}:no-visible-products`, type: 'catalog.no_visible_products', severity: 'warning', title: `${experience.name} no tiene productos visibles`, description: 'Agregá o hacé visible un producto antes de publicar el catálogo.', resourceType: 'experience', resourceId: experience.id, actionLabel: 'Revisar catálogo', actionHref: experienceHref(experience.id, 'configuration'), createdAt: experience.updatedAt ?? null });
+    if (operations.soldOutProducts > 0) items.push({ organizationId: context.organizationId, id: `catalog:${experience.id}:sold-out`, type: 'catalog.products_sold_out', severity: 'warning', title: `${experience.name} tiene productos agotados`, description: `${operations.soldOutProducts.toLocaleString('es-AR')} producto${operations.soldOutProducts === 1 ? '' : 's'} sin stock.`, resourceType: 'experience', resourceId: experience.id, actionLabel: 'Revisar catálogo', actionHref: experienceHref(experience.id, 'configuration'), createdAt: experience.updatedAt ?? null });
+    return items;
+  });
+}
+
+export const defaultAttentionProviders: readonly AttentionProvider[] = [experienceStatusProvider, rouletteOperationsProvider, catalogOperationsProvider];
 
 function createdAtValue(value: string | number | null | undefined) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;

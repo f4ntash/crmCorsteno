@@ -10,6 +10,7 @@ import { normalizePrizeConfig, validDraftConfig, type DraftConfig } from '../ser
 import { recordActivityBestEffort } from '../services/activity';
 import { validateImageFile } from '../services/assets';
 import { ensureExperienceAnalyticsApplication } from '../services/experience-analytics';
+import { cloneCatalogProducts, publishCatalogSnapshot, PRODUCT_CATALOG_TYPE } from '../services/product-catalog';
 export { sanitizeSvg } from '../services/assets';
 export { normalizeParticipationConfig, normalizePrizeConfig, validDraftConfig, validAssetUrl, validateRoulettePublishReadiness } from '../services/roulette-config';
 export type { DraftConfig, ParticipationConfig, PrizeConfig, PublishReadinessIssue } from '../services/roulette-config';
@@ -271,12 +272,16 @@ experienceRoutes.post('/:id/publish', async (c) => {
   let draft: JsonValue | null;
   try { draft = parseJson(row.draftConfig as string | null); } catch { draft = null; }
   const readinessIssues = typeDefinition.validatePublishReadiness(draft);
+  if (typeDefinition.validatePublishReadinessWithContext) readinessIssues.push(...await typeDefinition.validatePublishReadinessWithContext(draft, { db: c.env.DB, experienceId: id, organizationId }));
   if (readinessIssues.length === 0 && !assetReferencesBelongToOrganization(draft, organizationId)) readinessIssues.push({ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' });
   if (readinessIssues.length) return c.json({ error: { code: 'PUBLISH_NOT_READY', message: 'La experiencia no está lista para publicar.', issues: readinessIssues } }, 422);
   const readyDraft = draft as DraftConfig;
   const snapshot = JSON.stringify(readyDraft);
+  if (row.type === PRODUCT_CATALOG_TYPE) {
+    try { await publishCatalogSnapshot(c.env.DB, id, organizationId); } catch { return c.json({ error: { code: 'PUBLISH_FAILED', message: 'No se pudo preparar el catálogo publicado.' } }, 503); }
+  }
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
-  await syncPrizeInventory(c.env.DB, id, readyDraft);
+  if (row.type === 'roulette') await syncPrizeInventory(c.env.DB, id, readyDraft);
   await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId, experienceType: String(row.type), name: String(row.name ?? 'Experience') });
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.published', resourceType: 'experience', resourceId: id, metadata: { name: row.name } });
@@ -307,6 +312,12 @@ experienceRoutes.post('/:id/clone', async (c) => {
   const slug = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
     .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, null, null).run();
+  if (source.type === PRODUCT_CATALOG_TYPE) {
+    try { await cloneCatalogProducts(c.env.DB, sourceId, organizationId, id); } catch {
+      await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).run();
+      return c.json({ error: { code: 'CLONE_FAILED', message: 'No se pudo crear la copia del catálogo.' } }, 503);
+    }
+  }
   const cloned = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.cloned', resourceType: 'experience', resourceId: id, metadata: { name: `${String(source.name)} - Copia`, sourceName: source.name } });
   try { return c.json(present(cloned ?? {}), 201); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid cloned experience JSON' } }, 500); }
@@ -512,6 +523,8 @@ experienceRoutes.delete('/:id', async (c) => {
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   await c.env.DB.prepare('DELETE FROM subscription_experiences WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
+  await c.env.DB.prepare('DELETE FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
+  await c.env.DB.prepare('DELETE FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_access_periods WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory_events WHERE experience_id=?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory WHERE experience_id=?').bind(id).run();

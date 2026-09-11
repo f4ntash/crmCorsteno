@@ -1,6 +1,7 @@
 import type { CommercialEntitlements } from '@corsteno/types';
 import { buildRouletteOutcomes } from './roulette-selector';
 import { validDraftConfig, type DraftConfig } from './roulette-config';
+import { PRODUCT_CATALOG_TYPE, validateProductCatalogDraft } from './product-catalog';
 
 export type PublicExperienceShell = {
   id: string;
@@ -48,6 +49,23 @@ export type RoulettePublicExperiencePayload = PublicExperiencePayload & {
   recovery?: RoulettePublicRecovery;
 };
 
+export type CatalogPublicProduct = {
+  name: string;
+  description: string;
+  priceMinorUnits: number;
+  currency: string;
+  stock: number;
+  mainImageUrl: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+};
+
+export type ProductCatalogPublicExperiencePayload = PublicExperiencePayload & {
+  type: 'product-catalog';
+  config: { schemaVersion: 1; title?: string; intro?: string };
+  products: CatalogPublicProduct[];
+};
+
 export function validPublicParticipantId(value: unknown) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -86,8 +104,21 @@ const roulettePublicExperienceAdapter: PublicExperienceAdapter<RoulettePublicExp
   },
 };
 
+const productCatalogPublicExperienceAdapter: PublicExperienceAdapter<ProductCatalogPublicExperiencePayload> = {
+  type: PRODUCT_CATALOG_TYPE,
+  async buildPublicPayload({ db, experience }) {
+    let config: unknown;
+    try { config = parsePublishedConfig(experience.publishedConfig); } catch { return { kind: 'inactive', reason: 'unavailable', status: 503 }; }
+    if (!validateProductCatalogDraft(config)) return { kind: 'inactive', reason: 'unavailable', status: 503 };
+    const products = await db.prepare('SELECT name,description,price_minor_units priceMinorUnits,currency,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY rowid ASC').bind(experience.id, experience.organizationId).all<CatalogPublicProduct>();
+    if (!products.results.length) return { kind: 'inactive', reason: 'unavailable', status: 503 };
+    return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.results.map((product) => ({ ...product, priceMinorUnits: Number(product.priceMinorUnits), stock: Number(product.stock), mainImageUrl: product.mainImageUrl ?? null, ctaLabel: product.ctaLabel ?? null, ctaUrl: product.ctaUrl ?? null })) } };
+  },
+};
+
 export const publicExperienceRegistry: PublicExperienceRegistry = new Map<string, PublicExperienceAdapter>([
   [roulettePublicExperienceAdapter.type, roulettePublicExperienceAdapter],
+  [productCatalogPublicExperienceAdapter.type, productCatalogPublicExperienceAdapter],
 ]);
 
 export function resolvePublicExperienceAdapter(type: unknown, registry: PublicExperienceRegistry = publicExperienceRegistry) {

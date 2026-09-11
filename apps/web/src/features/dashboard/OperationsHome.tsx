@@ -9,7 +9,7 @@ type Project = { id: string; name: string };
 type Summary = { totals: Record<string, number> };
 type Operations = { items: Array<{ experienceId: string; recentUsers: number; lastActivityAt: number | null; claimsGenerated: number; pendingClaims: number; soldOutLimitedPrizes: number }> };
 const statusLabels: Record<string, string> = { draft: 'Borrador', active: 'Activa', scheduled: 'Programada', expired: 'Vencida', paused: 'Pausada' };
-const typeLabels: Record<string, string> = { roulette: 'Ruleta', game: 'Juego', webar: 'WebAR', generic: 'Experiencia' };
+const typeLabels: Record<string, string> = { roulette: 'Ruleta', 'product-catalog': 'Catálogo de productos', game: 'Juego', webar: 'WebAR', generic: 'Experiencia' };
 
 function get<T>(path: string, org: string) { return apiRequest<T>(path, org); }
 function number(value: number | null | undefined) { return value === null || value === undefined ? '—' : value.toLocaleString('es-AR'); }

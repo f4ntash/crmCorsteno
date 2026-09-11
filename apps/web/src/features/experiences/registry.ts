@@ -1,2 +1,3 @@
 import { RouletteEditor } from '../roulette/components/RouletteEditor';
-export const experienceEditors = { roulette: RouletteEditor };
+import { ProductCatalogEditor } from '../catalog/ProductCatalogEditor';
+export const experienceEditors = { roulette: RouletteEditor, 'product-catalog': ProductCatalogEditor };

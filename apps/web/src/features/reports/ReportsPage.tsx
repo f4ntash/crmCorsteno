@@ -7,11 +7,13 @@ type Application = { id: string; name: string; projectId: string; applicationTyp
 type Report = { id: string; title: string; description: string; scope: 'application'; format: 'csv'; requiresApplication: boolean; applicationTypes: string[] | null };
 type ReportsResponse = { reports: Report[] };
 
-const typeLabels: Record<string, string> = { roulette: 'Roulette', game: 'Juego', webar: 'WebAR', generic: 'Experiencia' };
+const typeLabels: Record<string, string> = { roulette: 'Roulette', 'product-catalog': 'Catálogo de productos', game: 'Juego', webar: 'WebAR', generic: 'Experiencia' };
 const rangeLabels: Record<string, string> = { '24h': 'Últimas 24 horas', '7d': 'Últimos 7 días', '30d': 'Últimos 30 días', all: 'Todo el período' };
 
 function reportSuffix(reportId: string) {
-  return reportId.startsWith('roulette.') ? 'resultados' : 'actividad';
+  if (reportId.startsWith('roulette.')) return 'resultados';
+  if (reportId.startsWith('catalog.')) return 'inventario-productos';
+  return 'actividad';
 }
 
 export function ReportsPage({ org }: { org: string }) {

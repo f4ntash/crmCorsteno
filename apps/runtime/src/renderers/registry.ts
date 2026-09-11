@@ -4,6 +4,8 @@ import type { CommercialEntitlements } from '@corsteno/types';
 import { Roulette3DView } from '../features/roulette3d/Roulette3DView';
 import { resolveRuntimeConfig } from '../config/runtimeConfig';
 import type { SpinResult } from '../api/publicExperiencesApi';
+import type { CatalogPublicProduct } from '../api/publicExperiencesApi';
+import { ProductCatalogView } from '../features/catalog/ProductCatalogView';
 
 export type RuntimeExperienceRenderInput = {
   type: string;
@@ -12,6 +14,7 @@ export type RuntimeExperienceRenderInput = {
   entitlements: CommercialEntitlements;
   prizeAvailability?: Record<string, 'available' | 'sold_out'>;
   recovery?: SpinResult;
+  catalogProducts?: CatalogPublicProduct[];
 };
 
 export type RuntimeRenderer = {
@@ -30,8 +33,14 @@ const rouletteRuntimeRenderer: RuntimeRenderer = {
   }),
 };
 
+const productCatalogRuntimeRenderer: RuntimeRenderer = {
+  type: 'product-catalog',
+  render: ({ config, slug, catalogProducts }) => createElement(ProductCatalogView, { config, slug, products: catalogProducts ?? [] }),
+};
+
 export const runtimeRendererRegistry: ReadonlyMap<string, RuntimeRenderer> = new Map([
   [rouletteRuntimeRenderer.type, rouletteRuntimeRenderer],
+  [productCatalogRuntimeRenderer.type, productCatalogRuntimeRenderer],
 ]);
 
 export function resolveRuntimeRenderer(type: unknown, registry: ReadonlyMap<string, RuntimeRenderer> = runtimeRendererRegistry) {

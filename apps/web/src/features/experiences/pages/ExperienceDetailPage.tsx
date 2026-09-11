@@ -57,6 +57,7 @@ export function ExperienceDetailPage({
   const [redemptionAvailable, setRedemptionAvailable] = useState(false);
   const [brandingAvailable, setBrandingAvailable] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [catalogDirty, setCatalogDirty] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [publicationMessage, setPublicationMessage] = useState('');
@@ -129,7 +130,7 @@ export function ExperienceDetailPage({
     if (dirty) { window.alert('Guardá el borrador para probar los últimos cambios.'); return; }
     window.open(previewUrl, '_blank', 'noopener,noreferrer');
   };
-  const hasUnpublishedChanges = JSON.stringify(experience.draftConfig) !== JSON.stringify(experience.publishedConfig);
+  const hasUnpublishedChanges = JSON.stringify(experience.draftConfig) !== JSON.stringify(experience.publishedConfig) || catalogDirty;
   async function publish() {
     if (publishing) return;
     setPublishing(true);
@@ -138,6 +139,7 @@ export function ExperienceDetailPage({
     setReadinessIssues([]);
     try {
       const updated = await get<ExperienceDetail>(`/experiences/${id}/publish`, org, { method: 'POST' });
+      setCatalogDirty(false);
       setExperience((current) => current ? { ...current, ...updated, access_status: current.access_status } : updated);
       setPublicationMessage('Publicado correctamente.');
     } catch (error) {
@@ -161,16 +163,17 @@ export function ExperienceDetailPage({
       setAvailabilitySaving(false);
     }
   }
+  const isRoulette = experience.type === 'roulette';
   return <main className="page experience-workspace">
     <header className="experience-workspace-header">
       <div><p className="eyebrow">EXPERIENCIA / OPERACIÓN</p><h1>{experience.name}</h1><p className="page-description">Configuración, disponibilidad y resultados de esta experiencia.</p></div>
       <div className="workspace-actions">{canManage && <button type="button" className="secondary" onClick={() => void clone()}>Duplicar experiencia</button>}</div>
     </header>
     {location.state && typeof location.state === 'object' && 'cloneNotice' in location.state && <p className="clone-notice" role="status">{String((location.state as { cloneNotice?: unknown }).cloneNotice)}</p>}
-    <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a><a href="#results">Resultados</a></nav>
-    {experience.type === 'roulette' && <RouletteOperationsOverview id={id} org={org} slug={experience.slug} status={experience.effective_status} accessStatus={experience.access_status} startsAt={experience.startsAt} endsAt={experience.endsAt} publicUrl={publicUrl} onTest={openPreview} />}
+    <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a>{isRoulette && <a href="#results">Resultados</a>}</nav>
+    {isRoulette && <RouletteOperationsOverview id={id} org={org} slug={experience.slug} status={experience.effective_status} accessStatus={experience.access_status} startsAt={experience.startsAt} endsAt={experience.endsAt} publicUrl={publicUrl} onTest={openPreview} />}
     <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublicationControls status={experience.effective_status} accessStatus={experience.access_status} hasUnpublishedChanges={hasUnpublishedChanges} canPublish={canManage} onPublish={publish} publishing={publishing} readinessIssues={readinessIssues} startsAt={experience.startsAt} endsAt={experience.endsAt} canEditAvailability={canManage} availabilitySaving={availabilitySaving} onSaveAvailability={saveAvailability} showStatus={false} readOnly={!canManage} message={publicationMessage} error={publicationError} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
-    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>Diseño, premios y participación</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canManage} canAdjustInventory={canManage} onDirtyChange={setDirty} onDraftSaved={(draft) => { setExperience((current) => current ? { ...current, draftConfig: draft } : current); setReadinessIssues([]); setPublicationError(''); }} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
-    <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>
+    <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>{isRoulette ? 'Diseño, premios y participación' : 'Contenido y productos'}</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canManage} canAdjustInventory={canManage} canManageAssets={permissions.includes('assets.manage')} onDirtyChange={setDirty} onUnpublishedChange={setCatalogDirty} onDraftSaved={(draft) => { setExperience((current) => current ? { ...current, draftConfig: draft } : current); setReadinessIssues([]); setPublicationError(''); }} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
+    {isRoulette && <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>}
   </main>;
 }

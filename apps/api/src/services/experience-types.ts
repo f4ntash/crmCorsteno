@@ -3,6 +3,8 @@ import {
   validateRoulettePublishReadiness,
   type PublishReadinessIssue,
 } from './roulette-config';
+import { PRODUCT_CATALOG_TYPE, createDefaultProductCatalogConfig, productCatalogDraftIssues, validateProductCatalogDraft, validateProductCatalogPublishReadiness } from './product-catalog';
+import type { D1Database } from '@cloudflare/workers-types';
 
 export type ExperienceTypeDefinition = {
   type: string;
@@ -11,6 +13,7 @@ export type ExperienceTypeDefinition = {
   validateDraft: (value: unknown) => boolean;
   normalizeDraft?: (value: unknown) => unknown;
   validatePublishReadiness: (value: unknown) => PublishReadinessIssue[];
+  validatePublishReadinessWithContext?: (value: unknown, context: { db: D1Database; experienceId: string; organizationId: string }) => Promise<PublishReadinessIssue[]>;
 };
 
 export type ExperienceTypeRegistry = ReadonlyMap<string, ExperienceTypeDefinition>;
@@ -29,10 +32,20 @@ export const rouletteExperienceType: ExperienceTypeDefinition = {
   validatePublishReadiness: validateRoulettePublishReadiness,
 };
 
+export const productCatalogExperienceType: ExperienceTypeDefinition = {
+  type: PRODUCT_CATALOG_TYPE,
+  label: 'Catálogo de productos',
+  createDraftConfig: createDefaultProductCatalogConfig,
+  validateDraft: validateProductCatalogDraft,
+  validatePublishReadiness: productCatalogDraftIssues,
+  validatePublishReadinessWithContext: (value, context) => validateProductCatalogPublishReadiness(context.db, context.experienceId, context.organizationId, value),
+};
+
 export const defaultExperienceType = rouletteExperienceType.type;
 
 export const experienceTypeRegistry: ExperienceTypeRegistry = new Map<string, ExperienceTypeDefinition>([
   [rouletteExperienceType.type, rouletteExperienceType],
+  [productCatalogExperienceType.type, productCatalogExperienceType],
 ]);
 
 export function resolveExperienceType(type: unknown, registry: ExperienceTypeRegistry = experienceTypeRegistry) {

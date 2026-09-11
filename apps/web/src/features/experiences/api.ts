@@ -18,6 +18,22 @@ export type PrizeClaim = {
   createdAt: string;
   redeemedAt: string | null;
 };
+export type CatalogProduct = {
+  id: string;
+  organizationId: string;
+  experienceId: string;
+  name: string;
+  description: string;
+  priceMinorUnits: number;
+  currency: string;
+  stock: number;
+  visible: boolean;
+  mainAssetUrl: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
 
 export const experiencesApi = {
   list: (organizationId: string) =>
@@ -135,5 +151,10 @@ export const experiencesApi = {
     apiRequest<{ prizeName: string; experienceId: string; status: 'redeemed'; redeemedAt: string }>('/experiences/claims/redeem', organizationId, {
       method: 'POST',
       body: JSON.stringify({ code }),
-    }),
+  }),
+  catalogProducts: (id: string, organizationId: string) => apiRequest<{ items: CatalogProduct[]; hasUnpublishedChanges: boolean }>(`/experiences/${id}/catalog-products`, organizationId),
+  createCatalogProduct: (id: string, organizationId: string, body: Omit<CatalogProduct, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
+  updateCatalogProduct: (id: string, organizationId: string, productId: string, body: Partial<Omit<CatalogProduct, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
+  archiveCatalogProduct: (id: string, organizationId: string, productId: string) => apiRequest<{ id: string; archived: boolean }>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'DELETE' }),
+  adjustCatalogStock: (id: string, organizationId: string, productId: string, delta: number) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}/stock`, organizationId, { method: 'POST', body: JSON.stringify({ delta }) }),
 };

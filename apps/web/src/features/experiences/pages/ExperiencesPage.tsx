@@ -20,6 +20,10 @@ const experienceStatuses: Record<string, string> = {
   paused: 'Pausada',
   expired: 'Vencida',
 };
+const experienceTypes: Record<string, { label: string; description: string }> = {
+  roulette: { label: 'Roulette', description: 'Una experiencia de premios con giros.' },
+  'product-catalog': { label: 'Catálogo de productos', description: 'Mostrá productos, precios y disponibilidad.' },
+};
 const accessStatuses: Record<string, string> = { legacy_unrestricted: 'Sin restricciones', scheduled: 'Vigencia programada', active: 'Vigencia activa', expired: 'Vigencia vencida', no_access: 'Sin acceso' };
 function experienceDate(value: string | null, empty: string) {
   if (!value) return empty;
@@ -44,7 +48,8 @@ export function ExperiencesPage({
     [name, setName] = useState(''),
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState(''),
-    [templateId, setTemplateId] = useState<string | null>(null);
+    [templateId, setTemplateId] = useState<string | null>(null),
+    [type, setType] = useState<'roulette' | 'product-catalog'>('roulette');
   const load = () => {
     if (!org) return;
     setLoading(true);
@@ -68,13 +73,14 @@ export function ExperiencesPage({
         method: 'POST',
         body: JSON.stringify({
           name: name.trim(),
-          type: 'roulette',
-          draft_config: rouletteTemplates.find((item) => item.id === templateId)?.config,
+          type,
+          ...(type === 'roulette' && templateId ? { draft_config: rouletteTemplates.find((item) => item.id === templateId)?.config } : {}),
         }),
       });
       setModal(false);
       setName('');
       setTemplateId(null);
+      setType('roulette');
       navigate(`/app/experiences/${created.id}`);
     } catch (err) {
       setSaveError((err as Error).message);
@@ -114,7 +120,7 @@ export function ExperiencesPage({
             <article className="experience-card" key={item.id}>
               <div>
                 <h2>{item.name}</h2>
-                <p>{item.type}</p>
+                <p>{experienceTypes[item.type]?.label ?? item.type}</p>
               </div>
               <span className={`status status-${item.effective_status}`}>
                 {experienceStatuses[item.effective_status] ??
@@ -148,7 +154,7 @@ export function ExperiencesPage({
           )}
         </div>
       )}
-      <Dialog open={modal} title="Nueva experiencia" description="Creá una experiencia de ruleta para el workspace actual." initialFocusRef={nameInputRef} onClose={() => !saving && setModal(false)}>
+      <Dialog open={modal} title="Nueva experiencia" description="Elegí el tipo de experiencia para el workspace actual." initialFocusRef={nameInputRef} onClose={() => !saving && setModal(false)}>
             <form onSubmit={create}>
               <label>
                 Nombre
@@ -160,18 +166,14 @@ export function ExperiencesPage({
                 />
               </label>
               <fieldset>
-                <legend>Plantilla inicial</legend>
-                <label>
-                  <input type="radio" name="template" checked={templateId === null} onChange={() => setTemplateId(null)} />
-                  Desde cero
-                </label>
-                {rouletteTemplates.map((template) => (
-                  <label key={template.id}>
-                    <input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} />
-                    {template.name} <small>{template.description}</small>
-                  </label>
-                ))}
+                <legend>Tipo de experiencia</legend>
+                {Object.entries(experienceTypes).map(([value, option]) => <label key={value}><input type="radio" name="experience-type" checked={type === value} onChange={() => { setType(value as 'roulette' | 'product-catalog'); if (value !== 'roulette') setTemplateId(null); }} />{option.label}<small>{option.description}</small></label>)}
               </fieldset>
+              {type === 'roulette' && <fieldset>
+                <legend>Plantilla inicial</legend>
+                <label><input type="radio" name="template" checked={templateId === null} onChange={() => setTemplateId(null)} />Desde cero</label>
+                {rouletteTemplates.map((template) => <label key={template.id}><input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} />{template.name} <small>{template.description}</small></label>)}
+              </fieldset>}
               {saveError && <p className="error">{saveError}</p>}
               <div className="dialog-actions">
                 <button

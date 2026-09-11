@@ -16,6 +16,7 @@ import { paymentWebhookRoutes } from './routes/payment-webhooks';
 import { assetRoutes } from './routes/assets';
 import { attentionRoutes } from './routes/attention';
 import { reportsRoutes } from './routes/reports';
+import { catalogRoutes } from './routes/catalog';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -71,6 +72,7 @@ app.route('/organizations/assets', assetRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
+app.route('/experiences', catalogRoutes);
 app.route('/experiences', experienceRoutes);
 app.route('/public', publicExperienceRoutes);
 app.route('/public', roulettePublicExperienceRoutes);

@@ -67,6 +67,8 @@ export function RouletteEditor({
   brandingAvailable?: boolean;
   canEdit?: boolean;
   canAdjustInventory?: boolean;
+  canManageAssets?: boolean;
+  onUnpublishedChange?: (dirty: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onDraftSaved?: (draft: RouletteConfig) => void;
 }) {

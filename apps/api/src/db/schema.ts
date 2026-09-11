@@ -136,6 +136,46 @@ export const organizationAssets = sqliteTable(
     index('organization_assets_org_category').on(t.organizationId, t.category, t.archivedAt),
   ],
 );
+export const catalogProducts = sqliteTable(
+  'catalog_products',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    experienceId: text('experience_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    priceMinorUnits: integer('price_minor_units').notNull().default(0),
+    currency: text('currency').notNull().default('ARS'),
+    stock: integer('stock').notNull().default(0),
+    visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
+    mainAssetUrl: text('main_asset_url'),
+    ctaLabel: text('cta_label'),
+    ctaUrl: text('cta_url'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('catalog_products_experience').on(t.experienceId, t.organizationId), index('catalog_products_visible').on(t.experienceId, t.visible, t.archivedAt)],
+);
+export const catalogPublishedProducts = sqliteTable(
+  'catalog_published_products',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    experienceId: text('experience_id').notNull(),
+    sourceProductId: text('source_product_id'),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    priceMinorUnits: integer('price_minor_units').notNull().default(0),
+    currency: text('currency').notNull().default('ARS'),
+    stock: integer('stock').notNull().default(0),
+    mainAssetUrl: text('main_asset_url'),
+    ctaLabel: text('cta_label'),
+    ctaUrl: text('cta_url'),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('catalog_published_products_experience').on(t.experienceId, t.organizationId)],
+);
 export const projects = sqliteTable(
   'projects',
   {
