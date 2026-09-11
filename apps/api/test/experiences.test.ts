@@ -232,6 +232,7 @@ describe('public published experience', () => {
     expect(response.status).toBe(200);
     const body = await response.json() as { active: boolean; experience: Record<string, unknown> };
     expect(body.active).toBe(true);
+    expect(body.experience.type).toBe('roulette');
     expect(body.experience.config).toEqual(JSON.parse(published));
     expect(body.experience).not.toHaveProperty('draft_config');
     expect(body.experience).not.toHaveProperty('organization_id');
@@ -244,6 +245,13 @@ describe('public published experience', () => {
   it('returns 404 for an unknown slug', async () => {
     const response = await app.fetch(new Request('http://localhost/public/experiences/missing'), fixture());
     expect(response.status).toBe(404);
+  });
+  it('fails safely for an unsupported published type without Roulette fallback or private config', async () => {
+    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'unsupported-event'));
+    expect(response.status).toBe(503);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toEqual({ active: false, reason: 'unavailable' });
+    expect(body).not.toHaveProperty('experience');
   });
 
   it('returns a server-selected spin result without private fields', async () => {

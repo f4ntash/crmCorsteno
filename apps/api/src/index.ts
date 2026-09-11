@@ -10,6 +10,7 @@ import { analyticsRoutes } from './routes/analytics';
 import { experienceRoutes } from './routes/experiences';
 import { requireAuth, requireOrganization } from './auth/middleware';
 import { publicExperienceRoutes } from './routes/public-experiences';
+import { roulettePublicExperienceRoutes } from './routes/roulette-public-experiences';
 import { commercialRoutes } from './routes/commercial';
 import { paymentWebhookRoutes } from './routes/payment-webhooks';
 import { assetRoutes } from './routes/assets';
@@ -72,6 +73,7 @@ app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
 app.route('/experiences', experienceRoutes);
 app.route('/public', publicExperienceRoutes);
+app.route('/public', roulettePublicExperienceRoutes);
 app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
