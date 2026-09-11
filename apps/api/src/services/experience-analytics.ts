@@ -6,11 +6,25 @@ export type EnsureExperienceAnalyticsApplicationInput = {
   name: string;
 };
 
+const DEFAULT_EXPERIENCE_PROJECT = {
+  name: 'Experiencias',
+  slug: 'experiencias',
+  status: 'active',
+  description: 'Proyecto creado automáticamente para las experiencias del espacio.',
+};
+
 export async function ensureExperienceAnalyticsApplication({ db, experienceId, organizationId, experienceType, name }: EnsureExperienceAnalyticsApplicationInput) {
   const existing = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
   if (existing?.applicationId) return existing.applicationId;
 
-  const project = await db.prepare('SELECT id FROM projects WHERE organization_id=? ORDER BY created_at LIMIT 1').bind(organizationId).first<{ id: string }>();
+  let project = await db.prepare('SELECT id FROM projects WHERE organization_id=? ORDER BY created_at LIMIT 1').bind(organizationId).first<{ id: string }>();
+  if (!project) {
+    const projectId = crypto.randomUUID();
+    const now = Date.now();
+    await db.prepare('INSERT OR IGNORE INTO projects (id, organization_id, name, slug, status, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(projectId, organizationId, DEFAULT_EXPERIENCE_PROJECT.name, DEFAULT_EXPERIENCE_PROJECT.slug, DEFAULT_EXPERIENCE_PROJECT.status, DEFAULT_EXPERIENCE_PROJECT.description, now, now).run();
+    project = await db.prepare('SELECT id FROM projects WHERE organization_id=? AND slug=?').bind(organizationId, DEFAULT_EXPERIENCE_PROJECT.slug).first<{ id: string }>();
+  }
   if (!project) return null;
 
   const applicationId = crypto.randomUUID();

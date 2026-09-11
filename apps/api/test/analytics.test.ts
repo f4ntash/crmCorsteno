@@ -41,7 +41,8 @@ const b1: Scope = {
   applicationId: 'b1-app',
 };
 const roulette: Scope = { organizationId: 'org-a', projectId: 'a1', applicationId: 'roulette-app' };
-const scopes: Scope[] = [a1, a1a2, a2, roulette, b1];
+const catalog: Scope = { organizationId: 'org-a', projectId: 'a1', applicationId: 'catalog-app' };
+const scopes: Scope[] = [a1, a1a2, a2, roulette, catalog, b1];
 
 function event(scope: Scope, values: Omit<Event, keyof Scope>): Event {
   return { ...scope, ...values };
@@ -186,7 +187,7 @@ function database(state: TestState): D1Database {
                     item.organizationId === args[1] &&
                     (!args[2] || item.projectId === args[2]),
                 );
-                return valid ? ({ id: args[0], applicationType: args[0] === 'roulette-app' ? 'roulette' : 'generic' } as T) : (null as T);
+                return valid ? ({ id: args[0], applicationType: args[0] === 'roulette-app' ? 'roulette' : args[0] === 'catalog-app' ? 'product-catalog' : 'generic' } as T) : (null as T);
               }
               if (sql.includes('COUNT(DISTINCT anonymous_user_id)'))
                 return {
@@ -225,7 +226,7 @@ function database(state: TestState): D1Database {
                       name: `Application ${index}`,
                       slug: `app-${index}`,
                       status: 'active',
-                      applicationType: item.applicationId === 'roulette-app' ? 'roulette' : index === 0 ? 'webar' : null,
+                      applicationType: item.applicationId === 'roulette-app' ? 'roulette' : item.applicationId === 'catalog-app' ? 'product-catalog' : index === 0 ? 'webar' : null,
                     })) as T[],
                 };
               }
@@ -357,6 +358,10 @@ describe('Analytics deterministic summary', () => {
         }),
         expect.objectContaining({
           applicationType: 'generic',
+          organizationId: 'org-a',
+        }),
+        expect.objectContaining({
+          applicationType: 'product-catalog',
           organizationId: 'org-a',
         }),
       ]),

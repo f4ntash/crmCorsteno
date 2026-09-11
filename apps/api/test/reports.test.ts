@@ -9,6 +9,7 @@ type Event = { id: string; occurredAt: number; event: string; application: strin
 
 const roulette: Application = { id: 'roulette-app', name: 'Ruleta Septiembre', projectId: 'project-a', projectName: 'Evento 2026', applicationType: 'roulette', organizationId: 'org-a' };
 const generic: Application = { id: 'generic-app', name: '=Catálogo, "general"', projectId: 'project-a', projectName: 'Evento 2026', applicationType: 'generic', organizationId: 'org-a' };
+const catalog: Application = { id: 'catalog-app', name: 'Catálogo de aceptación', projectId: 'project-a', projectName: 'Evento 2026', applicationType: 'product-catalog', organizationId: 'org-a' };
 const events: Event[] = [
   { id: 'event-1', occurredAt: NOW - 60_000, event: 'experience_view', application: generic.name, project: generic.projectName, organizationId: 'org-a' },
   { id: 'event-2', occurredAt: NOW - 30_000, event: 'app_opened', application: generic.name, project: generic.projectName, organizationId: 'org-a' },
@@ -68,10 +69,12 @@ afterEach(() => vi.useRealTimers());
 
 describe('report registry', () => {
   it('lists generic and conditional product reports', async () => {
-    const context: ReportContext = { db: database(), organizationId: 'org-a', query: new URLSearchParams() };
+    const context: ReportContext = { db: database({ applications: [roulette, generic, catalog] }), organizationId: 'org-a', query: new URLSearchParams() };
     expect((await availableReportDefinitions(context)).map((report) => report.id)).toEqual(['analytics.application-activity.csv', 'roulette.results.csv']);
     const genericOnly = await availableReportDefinitions({ ...context, query: new URLSearchParams('applicationId=generic-app') });
     expect(genericOnly.map((report) => report.id)).toEqual(['analytics.application-activity.csv']);
+    const catalogOnly = await availableReportDefinitions({ ...context, query: new URLSearchParams('applicationId=catalog-app') });
+    expect(catalogOnly.map((report) => report.id)).toEqual(['analytics.application-activity.csv', 'catalog.inventory.csv']);
   });
 
   it('accepts a future non-Roulette provider without changing the registry', async () => {

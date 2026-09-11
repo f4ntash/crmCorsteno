@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, ApiError } from '../../shared/api/client';
+import { formatActivity } from './presentation';
 
 type ActivityItem = {
   id: string;
@@ -16,43 +17,6 @@ type ActivityResponse = {
   items: ActivityItem[];
   pagination: { limit: number; offset: number; nextOffset: number | null };
 };
-
-function metadataText(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === 'string' && value.trim() ? value : null;
-}
-
-function metadataNumber(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function formatActivity(item: ActivityItem) {
-  const actor = item.actorName || item.actorEmail || 'Sistema';
-  const name = metadataText(item.metadata, 'name') || metadataText(item.metadata, 'experienceName') || 'la experiencia';
-  const prizeName = metadataText(item.metadata, 'prizeName') || 'el premio';
-  const member = metadataText(item.metadata, 'name') || metadataText(item.metadata, 'email') || 'un miembro';
-  const previousRole = metadataText(item.metadata, 'previousRole');
-  const role = metadataText(item.metadata, 'role');
-  switch (item.action) {
-    case 'experience.created': return `${actor} creó ${name}`;
-    case 'experience.updated': return `${actor} actualizó ${name}`;
-    case 'experience.published': return `${actor} publicó ${name}`;
-    case 'experience.unpublished': return `${actor} retiró la publicación de ${name}`;
-    case 'experience.cloned': return `${actor} duplicó ${name}`;
-    case 'inventory.adjusted': {
-      const before = metadataNumber(item.metadata, 'before');
-      const after = metadataNumber(item.metadata, 'after');
-      return before === null || after === null ? `${actor} ajustó el stock de ${prizeName}` : `${actor} ajustó el stock de ${prizeName}: ${before} → ${after}`;
-    }
-    case 'claim.redeemed': return `${actor} canjeó ${prizeName}`;
-    case 'member.created': return `${actor} agregó a ${member}`;
-    case 'member.reactivated': return `${actor} reactivó a ${member}`;
-    case 'member.role_changed': return previousRole && role ? `${actor} cambió el rol de ${member}: ${previousRole} → ${role}` : `${actor} actualizó el rol de ${member}`;
-    case 'member.deactivated': return `${actor} revocó el acceso de ${member}`;
-    default: return `${actor} registró una acción en ${item.resourceType}`;
-  }
-}
 
 function formatTimestamp(value: number | string) {
   const date = typeof value === 'number' ? new Date(value) : new Date(value);

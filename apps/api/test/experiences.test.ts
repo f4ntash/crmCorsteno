@@ -42,6 +42,29 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
 }
 function request(path: string, env: any, init?: RequestInit) { const headers = new Headers({ Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers }); return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }), env); }
 
+function schedulingFixture() {
+  const experience = { id: 'a', organization_id: 'org-a', name: 'Catálogo', slug: 'catalogo', type: 'product-catalog', status: 'published', schema_version: 1, draft_config: '{}', published_config: '{}', starts_at: null as string | null, ends_at: null as string | null, created_at: '2026-01-01', updated_at: '2026-01-01' };
+  const db = { prepare(sql: string) { return { bind(...args: any[]) { return {
+    async first<T>() {
+      if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platformRole: 'corsteno_admin', expires_at: Date.now() + 10000 } as T;
+      if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role: 'owner' } as T;
+      if (sql.includes('FROM experiences')) return { ...experience, organizationId: experience.organization_id, schemaVersion: experience.schema_version, draftConfig: experience.draft_config, publishedConfig: experience.published_config, startsAt: experience.starts_at, endsAt: experience.ends_at, createdAt: experience.created_at, updatedAt: experience.updated_at } as T;
+      return null as T;
+    },
+    async all<T>() { return { results: [] as T[] }; },
+    async run() {
+      if (sql.includes('UPDATE experiences SET')) {
+        let index = 0;
+        if (sql.includes('starts_at=?')) experience.starts_at = args[index++];
+        if (sql.includes('ends_at=?')) experience.ends_at = args[index++];
+      }
+      return { success: true, meta: { changes: 1 } };
+    },
+  }; } }; },
+  } as any;
+  return { DB: db, ENVIRONMENT: 'test', APP_VERSION: 'test' };
+}
+
 describe('experiences tenant isolation and validation', () => {
   it('lists and reads only the current organization, parsing JSON', async () => { const env = fixture(); const list = await request('/experiences', env); expect(list.status).toBe(200); expect(await list.json()).toEqual([expect.objectContaining({ id: 'a', draftConfig: { segments: [] } })]); expect((await request('/experiences/b', env)).status).toBe(404); });
   it('rejects invalid dates/status and foreign mutations', async () => { const env = fixture(); const badDates = await request('/experiences', env, { method: 'POST', body: JSON.stringify({ name: 'x', starts_at: '2026-01-02', ends_at: '2026-01-01' }) }); expect(badDates.status).toBe(400); for (const status of ['nope', 'active', 'scheduled', 'expired']) { const badStatus = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ status }) }); expect(badStatus.status).toBe(400); } expect((await request('/experiences/b', env, { method: 'PATCH', body: JSON.stringify({ name: 'x' }) })).status).toBe(404); expect((await request('/experiences/b', env, { method: 'DELETE' })).status).toBe(404); });
@@ -143,6 +166,27 @@ describe('experience permissions', () => {
   it('denies unauthenticated experience mutations', async () => {
     const env = fixture();
     expect((await app.fetch(new Request('http://localhost/experiences/a', { method: 'PATCH', body: JSON.stringify({ name: 'blocked' }) }), env)).status).toBe(401);
+  });
+});
+
+describe('shared publication scheduling persistence', () => {
+  it('persists, hydrates, and clears future availability for a product catalog', async () => {
+    const env = schedulingFixture();
+    const startsAt = '2099-09-14T20:30:00.000Z';
+    const endsAt = '2099-09-15T20:30:00.000Z';
+    const scheduled = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ starts_at: startsAt, ends_at: endsAt }) });
+    expect(scheduled.status).toBe(200);
+    expect(await scheduled.json()).toEqual(expect.objectContaining({ startsAt, endsAt, effective_status: 'scheduled' }));
+    const reloaded = await request('/experiences/a', env);
+    expect(await reloaded.json()).toEqual(expect.objectContaining({ startsAt, endsAt, effective_status: 'scheduled' }));
+    const cleared = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ starts_at: null, ends_at: null }) });
+    expect(await cleared.json()).toEqual(expect.objectContaining({ startsAt: null, endsAt: null, effective_status: 'active' }));
+  });
+
+  it('rejects invalid or reversed dates before persistence', async () => {
+    const env = schedulingFixture();
+    expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ starts_at: 'not-a-date', ends_at: null }) })).status).toBe(400);
+    expect((await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ starts_at: '2099-09-15T00:00:00Z', ends_at: '2099-09-14T00:00:00Z' }) })).status).toBe(400);
   });
 });
 

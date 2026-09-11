@@ -187,6 +187,10 @@ function datesValid(startsAt: string | null | undefined, endsAt: string | null |
   return !(startsAt && endsAt) || new Date(endsAt).getTime() > new Date(startsAt).getTime();
 }
 
+function dateValueValid(value: unknown) {
+  return value === null || value === undefined || (typeof value === 'string' && value.length > 0 && Number.isFinite(new Date(value).getTime()));
+}
+
 function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
@@ -506,6 +510,7 @@ experienceRoutes.patch('/:id', async (c) => {
   }
   const starts = ('starts_at' in body ? body.starts_at : current.startsAt) as string | null;
   const ends = ('ends_at' in body ? body.ends_at : current.endsAt) as string | null;
+  if (!dateValueValid(starts) || !dateValueValid(ends)) return c.json(bad('Invalid date'), 400);
   if (!datesValid(starts, ends)) return c.json(bad('ends_at must be greater than starts_at'), 400);
   if (!fields.length) return c.json(bad('No editable fields provided'), 400);
   fields.push('updated_at=CURRENT_TIMESTAMP');
