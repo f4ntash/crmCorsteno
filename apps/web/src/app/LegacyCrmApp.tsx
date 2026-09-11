@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import '../analytics.css';
 import '../activity.css';
@@ -38,6 +38,8 @@ function Shell() {
     [navigationOpen, setNavigationOpen] = useState(false);
   const n = useNavigate();
   const location = useLocation();
+  const navigationTriggerRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
   useEffect(() => {
     get('/auth/me')
       .then((x: Me) => {
@@ -47,6 +49,24 @@ function Shell() {
       .catch(() => n('/login'));
   }, [n]);
   useEffect(() => setNavigationOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!navigationOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const firstFocusable = navigationRef.current?.querySelector<HTMLElement>('nav a, .new-client');
+    requestAnimationFrame(() => firstFocusable?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setNavigationOpen(false);
+      requestAnimationFrame(() => navigationTriggerRef.current?.focus());
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [navigationOpen]);
   if (!m) return <main className="app-loading" aria-live="polite"><span className="loading-mark" />Cargando espacio de trabajo…</main>;
   const platformOperator = ['super_admin', 'corsteno_admin'].includes(m.user.platformRole);
   const currentOrganization = m.memberships.find((x) => x.organizationId === o);
@@ -55,39 +75,43 @@ function Shell() {
   const canRedeem = currentPermissions.includes('claims.redeem');
   const isRedemptionOperator = canRedeem && !canManage;
   const navClass = ({ isActive }: { isActive: boolean }) => isActive ? 'active' : undefined;
+  const closeNavigation = () => {
+    setNavigationOpen(false);
+    requestAnimationFrame(() => navigationTriggerRef.current?.focus());
+  };
   return (
     <div className="shell">
-      {navigationOpen && <button className="nav-backdrop" aria-label="Cerrar navegación" onClick={() => setNavigationOpen(false)} />}
-      <aside id="app-navigation" className={navigationOpen ? 'open' : undefined}>
+      {navigationOpen && <button className="nav-backdrop" type="button" aria-label="Cerrar navegación" onClick={closeNavigation} />}
+      <aside ref={navigationRef} id="app-navigation" className={navigationOpen ? 'open' : undefined}>
         <div className="brand-lockup"><b>CORSTENO</b><small>Operations</small></div>
         <nav aria-label="Navegación principal">
           <p>Espacio de trabajo</p>
-          <NavLink end className={navClass} to="/app">Resumen</NavLink>
-          {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>}
-          {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>}
-          {currentPermissions.includes('analytics.read') && <NavLink className={navClass} to="/app/reports">Reportes</NavLink>}
-          {canRedeem && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
-          {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity">Actividad</NavLink>}
-          {currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/attention">Atención</NavLink>}
-          {currentPermissions.includes('assets.read') && <NavLink className={navClass} to="/app/assets">Archivos</NavLink>}
-          {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
+          <NavLink end className={navClass} to="/app" onClick={closeNavigation}>Resumen</NavLink>
+          {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences" onClick={closeNavigation}>Experiencias</NavLink>}
+          {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics" onClick={closeNavigation}>Resultados</NavLink>}
+          {currentPermissions.includes('analytics.read') && <NavLink className={navClass} to="/app/reports" onClick={closeNavigation}>Reportes</NavLink>}
+          {canRedeem && <NavLink className={navClass} to="/app/redeem" onClick={closeNavigation}>Canjear premio</NavLink>}
+          {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity" onClick={closeNavigation}>Actividad</NavLink>}
+          {currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/attention" onClick={closeNavigation}>Atención</NavLink>}
+          {currentPermissions.includes('assets.read') && <NavLink className={navClass} to="/app/assets" onClick={closeNavigation}>Archivos</NavLink>}
+          {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team" onClick={closeNavigation}>Equipo</NavLink>}
           {platformOperator && <>
             <p className="nav-section">Administración</p>
-            <NavLink className={navClass} to="/app/commercial">Catálogo comercial</NavLink>
-            <NavLink className={navClass} to="/app/subscriptions">Suscripciones</NavLink>
+            <NavLink className={navClass} to="/app/commercial" onClick={closeNavigation}>Catálogo comercial</NavLink>
+            <NavLink className={navClass} to="/app/subscriptions" onClick={closeNavigation}>Suscripciones</NavLink>
           </>}
           <div className="nav-upcoming" aria-label="Próximamente">
             <p className="nav-section">Próximamente</p>
-            <NavLink className={navClass} to="/app/projects">Proyectos</NavLink>
-            <NavLink className={navClass} to="/app/crm">CRM</NavLink>
-            <NavLink className={navClass} to="/app/settings">Configuración</NavLink>
+            <NavLink className={navClass} to="/app/projects" onClick={closeNavigation}>Proyectos</NavLink>
+            <NavLink className={navClass} to="/app/crm" onClick={closeNavigation}>CRM</NavLink>
+            <NavLink className={navClass} to="/app/settings" onClick={closeNavigation}>Configuración</NavLink>
           </div>
         </nav>
-        {platformOperator && <NavLink className="button button-secondary new-client" to="/app/onboarding">Nuevo cliente</NavLink>}
+        {platformOperator && <NavLink className="button button-secondary new-client" to="/app/onboarding" onClick={closeNavigation}>Nuevo cliente</NavLink>}
       </aside>
       <section className="content">
         <header>
-          <button className="button button-icon menu-button" type="button" aria-expanded={navigationOpen} aria-controls="app-navigation" onClick={() => setNavigationOpen(true)}>Menú</button>
+          <button ref={navigationTriggerRef} className="button button-icon menu-button" type="button" aria-label="Abrir navegación principal" aria-expanded={navigationOpen} aria-controls="app-navigation" onClick={() => setNavigationOpen(true)}>Menú</button>
           <div className="organization-context">
             <span>{platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
             <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => setO(e.target.value)}>

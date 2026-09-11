@@ -110,11 +110,6 @@ fieldset label small { grid-column: 2; color: var(--text-secondary); font-size: 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
 
 @media (max-width: 920px) {
-  aside { position: fixed; left: 0; transform: translateX(-100%); transition: transform .2s ease; }
-  aside.open { transform: translateX(0); box-shadow: 18px 0 50px rgba(0,0,0,.42); }
-  .button.menu-button { display: inline-flex; width: auto; padding-inline: 10px; font-size: 12px; }
-  button.nav-backdrop { position: fixed; inset: 0; z-index: 5; display: block; width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: rgba(0,0,0,.58); }
-  button.nav-backdrop:hover { background: rgba(0,0,0,.58); }
   header { padding-inline: 22px; }
   .organization-context { max-width: none; grid-template-columns: max-content minmax(0, 1fr); }
   .account-context > span { display: none; }
@@ -175,10 +170,6 @@ fieldset label small { grid-column: 2; color: var(--text-secondary); font-size: 
 .onboarding-url { overflow-wrap: anywhere; }
 
 @media (max-width: 920px) {
-  aside { position: fixed; left: 0; transform: translateX(-100%); transition: transform .2s ease; }
-  aside.open { transform: translateX(0); box-shadow: 20px 0 50px rgba(0,0,0,.45); }
-  .nav-backdrop { position: fixed; inset: 0; z-index: 4; display: block; width: 100%; height: 100%; border: 0; border-radius: 0; background: rgba(0,0,0,.55); }
-  .menu-button { display: inline-flex; width: auto; padding: 0 10px; font-size: 12px; }
   header { padding: 10px 24px; }
   .page { padding: 40px 28px 64px; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -220,4 +211,14 @@ fieldset label small { grid-column: 2; color: var(--text-secondary); font-size: 
   .onboarding-actions > .button, .onboarding-actions > button { flex: 1 1 100%; }
   .dialog-backdrop { align-items: end; padding: 0; }
   .dialog-panel { width: 100%; max-height: calc(100vh - 24px); border-width: 1px 0 0; border-radius: 10px 10px 0 0; }
+}
+
+@media (max-width: 767px) {
+  .shell { min-width: 0; }
+  .shell > aside { position: fixed; left: 0; z-index: 6; transform: translateX(-100%); transition: transform .2s ease; }
+  .shell > aside.open { transform: translateX(0); box-shadow: 20px 0 50px rgba(0,0,0,.45); }
+  .button.menu-button { display: inline-flex; width: auto; flex: 0 0 auto; padding-inline: 10px; font-size: 12px; }
+  button.nav-backdrop { position: fixed; inset: 0; z-index: 5; display: block; width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: rgba(0,0,0,.55); }
+  button.nav-backdrop:hover { background: rgba(0,0,0,.55); }
+  body { overflow-x: hidden; }
 }
