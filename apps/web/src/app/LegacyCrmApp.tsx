@@ -5,6 +5,7 @@ import '../commercial.css';
 import '../home.css';
 import '../experiences.css';
 import '../permission.css';
+import '../team.css';
 import { apiRequest } from '../shared/api/client';
 import type { Me } from '../features/auth/types';
 import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
@@ -16,6 +17,7 @@ import { SubscriptionsPage } from '../features/commercial/pages/SubscriptionsPag
 import { isPlatformCommercialAdmin } from '../features/commercial/permissions';
 import { ClientOnboardingPage } from '../features/onboarding/pages/ClientOnboardingPage';
 import { RedeemPage } from '../features/claims/pages/RedeemPage';
+import { TeamPage } from '../features/team/TeamPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -51,6 +53,7 @@ function Shell() {
           <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>
           <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>
           {canManage && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
+          {currentOrganization && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
           {platformOperator && <>
             <p className="nav-section">Administración</p>
             <NavLink className={navClass} to="/app/commercial">Catálogo comercial</NavLink>
@@ -96,6 +99,7 @@ function Shell() {
           <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
           <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
           <Route path="redeem" element={canManage ? <RedeemPage org={o} /> : <Navigate to="/app" replace />} />
+          <Route path="team" element={currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"
             element={
