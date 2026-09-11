@@ -12,6 +12,7 @@ import '../experiences.css';
 import '../permission.css';
 import '../team.css';
 import '../reports.css';
+import '../channels.css';
 import { apiRequest } from '../shared/api/client';
 import type { Me } from '../features/auth/types';
 import { ExperiencesPage } from '../features/experiences/pages/ExperiencesPage';
@@ -28,6 +29,8 @@ import { ActivityPage } from '../features/activity/ActivityPage';
 import { AttentionPage } from '../features/attention/AttentionPage';
 import { AssetLibraryPage } from '../features/assets/AssetLibraryPage';
 import { ReportsPage } from '../features/reports/ReportsPage';
+import { ChannelsPage } from '../features/channels/ChannelsPage';
+import { ChannelDetailPage } from '../features/channels/ChannelDetailPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -38,15 +41,21 @@ function Shell() {
     [navigationOpen, setNavigationOpen] = useState(false);
   const n = useNavigate();
   const location = useLocation();
+  const organizationInitializedRef = useRef(false);
   const navigationTriggerRef = useRef<HTMLButtonElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   useEffect(() => {
+    if (organizationInitializedRef.current) return;
+    organizationInitializedRef.current = true;
     get('/auth/me')
       .then((x: Me) => {
         setM(x);
         setO(x.memberships[0]?.organizationId ?? '');
       })
-      .catch(() => n('/login'));
+      .catch(() => {
+        organizationInitializedRef.current = false;
+        n('/login');
+      });
   }, [n]);
   useEffect(() => setNavigationOpen(false), [location.pathname]);
   useEffect(() => {
@@ -91,6 +100,7 @@ function Shell() {
           <NavLink end className={navClass} to="/app" onClick={closeNavigation}>Resumen</NavLink>
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences" onClick={closeNavigation}>Experiencias</NavLink>}
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics" onClick={closeNavigation}>Resultados</NavLink>}
+          {!isRedemptionOperator && currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/channels" onClick={closeNavigation}>Sitios y canales</NavLink>}
           {currentPermissions.includes('analytics.read') && <NavLink className={navClass} to="/app/reports" onClick={closeNavigation}>Reportes</NavLink>}
           {canRedeem && <NavLink className={navClass} to="/app/redeem" onClick={closeNavigation}>Canjear premio</NavLink>}
           {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity" onClick={closeNavigation}>Actividad</NavLink>}
@@ -150,6 +160,8 @@ function Shell() {
           <Route path="activity" element={currentPermissions.includes('activity.read') ? <ActivityPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="attention" element={currentPermissions.includes('crm.read') ? <AttentionPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="assets" element={currentPermissions.includes('assets.read') ? <AssetLibraryPage org={o} canManage={currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
+          <Route path="channels" element={currentPermissions.includes('crm.read') ? <ChannelsPage org={o} canManage={canManage} /> : <Navigate to="/app" replace />} />
+          <Route path="channels/:id" element={currentPermissions.includes('crm.read') ? <ChannelDetailPage org={o} canManage={canManage} /> : <Navigate to="/app" replace />} />
           <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"

@@ -10,6 +10,7 @@ import { ClaimsPanel } from '../components/ClaimsPanel';
 import { AccessPeriodPanel } from '../components/AccessPeriodPanel';
 import { RouletteOperationsOverview } from '../components/RouletteOperationsOverview';
 import { publicExperienceUrl, runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
+import { channelTypeLabels, type Channel } from '../../channels/api';
 type LegacyJson = ReturnType<JSON['parse']>;
 type ExperienceDetail = {
   id: string;
@@ -23,6 +24,7 @@ type ExperienceDetail = {
   endsAt: string | null;
   draftConfig: unknown;
   publishedConfig: unknown;
+  channels?: Channel[];
 };
 
 async function get<T = LegacyJson>(
@@ -63,14 +65,19 @@ export function ExperienceDetailPage({
   const [publicationMessage, setPublicationMessage] = useState('');
   const [publicationError, setPublicationError] = useState('');
   const [readinessIssues, setReadinessIssues] = useState<PublicationReadinessIssue[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   useEffect(() => {
     if (!id || !org) return;
     setLoading(true);
     setLoadError('');
+    setChannels([]);
     get(`/experiences/${id}`, org)
       .then(setExperience)
       .catch((error) => { setExperience(undefined); setLoadError((error as Error).message); })
       .finally(() => setLoading(false));
+    get<{ items: Channel[] }>(`/experiences/${id}/channels`, org)
+      .then((result) => setChannels(result.items))
+      .catch(() => setChannels([]));
     commercialApi.subscriptions(org)
       .then((subscriptions) => {
         setRedemptionAvailable(subscriptions.some((subscription) =>
@@ -172,7 +179,7 @@ export function ExperienceDetailPage({
     {location.state && typeof location.state === 'object' && 'cloneNotice' in location.state && <p className="clone-notice" role="status">{String((location.state as { cloneNotice?: unknown }).cloneNotice)}</p>}
     <nav className="workspace-nav" aria-label="Secciones de experiencia"><a href="#overview">Resumen</a><a href="#configuration">Configuración</a>{isRoulette && <a href="#results">Resultados</a>}</nav>
     {isRoulette && <RouletteOperationsOverview id={id} org={org} slug={experience.slug} status={experience.effective_status} accessStatus={experience.access_status} startsAt={experience.startsAt} endsAt={experience.endsAt} publicUrl={publicUrl} onTest={openPreview} />}
-    <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Disponibilidad pública</h3><p>La experiencia se accede desde su enlace público. Publicá una versión guardada para aplicar la configuración al runtime.</p><a className="workspace-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir enlace público →</a></section><PublicationControls status={experience.effective_status} accessStatus={experience.access_status} hasUnpublishedChanges={hasUnpublishedChanges} canPublish={canManage} onPublish={publish} publishing={publishing} readinessIssues={readinessIssues} startsAt={experience.startsAt} endsAt={experience.endsAt} canEditAvailability={canManage} availabilitySaving={availabilitySaving} onSaveAvailability={saveAvailability} showStatus={false} readOnly={!canManage} message={publicationMessage} error={publicationError} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
+    <section id="overview" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESUMEN</p><h2>Estado operativo</h2></div><span className={`status status-${experience.status}`}>{experience.status === 'published' ? 'Publicada' : 'Borrador'}</span></div><div className="workspace-overview-grid"><section className="card workspace-summary"><h3>Canales de entrega</h3><p>Una experiencia puede conectarse a más de un destino. Las integraciones externas todavía están pendientes.</p>{channels.length ? <ul className="workspace-channel-list">{channels.map((channel) => <li key={channel.id}><div><strong>{channel.name}</strong><small>{channelTypeLabels[channel.type]}</small></div><div>{channel.type === 'hosted_runtime' ? <a className="workspace-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir enlace público →</a> : <span>{channel.url ?? 'Sin dominio registrado'}</span>}<small>{channel.type === 'hosted_runtime' ? 'Alojado por Corsteno' : 'Registrado · Integración pendiente'}</small></div></li>)}</ul> : <p className="field-help">No hay canales conectados a esta experiencia.</p>}</section><PublicationControls status={experience.effective_status} accessStatus={experience.access_status} hasUnpublishedChanges={hasUnpublishedChanges} canPublish={canManage} onPublish={publish} publishing={publishing} readinessIssues={readinessIssues} startsAt={experience.startsAt} endsAt={experience.endsAt} canEditAvailability={canManage} availabilitySaving={availabilitySaving} onSaveAvailability={saveAvailability} showStatus={false} readOnly={!canManage} message={publicationMessage} error={publicationError} /><AccessPeriodPanel experienceId={id} organizationId={org} canManage={canManageCommercial} /></div></section>
     <section id="configuration" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">CONFIGURACIÓN</p><h2>{isRoulette ? 'Diseño, premios y participación' : 'Contenido y productos'}</h2></div></div>{Editor ? <Editor org={org} id={id} redemptionAvailable={redemptionAvailable} brandingAvailable={brandingAvailable} canEdit={canManage} canAdjustInventory={canManage} canManageAssets={permissions.includes('assets.manage')} onDirtyChange={setDirty} onUnpublishedChange={setCatalogDirty} publication={isRoulette ? { status: experience.effective_status, accessStatus: experience.access_status, hasUnpublishedChanges, readinessIssues, canPublish: canManage, publishing, message: publicationMessage, error: publicationError } : undefined} onPublish={isRoulette ? () => void publish() : undefined} onDraftSaved={(draft) => { setExperience((current) => current ? { ...current, draftConfig: draft } : current); setReadinessIssues([]); setPublicationError(''); }} /> : <div className="empty"><p>Esta experiencia todavía no tiene un editor disponible.</p></div>}</section>
     {isRoulette && <section id="results" className="workspace-section"><div className="workspace-section-heading"><div><p className="eyebrow">RESULTADOS</p><h2>Giros y canjes</h2></div></div><div className="workspace-results"><SpinHistory experienceId={id} organizationId={org} prizes={prizes} /><ClaimsPanel experienceId={id} organizationId={org} canRedeem={canManage} /></div></section>}
   </main>;

@@ -23,6 +23,7 @@ const resourceLabels: Record<string, string> = {
   prize: 'un premio',
   member: 'un miembro',
   asset: 'un archivo',
+  channel: 'un canal',
 };
 
 function resourceLabel(resourceType: string) {
@@ -36,6 +37,8 @@ export function formatActivity(item: ActivityPresentationItem) {
   const member = metadataText(item.metadata, 'name') || metadataText(item.metadata, 'email') || 'un miembro';
   const previousRole = metadataText(item.metadata, 'previousRole');
   const role = metadataText(item.metadata, 'role');
+  const channelName = metadataText(item.metadata, 'channelName') || name;
+  const experienceName = metadataText(item.metadata, 'experienceName') || 'una experiencia';
   switch (item.action) {
     case 'experience.created': return `${actor} creó ${name}`;
     case 'experience.updated': return `${actor} actualizó ${name}`;
@@ -68,6 +71,12 @@ export function formatActivity(item: ActivityPresentationItem) {
       if (operation === 'reordered') return `${actor} actualizó el orden de las imágenes de un producto`;
       return `${actor} actualizó la galería de un producto`;
     }
+    case 'channel.created': return `${actor} registró el canal ${name}`;
+    case 'channel.updated': return `${actor} actualizó el canal ${name}`;
+    case 'channel.activated': return `${actor} activó el canal ${name}`;
+    case 'channel.deactivated': return `${actor} desactivó el canal ${name}`;
+    case 'channel.experience.linked': return `${actor} conectó ${experienceName} a ${channelName}`;
+    case 'channel.experience.unlinked': return `${actor} desconectó ${experienceName} de ${channelName}`;
     default: return `${actor} registró una acción en ${resourceLabel(item.resourceType)}`;
   }
 }

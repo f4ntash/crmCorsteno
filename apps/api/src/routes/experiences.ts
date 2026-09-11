@@ -498,6 +498,15 @@ experienceRoutes.get('/:id/spins', async (c) => {
   return c.json({ items: rows.results, summary: { completed: totalCount, prizesWon: Number(total?.prizesWon ?? 0), byPrize: Object.fromEntries(byPrizeRows.results.map((row) => [row.prizeId, Number(row.won)])) }, pagination: { limit, offset, total: totalCount, nextOffset: rows.results.length === limit ? offset + limit : null } });
 });
 
+experienceRoutes.get('/:id/channels', async (c) => {
+  const organizationId = c.get('organization').id;
+  const experienceId = c.req.param('id');
+  const experience = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first();
+  if (!experience) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const rows = await c.env.DB.prepare('SELECT c.id,c.organization_id organizationId,c.name,c.type,c.status,c.url,c.created_at createdAt,c.updated_at updatedAt FROM experience_channels ec JOIN channels c ON c.id=ec.channel_id AND c.organization_id=ec.organization_id WHERE ec.experience_id=? AND ec.organization_id=? ORDER BY c.name,c.id').bind(experienceId, organizationId).all<Record<string, unknown>>();
+  return c.json({ items: rows.results });
+});
+
 experienceRoutes.get('/:id', async (c) => {
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(c.req.param('id'), c.get('organization').id).first<Record<string, unknown>>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);

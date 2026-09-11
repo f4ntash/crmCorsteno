@@ -416,3 +416,42 @@ export const commercialPayments = sqliteTable(
     index('commercial_payments_org').on(t.organizationId, t.createdAt),
   ],
 );
+
+export const channels = sqliteTable(
+  'channels',
+  {
+    id: id(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    status: text('status').notNull().default('active'),
+    url: text('url'),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('channels_organization_name').on(t.organizationId, t.name),
+    index('channels_organization_status').on(t.organizationId, t.status, t.name),
+  ],
+);
+
+export const experienceChannels = sqliteTable(
+  'experience_channels',
+  {
+    id: id(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    experienceId: text('experience_id').notNull(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('experience_channels_experience_channel').on(t.experienceId, t.channelId),
+    index('experience_channels_channel').on(t.channelId, t.organizationId),
+    index('experience_channels_organization').on(t.organizationId, t.experienceId),
+  ],
+);
