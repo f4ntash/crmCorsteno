@@ -33,6 +33,7 @@ const assets: AssetDefinition[] = [
   { id: '00000000-0000-4000-8000-000000000094', filename: 'alba-main.png', displayName: 'Lámpara Alba — vista principal' },
   { id: '00000000-0000-4000-8000-000000000095', filename: 'linea-main.png', displayName: 'Aplique Línea — vista principal' },
   { id: '00000000-0000-4000-8000-000000000096', filename: 'norte-main.png', displayName: 'Perfil Norte — vista principal' },
+  { id: '00000000-0000-4000-8000-000000000097', filename: 'veta-main.png', displayName: 'Plafón Veta — vista principal' },
 ];
 
 const products = [
@@ -84,6 +85,16 @@ const products = [
     stock: 6,
     sortOrder: 4,
     asset: assets[6]!,
+    gallery: [],
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000079',
+    name: 'Plafón Veta',
+    description: 'Volumen mineral de luz indirecta para cielos rasos y espacios de transición.',
+    priceMinorUnits: 14_600_000,
+    stock: 10,
+    sortOrder: 5,
+    asset: assets[7]!,
     gallery: [],
   },
 ] as const;

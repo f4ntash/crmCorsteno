@@ -17,7 +17,7 @@ function CatalogProductCard({ product }: { product: CatalogPublicProduct }) {
         {images.map((url, index) => <button type="button" className={`catalog-product-thumbnail${selectedImage === index ? ' is-selected' : ''}`} key={`${url}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Ver imagen ${index + 1} de ${product.name}`} aria-current={selectedImage === index ? 'true' : undefined}><img src={url} alt="" /></button>)}
       </div>}
     </div>
-    <div className="catalog-product-body"><h2>{product.name}</h2>{product.description && <p>{product.description}</p>}<strong>{new Intl.NumberFormat('es-AR', { style: 'currency', currency: product.currency }).format(product.priceMinorUnits / 100)}</strong><span className={product.stock > 0 ? 'catalog-stock' : 'catalog-stock catalog-sold-out'}>{product.stock > 0 ? `${product.stock} disponibles` : 'Agotado'}</span>{product.ctaLabel && product.ctaUrl && product.stock > 0 && <a className="catalog-cta" href={product.ctaUrl} target="_blank" rel="noreferrer">{product.ctaLabel}</a>}</div>
+    <div className="catalog-product-body"><h2>{product.name}</h2>{product.description && <p>{product.description}</p>}<strong className="catalog-product-price">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: product.currency }).format(product.priceMinorUnits / 100)}</strong><span className={`catalog-stock${product.stock <= 0 ? ' catalog-sold-out' : product.stock <= 3 ? ' catalog-stock-low' : ''}`}>{product.stock > 0 ? `${product.stock} disponibles` : 'Agotado'}</span>{product.ctaLabel && product.ctaUrl && product.stock > 0 && <a className="catalog-cta" href={product.ctaUrl} target="_blank" rel="noreferrer">{product.ctaLabel}</a>}</div>
   </article>;
 }
 

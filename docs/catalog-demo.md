@@ -14,7 +14,7 @@ pnpm --filter @corsteno/runtime dev
 ```
 
 `pnpm demo:catalog` prepara o actualiza una organización local dedicada,
-`Lumbre Norte`, con cinco productos de iluminación, imágenes locales y un
+`Lumbre Norte`, con seis productos de iluminación, imágenes locales y un
 catálogo publicado. El comando es repetible y siempre usa D1/R2 de Wrangler
 con `--env development --local`; nunca apunta a producción o a una base remota.
 
@@ -49,7 +49,7 @@ Duración sugerida: 5–10 minutos.
 1. **SHOW — catálogo público.** Abrí el enlace público en desktop y después en
    390×844. Mostrá el encabezado de Lumbre Norte, la grilla de luminarias,
    precios en ARS, stock disponible, el estado agotado y las vistas secundarias
-   de Lámpara Nido.
+   de Lámpara Nido. La colección incluye también el Plafón Veta.
 2. **SAY — experiencia para el cliente.** “Corsteno convierte una colección
    de productos en una experiencia pública clara, con disponibilidad y una
    consulta directa, sin obligar a construir un e-commerce completo.”
