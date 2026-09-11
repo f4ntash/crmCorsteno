@@ -553,6 +553,8 @@ experienceRoutes.delete('/:id', async (c) => {
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   await c.env.DB.prepare('DELETE FROM subscription_experiences WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
+  await c.env.DB.prepare('DELETE FROM catalog_published_experience_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run().catch(() => undefined);
+  await c.env.DB.prepare('DELETE FROM catalog_experience_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run().catch(() => undefined);
   await c.env.DB.prepare('DELETE FROM catalog_published_product_images WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM catalog_product_images WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();

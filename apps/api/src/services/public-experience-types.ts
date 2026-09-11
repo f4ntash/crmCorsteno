@@ -2,6 +2,7 @@ import type { CommercialEntitlements } from '@corsteno/types';
 import { buildRouletteOutcomes } from './roulette-selector';
 import { validDraftConfig, type DraftConfig } from './roulette-config';
 import { PRODUCT_CATALOG_TYPE, validateProductCatalogDraft } from './product-catalog';
+import { firstClassProductsAvailable, publishedCatalogProductsFirstClass } from './organization-products';
 
 export type PublicExperienceShell = {
   id: string;
@@ -111,6 +112,11 @@ const productCatalogPublicExperienceAdapter: PublicExperienceAdapter<ProductCata
     let config: unknown;
     try { config = parsePublishedConfig(experience.publishedConfig); } catch { return { kind: 'inactive', reason: 'unavailable', status: 503 }; }
     if (!validateProductCatalogDraft(config)) return { kind: 'inactive', reason: 'unavailable', status: 503 };
+    if (await firstClassProductsAvailable(db)) {
+      const products = await publishedCatalogProductsFirstClass(db, experience.id, experience.organizationId);
+      if (!products.length) return { kind: 'inactive', reason: 'unavailable', status: 503 };
+      return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products } };
+    }
     const [products, images] = await Promise.all([
       db.prepare('SELECT id,name,description,price_minor_units priceMinorUnits,currency,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY sort_order ASC,id ASC').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
       db.prepare('SELECT published_product_id publishedProductId,asset_url assetUrl,sort_order sortOrder,id FROM catalog_published_product_images WHERE experience_id=? AND organization_id=? ORDER BY published_product_id,sort_order,id').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),

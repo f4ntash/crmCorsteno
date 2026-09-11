@@ -29,6 +29,9 @@ export type CatalogProduct = {
   stock: number;
   sortOrder: number;
   visible: boolean;
+  status?: 'active' | 'archived';
+  published?: boolean;
+  hasUnpublishedChanges?: boolean;
   mainAssetUrl: string | null;
   gallery: CatalogProductImage[];
   ctaLabel: string | null;
@@ -38,6 +41,15 @@ export type CatalogProduct = {
 };
 export type CatalogProductImage = { id: string; organizationId: string; experienceId: string; productId: string; assetId: string; url: string; sortOrder: number; createdAt: number };
 export type CatalogProductWrite = Omit<CatalogProduct, 'sortOrder' | 'gallery'>;
+export type OrganizationProduct = Omit<CatalogProduct, 'experienceId' | 'sortOrder' | 'visible'> & {
+  productKey: string;
+  status: 'active' | 'archived';
+  published: boolean;
+  hasUnpublishedChanges: boolean;
+  publishedAt: number | null;
+  usages: Array<{ experienceId: string; experienceName: string; sortOrder: number; visible: boolean }>;
+  archivedAt: number | null;
+};
 
 export const experiencesApi = {
   list: (organizationId: string) =>
@@ -159,7 +171,7 @@ export const experiencesApi = {
       body: JSON.stringify({ code }),
   }),
   catalogProducts: (id: string, organizationId: string) => apiRequest<{ items: CatalogProduct[]; hasUnpublishedChanges: boolean }>(`/experiences/${id}/catalog-products`, organizationId),
-  createCatalogProduct: (id: string, organizationId: string, body: Omit<CatalogProductWrite, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
+  createCatalogProduct: (id: string, organizationId: string, body: unknown) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
   updateCatalogProduct: (id: string, organizationId: string, productId: string, body: Partial<Omit<CatalogProductWrite, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   archiveCatalogProduct: (id: string, organizationId: string, productId: string) => apiRequest<{ id: string; archived: boolean }>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'DELETE' }),
   adjustCatalogStock: (id: string, organizationId: string, productId: string, delta: number) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}/stock`, organizationId, { method: 'POST', body: JSON.stringify({ delta }) }),
@@ -167,4 +179,17 @@ export const experiencesApi = {
   addCatalogProductImage: (id: string, organizationId: string, productId: string, assetUrl: string) => apiRequest<{ image: CatalogProductImage }>(`/experiences/${id}/catalog-products/${productId}/images`, organizationId, { method: 'POST', body: JSON.stringify({ assetUrl }) }),
   removeCatalogProductImage: (id: string, organizationId: string, productId: string, imageId: string) => apiRequest<{ id: string; removed: boolean }>(`/experiences/${id}/catalog-products/${productId}/images/${imageId}`, organizationId, { method: 'DELETE' }),
   reorderCatalogProductImages: (id: string, organizationId: string, productId: string, imageIds: string[]) => apiRequest<{ items: CatalogProductImage[] }>(`/experiences/${id}/catalog-products/${productId}/images/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ imageIds }) }),
+};
+
+export const productsApi = {
+  list: (organizationId: string, includeArchived = true) => apiRequest<{ items: OrganizationProduct[] }>(`/products${includeArchived ? '' : '?includeArchived=false'}`, organizationId),
+  get: (id: string, organizationId: string) => apiRequest<OrganizationProduct>(`/products/${id}`, organizationId),
+  create: (organizationId: string, body: unknown) => apiRequest<OrganizationProduct>('/products', organizationId, { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, organizationId: string, body: unknown) => apiRequest<OrganizationProduct>(`/products/${id}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
+  publish: (id: string, organizationId: string) => apiRequest<OrganizationProduct>(`/products/${id}/publish`, organizationId, { method: 'POST' }),
+  archive: (id: string, organizationId: string) => apiRequest<{ id: string; archived: boolean }>(`/products/${id}/archive`, organizationId, { method: 'POST' }),
+  adjustStock: (id: string, organizationId: string, delta: number) => apiRequest<OrganizationProduct>(`/products/${id}/stock`, organizationId, { method: 'POST', body: JSON.stringify({ delta }) }),
+  addImage: (id: string, organizationId: string, assetUrl: string) => apiRequest<{ image: CatalogProductImage }>(`/products/${id}/images`, organizationId, { method: 'POST', body: JSON.stringify({ assetUrl }) }),
+  removeImage: (id: string, organizationId: string, imageId: string) => apiRequest<{ id: string; removed: boolean }>(`/products/${id}/images/${imageId}`, organizationId, { method: 'DELETE' }),
+  reorderImages: (id: string, organizationId: string, imageIds: string[]) => apiRequest<{ items: CatalogProductImage[] }>(`/products/${id}/images/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ imageIds }) }),
 };

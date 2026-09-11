@@ -19,6 +19,7 @@ function metadataNumber(metadata: Record<string, unknown>, key: string) {
 const resourceLabels: Record<string, string> = {
   experience: 'la experiencia',
   catalog_product: 'un producto',
+  product: 'un producto',
   claim: 'un premio',
   prize: 'un premio',
   member: 'un miembro',
@@ -58,6 +59,22 @@ export function formatActivity(item: ActivityPresentationItem) {
     case 'catalog.product.created': return `${actor} creó el producto ${name}`;
     case 'catalog.product.updated': return `${actor} actualizó el producto ${name}`;
     case 'catalog.product.archived': return `${actor} archivó el producto ${name}`;
+    case 'product.created': return `${actor} creó el producto ${name}`;
+    case 'product.updated': return `${actor} actualizó el producto ${name}`;
+    case 'product.published': return `${actor} publicó el producto ${name}`;
+    case 'product.archived': return `${actor} archivó el producto ${name}`;
+    case 'product.stock.adjusted': {
+      const before = metadataNumber(item.metadata, 'before');
+      const after = metadataNumber(item.metadata, 'after');
+      return before === null || after === null ? `${actor} ajustó el stock de ${name}` : `${actor} ajustó el stock de ${name}: ${before} → ${after}`;
+    }
+    case 'product.gallery.updated': {
+      const operation = metadataText(item.metadata, 'operation');
+      if (operation === 'added') return `${actor} agregó una imagen a la galería de ${name}`;
+      if (operation === 'removed') return `${actor} quitó una imagen de la galería de ${name}`;
+      if (operation === 'reordered') return `${actor} actualizó el orden de las imágenes de ${name}`;
+      return `${actor} actualizó la galería de ${name}`;
+    }
     case 'catalog.product.reordered': return `${actor} actualizó el orden de los productos`;
     case 'catalog.stock.adjusted': {
       const before = metadataNumber(item.metadata, 'before');

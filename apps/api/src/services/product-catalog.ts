@@ -135,6 +135,17 @@ export function catalogAssetIdFromUrl(value: unknown, organizationId: string) {
 export async function validateProductCatalogPublishReadiness(db: D1Database, experienceId: string, organizationId: string, config: unknown): Promise<PublishReadinessIssue[]> {
   const issues = productCatalogDraftIssues(config);
   if (issues.length) return issues;
+  const { firstClassProductsAvailable, listCatalogProductsFirstClass } = await import('./organization-products');
+  if (await firstClassProductsAvailable(db)) {
+    const products = await listCatalogProductsFirstClass(db, experienceId, organizationId, '');
+    const visibleProducts = products.filter((product) => product.visible && product.status === 'active');
+    if (!visibleProducts.length) return [{ code: 'NO_VISIBLE_PRODUCTS', path: 'products', message: 'Agregá al menos un producto visible antes de publicar.' }];
+    const productIssues = visibleProducts.flatMap((product, index) => catalogProductIssues(product, `products[${index}]`));
+    const unpublished = visibleProducts.flatMap((product, index) => product.published ? [] : [{ code: 'PRODUCT_NOT_PUBLISHED', path: `products[${index}]`, message: `Publicá el producto «${product.name}» antes de publicar el catálogo.` }]);
+    const gallery = await db.prepare(`SELECT i.id,i.product_id productId,a.id assetId,a.organization_id assetOrganizationId,a.mime_type mimeType FROM product_images i JOIN catalog_experience_products cp ON cp.product_id=i.product_id AND cp.experience_id=? AND cp.organization_id=? AND cp.visible=1 JOIN organization_assets a ON a.id=i.asset_id AND a.organization_id=i.organization_id AND a.archived_at IS NULL WHERE i.organization_id=? ORDER BY i.product_id,i.sort_order,i.id`).bind(experienceId, organizationId, organizationId).all<Record<string, unknown>>();
+    const invalidGalleryAssets = gallery.results.flatMap((row, index) => typeof row.assetId !== 'string' || row.assetOrganizationId !== organizationId || !SUPPORTED_IMAGE_TYPES.includes(String(row.mimeType) as typeof SUPPORTED_IMAGE_TYPES[number]) ? [{ code: 'PRODUCT_GALLERY_ASSET_INVALID', path: `products.gallery[${index}]`, message: 'Cada imagen de galería debe ser una imagen activa de la organización.' }] : []);
+    return [...productIssues, ...unpublished, ...invalidGalleryAssets];
+  }
   const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY sort_order ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   if (!products.results.length) return [{ code: 'NO_VISIBLE_PRODUCTS', path: 'products', message: 'Agregá al menos un producto visible antes de publicar.' }];
   const productIssues = products.results.flatMap((row, index) => catalogProductIssues(catalogProductFromRow(row), `products[${index}]`));
@@ -144,6 +155,11 @@ export async function validateProductCatalogPublishReadiness(db: D1Database, exp
 }
 
 export async function publishCatalogSnapshot(db: D1Database, experienceId: string, organizationId: string, origin = '') {
+  const { firstClassProductsAvailable, publishCatalogFirstClass } = await import('./organization-products');
+  if (await firstClassProductsAvailable(db)) {
+    await publishCatalogFirstClass(db, experienceId, organizationId);
+    return;
+  }
   const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY sort_order ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   const images = await db.prepare(`${catalogImageSelect} WHERE i.experience_id=? AND i.organization_id=? ORDER BY i.product_id,i.sort_order,i.id`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   const now = Date.now();
@@ -167,6 +183,12 @@ export async function publishCatalogSnapshot(db: D1Database, experienceId: strin
 }
 
 export async function cloneCatalogProducts(db: D1Database, sourceExperienceId: string, organizationId: string, targetExperienceId: string) {
+  const { firstClassProductsAvailable, listCatalogProductsFirstClass, linkProductToCatalog } = await import('./organization-products');
+  if (await firstClassProductsAvailable(db)) {
+    const sourceProducts = await listCatalogProductsFirstClass(db, sourceExperienceId, organizationId, '');
+    for (const product of sourceProducts) await linkProductToCatalog(db, targetExperienceId, organizationId, product.id, product.visible, '');
+    return;
+  }
   const rows = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL ORDER BY sort_order ASC,id ASC`).bind(sourceExperienceId, organizationId).all<Record<string, unknown>>();
   if (!rows.results.length) return;
   const productIds = new Map<string, string>();

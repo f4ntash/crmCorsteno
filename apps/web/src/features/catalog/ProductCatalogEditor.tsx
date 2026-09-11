@@ -19,7 +19,7 @@ import { ConfigEditor } from '../../shared/config/ConfigEditor';
 import { Dialog } from '../../shared/ui/Dialog';
 import type { ConfigSectionDefinition } from '../../shared/config/sections';
 import { ApiError } from '../../shared/api/client';
-import { experiencesApi, type CatalogProduct } from '../experiences/api';
+import { experiencesApi, productsApi, type CatalogProduct, type OrganizationProduct } from '../experiences/api';
 import './catalog.css';
 
 type Props = {
@@ -137,6 +137,8 @@ export function ProductCatalogEditor({
     configValues(undefined),
   );
   const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<OrganizationProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -172,6 +174,12 @@ export function ProductCatalogEditor({
       setDraft(next);
       setInitial(next);
       setProducts(catalog.items);
+      try {
+        const organizationProducts = (await productsApi.list(org, false)).items;
+        setAvailableProducts(organizationProducts.filter((product) => !product.usages.some((usage) => usage.experienceId === id)));
+      } catch {
+        setAvailableProducts([]);
+      }
       onUnpublishedChange?.(catalog.hasUnpublishedChanges);
     } catch (caught) {
       setError(
@@ -366,12 +374,18 @@ export function ProductCatalogEditor({
       stock: Number(stockInput),
     };
     try {
+      const isNew = editing === 'new';
+      const existing = !isNew && editing ? products.find((product) => product.id === editing) : undefined;
       if (editing === 'new')
         await experiencesApi.createCatalogProduct(id, org, value);
       else if (editing)
         await experiencesApi.updateCatalogProduct(id, org, editing, value);
       setEditing(null);
-      onUnpublishedChange?.(true);
+      // Canonical product content has its own publication lifecycle. Only a
+      // new association, a visibility change, or a legacy catalog mutation
+      // makes the catalog structure itself unpublished.
+      const canonical = existing && existing.published !== undefined;
+      onUnpublishedChange?.(isNew || !canonical || existing?.visible !== form.visible);
       await load();
     } catch (caught) {
       const mapped = apiFieldErrors(
@@ -410,7 +424,7 @@ export function ProductCatalogEditor({
         productIds,
       );
       setProducts(result.items);
-      onUnpublishedChange?.(true);
+      onUnpublishedChange?.(!(editing && products.find((product) => product.id === editing)?.published !== undefined));
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -432,7 +446,7 @@ export function ProductCatalogEditor({
     setGalleryError('');
     try {
       await experiencesApi.addCatalogProductImage(id, org, editing, url);
-      onUnpublishedChange?.(true);
+      onUnpublishedChange?.(!(editing && products.find((product) => product.id === editing)?.published !== undefined));
       await load();
     } catch (caught) {
       setGalleryError(
@@ -450,7 +464,7 @@ export function ProductCatalogEditor({
     setGalleryError('');
     try {
       await experiencesApi.removeCatalogProductImage(id, org, editing, imageId);
-      onUnpublishedChange?.(true);
+      onUnpublishedChange?.(!(editing && products.find((product) => product.id === editing)?.published !== undefined));
       await load();
     } catch (caught) {
       setGalleryError(
@@ -482,7 +496,7 @@ export function ProductCatalogEditor({
         editing,
         imageIds,
       );
-      onUnpublishedChange?.(true);
+      onUnpublishedChange?.(!(editing && products.find((product) => product.id === editing)?.published !== undefined));
       await load();
     } catch (caught) {
       setGalleryError(
@@ -495,7 +509,7 @@ export function ProductCatalogEditor({
     }
   }
   async function archive(product: CatalogProduct) {
-    if (!canEdit || !window.confirm(`¿Archivar ${product.name}?`)) return;
+    if (!canEdit || product.status === 'archived' || !window.confirm(`¿Archivar ${product.name}? Esto archivará el producto para toda la organización y conservará sus asociaciones históricas.`)) return;
     try {
       await experiencesApi.archiveCatalogProduct(id, org, product.id);
       await load();
@@ -506,6 +520,18 @@ export function ProductCatalogEditor({
           : 'No se pudo archivar el producto.',
       );
     }
+  }
+  async function linkExistingProduct() {
+    if (!selectedProductId || !canEdit || productSaving) return;
+    setProductSaving(true); setError('');
+    try {
+      await experiencesApi.createCatalogProduct(id, org, { productId: selectedProductId, visible: true });
+      setSelectedProductId('');
+      onUnpublishedChange?.(true);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'No se pudo agregar el producto al catálogo.');
+    } finally { setProductSaving(false); }
   }
 
   if (loading)
@@ -552,11 +578,7 @@ export function ProductCatalogEditor({
               borrador hasta publicar.
             </p>
           </div>
-          {canEdit && (
-            <button type="button" onClick={newProduct}>
-              Agregar producto
-            </button>
-          )}
+          {canEdit && <div className="catalog-add-actions"><button type="button" onClick={newProduct}>Crear producto</button>{availableProducts.length > 0 && <div className="catalog-link-existing"><select aria-label="Producto existente" value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)}><option value="">Agregar existente…</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select><button type="button" className="secondary" disabled={!selectedProductId || productSaving} onClick={() => void linkExistingProduct()}>Agregar</button></div>}</div>}
         </div>
         {products.length === 0 ? (
           <div className="empty catalog-empty">
@@ -570,7 +592,7 @@ export function ProductCatalogEditor({
           <div className="catalog-product-list">
             {products.map((product, index) => (
               <article
-                className={`catalog-product-row${product.visible ? '' : ' is-hidden'}`}
+                className={`catalog-product-row${product.visible ? '' : ' is-hidden'}${product.status === 'archived' ? ' is-archived' : ''}`}
                 key={product.id}
               >
                 <div className="catalog-product-thumb">
@@ -596,7 +618,14 @@ export function ProductCatalogEditor({
                     {product.visible ? 'Visible' : 'Oculto'} ·{' '}
                     {product.gallery.length}{' '}
                     {product.gallery.length === 1 ? 'imagen' : 'imágenes'}{' '}
-                    secundarias
+                    secundarias ·{' '}
+                    {product.status === 'archived'
+                      ? 'Archivado globalmente'
+                      : product.hasUnpublishedChanges
+                      ? 'Cambios sin publicar'
+                      : product.published
+                        ? 'Publicado'
+                        : 'Borrador de producto'}
                   </span>
                 </div>
                 <div className="catalog-product-actions">
@@ -604,7 +633,7 @@ export function ProductCatalogEditor({
                     <button
                       type="button"
                       className="button-quiet"
-                      disabled={!canEdit || reorderingProducts || index === 0}
+                      disabled={!canEdit || product.status === 'archived' || reorderingProducts || index === 0}
                       onClick={() => void reorderProducts(product.id, -1)}
                     >
                       Subir
@@ -613,7 +642,7 @@ export function ProductCatalogEditor({
                       type="button"
                       className="button-quiet"
                       disabled={
-                        !canEdit ||
+                        !canEdit || product.status === 'archived' ||
                         reorderingProducts ||
                         index === products.length - 1
                       }
@@ -625,12 +654,12 @@ export function ProductCatalogEditor({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={!canEdit}
+                    disabled={!canEdit || product.status === 'archived'}
                     onClick={() => editProduct(product)}
                   >
                     Editar
                   </button>
-                  {canEdit && (
+                  {canEdit && product.status !== 'archived' && (
                     <button
                       type="button"
                       className="button-quiet catalog-danger-action"

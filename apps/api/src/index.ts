@@ -19,6 +19,7 @@ import { reportsRoutes } from './routes/reports';
 import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { channelContentRoutes } from './routes/channel-content';
+import { productRoutes } from './routes/products';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -71,6 +72,7 @@ app.get('/health', health);
 app.route('/auth', authRoutes);
 app.route('/organizations', organizationRoutes);
 app.route('/organizations/assets', assetRoutes);
+app.route('/products', productRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);

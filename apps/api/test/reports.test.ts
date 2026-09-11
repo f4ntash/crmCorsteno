@@ -6,6 +6,7 @@ import type { ReportContext, ReportProvider } from '../src/services/report-types
 const NOW = new Date('2026-09-10T00:00:00.000Z').getTime();
 type Application = { id: string; name: string; projectId: string; projectName: string; applicationType: string; organizationId: string };
 type Event = { id: string; occurredAt: number; event: string; application: string; project: string; organizationId: string };
+type Product = { name: string; priceMinorUnits: number; currency: string; stock: number };
 
 const roulette: Application = { id: 'roulette-app', name: 'Ruleta Septiembre', projectId: 'project-a', projectName: 'Evento 2026', applicationType: 'roulette', organizationId: 'org-a' };
 const generic: Application = { id: 'generic-app', name: '=Catálogo, "general"', projectId: 'project-a', projectName: 'Evento 2026', applicationType: 'generic', organizationId: 'org-a' };
@@ -16,7 +17,7 @@ const events: Event[] = [
   { id: 'event-old', occurredAt: NOW - 90 * 86400000, event: 'old_event', application: generic.name, project: generic.projectName, organizationId: 'org-a' },
 ];
 
-function database(options: { role?: string; platformRole?: string; org?: string; revoked?: boolean; applications?: Application[]; events?: Event[] } = {}): D1Database {
+function database(options: { role?: string; platformRole?: string; org?: string; revoked?: boolean; applications?: Application[]; events?: Event[]; canonicalProducts?: Product[] } = {}): D1Database {
   const organization = options.org ?? 'org-a';
   const applications = options.applications ?? [roulette, generic];
   const currentEvents = options.events ?? events;
@@ -29,6 +30,8 @@ function database(options: { role?: string; platformRole?: string; org?: string;
               if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user-a', email: 'member@example.com', name: 'Member', platformRole: options.platformRole ?? 'user', expires_at: NOW + 60000 } as T;
               if (sql.includes('FROM organizations')) return options.revoked ? null : { id: organization, name: 'Org A', slug: 'org-a', role: options.platformRole ? 'global_admin' : options.role ?? 'member' } as T;
               if (sql.includes("application_type='roulette'")) return applications.some((item) => item.organizationId === organization && item.applicationType === 'roulette') ? { value: 1 } as T : null;
+              if (sql.includes("sqlite_master") && sql.includes("name='products'")) return options.canonicalProducts ? { value: 1 } as T : null;
+              if (sql.includes("FROM products WHERE")) return options.canonicalProducts?.length ? { value: 1 } as T : null;
               if (sql.includes('FROM applications')) {
                 const id = String(args[0] ?? '');
                 const projectId = args.length > 2 ? String(args[2]) : null;
@@ -42,6 +45,7 @@ function database(options: { role?: string; platformRole?: string; org?: string;
                 const since = Number(args[2]);
                 return { results: currentEvents.filter((event) => event.organizationId === organization && event.occurredAt >= since) } as { results: T[] };
               }
+              if (sql.includes('FROM products p WHERE')) return { results: (options.canonicalProducts ?? []).map((product) => ({ ...product, visible: 1 })) } as { results: T[] };
               return { results: [] as T[] };
             },
             async run() { return { success: true }; },
@@ -108,6 +112,13 @@ describe('generic application activity report', () => {
     expect((await request('/reports/analytics.application-activity.csv?applicationId=generic-app&range=7d', { org: 'org-b' })).status).toBe(404);
     expect((await request('/reports/analytics.application-activity.csv?applicationId=roulette-app&projectId=project-b', {})).status).toBe(404);
     expect((await request('/reports/analytics.application-activity.csv?range=7d', {})).status).toBe(400);
+  });
+
+  it('exports canonical organization inventory without requiring a catalog application', async () => {
+    const response = await request('/reports/catalog.inventory.csv?range=7d', { canonicalProducts: [{ name: 'Lámpara Nido', priceMinorUnits: 18900000, currency: 'ARS', stock: 12 }] });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain('corsteno-productos-inventario-productos-2026-09-10.csv');
+    expect(await response.text()).toContain('Lámpara Nido');
   });
 });
 

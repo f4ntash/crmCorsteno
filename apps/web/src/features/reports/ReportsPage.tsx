@@ -4,7 +4,7 @@ import { downloadCsv } from './download';
 
 type Project = { id: string; name: string };
 type Application = { id: string; name: string; projectId: string; applicationType?: string };
-type Report = { id: string; title: string; description: string; scope: 'application'; format: 'csv'; requiresApplication: boolean; applicationTypes: string[] | null };
+type Report = { id: string; title: string; description: string; scope: 'application' | 'organization'; format: 'csv'; requiresApplication: boolean; applicationTypes: string[] | null };
 type ReportsResponse = { reports: Report[] };
 
 const typeLabels: Record<string, string> = { roulette: 'Roulette', 'product-catalog': 'Catálogo de productos', game: 'Juego', webar: 'WebAR', generic: 'Experiencia' };
@@ -48,16 +48,16 @@ export function ReportsPage({ org }: { org: string }) {
 
   const filteredApplications = useMemo(() => project ? applications.filter((item) => item.projectId === project) : applications, [applications, project]);
   const selectedApplication = applications.find((item) => item.id === application);
-  const visibleReports = reports.filter((report) => !report.applicationTypes?.length || Boolean(selectedApplication && report.applicationTypes.includes(selectedApplication.applicationType ?? 'generic')));
+  const visibleReports = reports.filter((report) => report.scope === 'organization' || !report.applicationTypes?.length || Boolean(selectedApplication && report.applicationTypes.includes(selectedApplication.applicationType ?? 'generic')));
   async function exportReport(report: Report) {
-    if (!application || exporting) return;
+    if ((report.requiresApplication && !application) || exporting) return;
     setExporting(report.id);
     setExportError('');
     setExportMessage('');
     try {
-      const query = new URLSearchParams({ range, applicationId: application, ...(project ? { projectId: project } : {}) });
+      const query = new URLSearchParams({ range, ...(report.requiresApplication && application ? { applicationId: application } : {}), ...(report.requiresApplication && project ? { projectId: project } : {}) });
       const blob = await apiDownload(`/reports/${encodeURIComponent(report.id)}?${query.toString()}`, org);
-      downloadCsv(blob, selectedApplication?.name ?? 'experiencia', reportSuffix(report.id));
+      downloadCsv(blob, report.scope === 'organization' ? 'productos' : selectedApplication?.name ?? 'experiencia', reportSuffix(report.id));
       setExportMessage('CSV descargado correctamente.');
     } catch (cause) {
       setExportError(cause instanceof ApiError ? cause.message : 'No se pudo exportar el reporte.');
@@ -84,7 +84,7 @@ export function ReportsPage({ org }: { org: string }) {
       {exportError && <p className="analytics-export-error" role="alert">{exportError}</p>}
       {exportMessage && <p className="reports-success" role="status">{exportMessage}</p>}
       <section className="reports-list" aria-label="Reportes disponibles"><div className="section-heading"><div><p className="eyebrow">REPORTES DISPONIBLES</p><h2>Exportaciones</h2></div><span>{selectedApplication ? `${selectedApplication.name} · ${typeLabels[selectedApplication.applicationType ?? 'generic'] ?? 'Experiencia'}` : 'Aplicación no seleccionada'}</span></div>
-        {visibleReports.length === 0 ? <div className="empty"><h2>No hay reportes aplicables</h2><p>Seleccioná una aplicación compatible para ver sus exportaciones.</p></div> : <div className="report-list">{visibleReports.map((report) => <article className="report-row" key={report.id}><div><h2>{report.title}</h2><p>{report.description}</p><small>Alcance: aplicación seleccionada · Formato: {report.format.toUpperCase()} · {rangeLabels[range]}</small>{report.id.startsWith('roulette.') && <small>Incluye resultados Roulette, claims y bloqueos; sólo datos del período seleccionado.</small>}</div><button type="button" className="secondary" disabled={!application || Boolean(exporting)} onClick={() => void exportReport(report)}>{exporting === report.id ? 'Exportando…' : application ? 'Exportar CSV' : 'Seleccioná aplicación'}</button></article>)}</div>}
+        {visibleReports.length === 0 ? <div className="empty"><h2>No hay reportes aplicables</h2><p>Seleccioná una aplicación compatible para ver sus exportaciones.</p></div> : <div className="report-list">{visibleReports.map((report) => <article className="report-row" key={report.id}><div><h2>{report.title}</h2><p>{report.description}</p><small>Alcance: {report.scope === 'organization' ? 'organización' : 'aplicación seleccionada'} · Formato: {report.format.toUpperCase()} · {rangeLabels[range]}</small>{report.id.startsWith('roulette.') && <small>Incluye resultados Roulette, claims y bloqueos; sólo datos del período seleccionado.</small>}</div><button type="button" className="secondary" disabled={(report.requiresApplication && !application) || Boolean(exporting)} onClick={() => void exportReport(report)}>{exporting === report.id ? 'Exportando…' : report.requiresApplication && !application ? 'Seleccioná aplicación' : 'Exportar CSV'}</button></article>)}</div>}
       </section>
     </>}
   </main>;

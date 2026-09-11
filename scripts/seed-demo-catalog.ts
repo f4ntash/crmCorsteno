@@ -190,6 +190,28 @@ function publishedGallerySql(product: typeof products[number], publishedId: stri
   return product.gallery.map((asset, index) => `INSERT INTO catalog_published_product_images (id,organization_id,experience_id,published_product_id,source_image_id,asset_url,sort_order,published_at) VALUES (${quote(`00000000-0000-4000-8000-0000000002${String(imageOffset + index).padStart(2, '0')}`)},${quote(demo.organizationId)},${quote(demo.experienceId)},${quote(publishedId)},${quote(asset.id)},${quote(assetUrl(asset))},${index},${now});`).join('\n');
 }
 
+function canonicalProductSql(product: typeof products[number], now: number) {
+  const ctaUrl = `https://example.com/lumbre-norte/${product.id.slice(-4)}`;
+  const published = json({ name: product.name, description: product.description, priceMinorUnits: product.priceMinorUnits, currency: 'ARS', stock: product.stock, mainAssetUrl: assetUrl(product.asset), ctaLabel: 'Consultar disponibilidad', ctaUrl });
+  return `INSERT INTO products (id,organization_id,product_key,name,description,price_minor_units,currency,stock,main_asset_url,cta_label,cta_url,status,published_content,published_at,created_at,updated_at,archived_at) VALUES (${quote(product.id)},${quote(demo.organizationId)},${quote(`lumbre-norte-${product.id}`)},${quote(product.name)},${quote(product.description)},${product.priceMinorUnits},'ARS',${product.stock},${quote(assetUrl(product.asset))},'Consultar disponibilidad',${quote(ctaUrl)},'active',${published},${now},${now},${now},NULL) ON CONFLICT(id) DO UPDATE SET organization_id=excluded.organization_id,product_key=excluded.product_key,name=excluded.name,description=excluded.description,price_minor_units=excluded.price_minor_units,currency=excluded.currency,stock=excluded.stock,main_asset_url=excluded.main_asset_url,cta_label=excluded.cta_label,cta_url=excluded.cta_url,status='active',published_content=excluded.published_content,published_at=excluded.published_at,updated_at=excluded.updated_at,archived_at=NULL;`;
+}
+
+function canonicalGallerySql(product: typeof products[number], imageOffset: number, now: number) {
+  return product.gallery.map((asset, index) => `INSERT INTO product_images (id,organization_id,product_id,asset_id,sort_order,created_at) VALUES (${quote(`00000000-0000-4000-8000-0000000003${String(imageOffset + index).padStart(2, '0')}`)},${quote(demo.organizationId)},${quote(product.id)},${quote(asset.id)},${index},${now});`).join('\n');
+}
+
+function canonicalPublishedGallerySql(product: typeof products[number], imageOffset: number, now: number) {
+  return product.gallery.map((asset, index) => `INSERT INTO product_published_images (id,organization_id,product_id,asset_url,sort_order,published_at) VALUES (${quote(`00000000-0000-4000-8000-0000000004${String(imageOffset + index).padStart(2, '0')}`)},${quote(demo.organizationId)},${quote(product.id)},${quote(assetUrl(asset))},${index},${now});`).join('\n');
+}
+
+function canonicalAssociationSql(product: typeof products[number], now: number) {
+  return `INSERT INTO catalog_experience_products (id,organization_id,experience_id,product_id,sort_order,visible,created_at,updated_at) VALUES (${quote(`00000000-0000-4000-8000-0000000005${String(product.sortOrder + 1).padStart(2, '0')}`)},${quote(demo.organizationId)},${quote(demo.experienceId)},${quote(product.id)},${product.sortOrder},1,${now},${now});`;
+}
+
+function canonicalPublishedAssociationSql(product: typeof products[number], now: number) {
+  return `INSERT INTO catalog_published_experience_products (id,organization_id,experience_id,product_id,sort_order,visible,published_at) VALUES (${quote(`00000000-0000-4000-8000-0000000006${String(product.sortOrder + 1).padStart(2, '0')}`)},${quote(demo.organizationId)},${quote(demo.experienceId)},${quote(product.id)},${product.sortOrder},1,${now});`;
+}
+
 async function main() {
   assertLocalOnly();
   const resetRequested = process.argv.includes('--reset');
@@ -214,6 +236,10 @@ async function main() {
     `DELETE FROM catalog_published_products WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)};`,
     `DELETE FROM catalog_product_images WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)};`,
     `DELETE FROM catalog_products WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)};`,
+    `DELETE FROM catalog_published_experience_products WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)};`,
+    `DELETE FROM catalog_experience_products WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)};`,
+    `DELETE FROM product_published_images WHERE organization_id=${quote(demo.organizationId)} AND product_id IN (${products.map((product) => quote(product.id)).join(',')});`,
+    `DELETE FROM product_images WHERE organization_id=${quote(demo.organizationId)} AND product_id IN (${products.map((product) => quote(product.id)).join(',')});`,
     `DELETE FROM events WHERE application_id=${quote(demo.applicationId)} AND organization_id=${quote(demo.organizationId)};`,
     `DELETE FROM app_sessions WHERE application_id=${quote(demo.applicationId)} AND organization_id=${quote(demo.organizationId)};`,
     `DELETE FROM organization_activity WHERE organization_id=${quote(demo.organizationId)};`,
@@ -225,9 +251,14 @@ async function main() {
   });
   products.forEach((product) => sql.push(productSql(product, now)));
   products.forEach((product, index) => sql.push(gallerySql(product, index * 2, now)));
+  products.forEach((product) => sql.push(canonicalProductSql(product, now)));
+  products.forEach((product, index) => sql.push(canonicalGallerySql(product, index * 2, now)));
+  products.forEach((product, index) => sql.push(canonicalPublishedGallerySql(product, index * 2, now)));
+  products.forEach((product) => sql.push(canonicalAssociationSql(product, now)));
   const publishedIds = products.map((product, index) => ({ product, id: `00000000-0000-4000-8000-00000000008${String(index + 1)}` }));
   publishedIds.forEach(({ product, id }) => sql.push(publishedProductSql(product, id, now)));
   publishedIds.forEach(({ product, id }, index) => sql.push(publishedGallerySql(product, id, index * 2, now)));
+  products.forEach((product) => sql.push(canonicalPublishedAssociationSql(product, now)));
 
   const activity = [
     ['experience.created', 'experience', demo.experienceId, { name: 'Lumbre Norte · Colección de luz', type: 'product-catalog' }],
@@ -241,7 +272,7 @@ async function main() {
 
   await executeSql(sql.join('\n'));
 
-  const counts = queryRows<{ products: number; images: number }>(`SELECT (SELECT COUNT(*) FROM catalog_products WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)}) products,(SELECT COUNT(*) FROM catalog_product_images WHERE experience_id=${quote(demo.experienceId)} AND organization_id=${quote(demo.organizationId)}) images`);
+  const counts = queryRows<{ products: number; images: number }>(`SELECT (SELECT COUNT(*) FROM products WHERE organization_id=${quote(demo.organizationId)} AND status='active') products,(SELECT COUNT(*) FROM product_images WHERE organization_id=${quote(demo.organizationId)}) images`);
   const result = counts[0] ?? { products: 0, images: 0 };
   console.log(`${resetRequested ? 'Reset and rebuilt' : 'Built'} local catalog demo for Lumbre Norte: ${result.products} products, ${result.images} gallery images.`);
   console.log(`Experience: ${demo.experienceId} · public slug: lumbre-norte-catalogo-publico`);

@@ -1,5 +1,5 @@
 export type ReportFormat = 'csv';
-export type ReportScope = 'application';
+export type ReportScope = 'application' | 'organization';
 
 export type ReportContext = {
   db: D1Database;

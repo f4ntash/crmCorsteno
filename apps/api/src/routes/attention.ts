@@ -7,6 +7,7 @@ import { getEffectiveExperienceAccessStatus } from '../services/experience-acces
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { assetReferencesBelongToOrganization, parseJson, validateRoulettePublishReadiness } from './experiences';
 import { validateProductCatalogPublishReadiness } from '../services/product-catalog';
+import { firstClassProductsAvailable } from '../services/organization-products';
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -95,11 +96,14 @@ attentionRoutes.get('/', async (c) => {
   const type = c.req.query('type');
   if (type !== undefined && !/^[a-z][a-z0-9_.-]{1,79}$/.test(type)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid attention type' } }, 400);
   const experiences = await c.env.DB.prepare('SELECT id,name,type,status,draft_config draftConfig,published_config publishedConfig,starts_at startsAt,ends_at endsAt,updated_at updatedAt FROM experiences WHERE organization_id=? ORDER BY created_at DESC,id DESC').bind(organizationId).all<ExperienceRow>();
+  const firstClass = await firstClassProductsAvailable(c.env.DB);
   const [access, inventory, claims, catalogProducts] = await Promise.all([
     c.env.DB.prepare('SELECT experience_id experienceId,starts_at startsAt,ends_at endsAt FROM experience_access_periods WHERE organization_id=? ORDER BY starts_at ASC,id ASC').bind(organizationId).all<AccessPeriodRow>(),
     c.env.DB.prepare("SELECT i.experience_id experienceId,i.prize_id prizeId,i.stock_mode stockMode,i.stock_available stockAvailable FROM experience_prize_inventory i JOIN experiences e ON e.id=i.experience_id AND e.organization_id=? WHERE e.type='roulette'").bind(organizationId).all<InventoryRow>(),
     c.env.DB.prepare("SELECT experience_id experienceId,SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) pendingClaims FROM roulette_prize_claims WHERE organization_id=? AND experience_id IN (SELECT id FROM experiences WHERE organization_id=? AND type='roulette') GROUP BY experience_id").bind(organizationId, organizationId).all<ClaimRow>(),
-    c.env.DB.prepare("SELECT experience_id experienceId,visible,stock FROM catalog_products WHERE organization_id=? AND archived_at IS NULL").bind(organizationId).all<{ experienceId: string; visible: number; stock: number }>(),
+    firstClass
+      ? c.env.DB.prepare("SELECT cp.experience_id experienceId,cp.visible,p.stock FROM catalog_experience_products cp JOIN products p ON p.id=cp.product_id AND p.organization_id=cp.organization_id WHERE cp.organization_id=? AND p.status='active'").bind(organizationId).all<{ experienceId: string; visible: number; stock: number }>()
+      : c.env.DB.prepare("SELECT experience_id experienceId,visible,stock FROM catalog_products WHERE organization_id=? AND archived_at IS NULL").bind(organizationId).all<{ experienceId: string; visible: number; stock: number }>(),
   ]);
   const groupedAccess = accessByExperience(access.results);
   const attentionExperiences: AttentionExperience[] = experiences.results.map((row) => ({

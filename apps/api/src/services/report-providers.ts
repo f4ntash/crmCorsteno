@@ -2,6 +2,7 @@ import { csvDocument, reportFilename } from './report-csv';
 import { reportRangeOf, reportSinceOf } from './report-filters';
 import { exportRouletteResults } from './roulette-report';
 import { exportCatalogInventory } from './catalog-report';
+import { firstClassProductsAvailable } from './organization-products';
 import { ReportRequestError, type ReportContext, type ReportProvider } from './report-types';
 
 type ApplicationRow = { id: string; name: string; projectName: string; applicationType: string };
@@ -60,6 +61,10 @@ async function rouletteAvailable(context: ReportContext) {
 }
 
 async function catalogAvailable(context: ReportContext) {
+  if (await firstClassProductsAvailable(context.db)) {
+    const row = await context.db.prepare("SELECT 1 value FROM products WHERE organization_id=? AND status='active' LIMIT 1").bind(context.organizationId).first();
+    return Boolean(row);
+  }
   const applicationId = context.query.get('applicationId')?.trim() || '';
   if (applicationId) {
     const row = await context.db.prepare('SELECT application_type applicationType FROM applications WHERE id=? AND organization_id=?').bind(applicationId, context.organizationId).first<{ applicationType: string }>();
@@ -97,11 +102,10 @@ export const rouletteReportProvider: ReportProvider = () => [{
 export const catalogReportProvider: ReportProvider = () => [{
   id: 'catalog.inventory.csv',
   title: 'Inventario de productos',
-  description: 'Productos, precios, stock y visibilidad del catálogo seleccionado.',
-  scope: 'application',
+  description: 'Productos, precios, stock y visibilidad de los productos de la organización.',
+  scope: 'organization',
   format: 'csv',
-  requiresApplication: true,
-  applicationTypes: ['product-catalog'],
+  requiresApplication: false,
   emptyBehavior: 'download',
   available: catalogAvailable,
   export: exportCatalogInventory,

@@ -7,6 +7,22 @@ import { recordActivityBestEffort } from '../services/activity';
 import { catalogAssetIdFromUrl, catalogImageFromRow, catalogImageSelect, catalogProductFromRow, catalogProductIssues, catalogProductSelect, MAX_CATALOG_PRODUCT_IMAGES, PRODUCT_CATALOG_TYPE, type CatalogProductInput } from '../services/product-catalog';
 import { validAssetUrl } from '../services/roulette-config';
 import { SUPPORTED_IMAGE_TYPES } from '../services/assets';
+import {
+  catalogAssociationProduct,
+  catalogAssociationsChanged,
+  adjustOrganizationProductStock,
+  archiveOrganizationProduct,
+  createOrganizationProduct,
+  firstClassProductsAvailable,
+  linkProductToCatalog,
+  listCatalogProductsFirstClass,
+  organizationProductGalleryCount,
+  productImageFromRow,
+  productImageSelect,
+  reorderCatalogProductsFirstClass,
+  updateCatalogAssociationFirstClass,
+  updateOrganizationProduct,
+} from '../services/organization-products';
 
 type Variables = {
   user: { id: string; email: string; name: string; platformRole: string };
@@ -43,6 +59,14 @@ async function catalogProduct(c: CatalogContext, productId = c.req.param('produc
   if (!experience) return { experience: null, product: null };
   const product = await c.env.DB.prepare(`${catalogProductSelect} WHERE id=? AND experience_id=? AND organization_id=? AND archived_at IS NULL`).bind(productId, experience.id, c.get('organization').id).first<Record<string, unknown>>();
   return { experience, product };
+}
+
+async function canonicalCatalogProduct(c: CatalogContext, productId = c.req.param('productId')) {
+  if (!await firstClassProductsAvailable(c.env.DB)) return { experience: null, product: null };
+  const experience = await catalogExperience(c);
+  if (!experience) return { experience: null, product: null };
+  if (!productId) return { experience, product: null };
+  return { experience, product: await catalogAssociationProduct(c.env.DB, experience.id, c.get('organization').id, productId, new URL(c.req.url).origin) };
 }
 
 async function productImages(c: CatalogContext, productId: string) {
@@ -145,6 +169,7 @@ catalogRoutes.get('/:id/catalog-products', read, async (c) => {
   if (!await catalogExperience(c)) return c.json(error('Catálogo no encontrado.', 'NOT_FOUND'), 404);
   const experienceId = c.req.param('id');
   const organizationId = c.get('organization').id;
+  if (await firstClassProductsAvailable(c.env.DB)) return c.json({ items: await listCatalogProductsFirstClass(c.env.DB, experienceId, organizationId, new URL(c.req.url).origin), hasUnpublishedChanges: await catalogAssociationsChanged(c.env.DB, experienceId, organizationId) });
   const [items, published] = await Promise.all([
     catalogProducts(c, experienceId, organizationId),
     c.env.DB.prepare('SELECT MAX(published_at) publishedAt FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(experienceId, organizationId).first<{ publishedAt: number | null }>(),
@@ -160,6 +185,14 @@ catalogRoutes.post('/:id/catalog-products/reorder', manage, async (c) => {
   if (!Array.isArray(body.productIds) || body.productIds.some((id) => typeof id !== 'string') || new Set(body.productIds).size !== body.productIds.length) return c.json(error('El orden de productos no es válido.', 'VALIDATION_ERROR'), 400);
   const organizationId = c.get('organization').id;
   const experienceId = c.req.param('id');
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const current = await listCatalogProductsFirstClass(c.env.DB, experienceId, organizationId, new URL(c.req.url).origin);
+    const currentIds = current.map((row) => row.id);
+    if (body.productIds.length !== currentIds.length || body.productIds.some((id) => !currentIds.includes(id as string))) return c.json(error('El orden debe incluir todos los productos activos.', 'VALIDATION_ERROR'), 400);
+    const items = await reorderCatalogProductsFirstClass(c.env.DB, experienceId, organizationId, body.productIds as string[], new URL(c.req.url).origin);
+    await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'catalog.product.reordered', resourceType: 'experience', resourceId: experienceId, metadata: { productCount: body.productIds.length } });
+    return c.json({ items });
+  }
   const current = await c.env.DB.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL ORDER BY sort_order ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   const currentIds = current.results.map((row) => String(row.id));
   if (body.productIds.length !== currentIds.length || body.productIds.some((id) => !currentIds.includes(id as string))) return c.json(error('El orden debe incluir todos los productos activos.', 'VALIDATION_ERROR'), 400);
@@ -174,17 +207,28 @@ catalogRoutes.post('/:id/catalog-products', manage, async (c) => {
   if (!experience) return c.json(error('Catálogo no encontrado.', 'NOT_FOUND'), 404);
   const body = await requestBody(c);
   if (!body) return c.json(error('El cuerpo de la solicitud no es válido.'), 400);
-  const value = productFromBody(body);
+  const linkingExistingProduct = typeof body.productId === 'string' && body.productId.trim().length > 0;
+  const value = linkingExistingProduct ? null : productFromBody(body);
   const product = value ? completeProduct(value) : null;
-  const issues = product ? catalogProductIssues(product) : [{ code: 'PRODUCT_INVALID', path: 'product', message: 'Los datos del producto no son válidos.' }];
+  const issues = linkingExistingProduct ? [] : product ? catalogProductIssues(product) : [{ code: 'PRODUCT_INVALID', path: 'product', message: 'Los datos del producto no son válidos.' }];
   if (product && !issues.some((issue) => issue.path.endsWith('.mainAssetUrl'))) {
     const assetIssue = await productMainAssetIssue(c, product.mainAssetUrl);
     if (assetIssue) issues.push(assetIssue);
   }
   if (issues.length) return c.json(error('Revisá los datos del producto.', 'VALIDATION_ERROR', issues), 400);
   const organizationId = c.get('organization').id;
-  const order = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 sortOrder FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(experience.id, organizationId).first<{ sortOrder: number }>();
   const complete = product!;
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const created = await (async () => {
+      if (typeof body.productId === 'string') return linkProductToCatalog(c.env.DB, experience.id, organizationId, body.productId, body.visible !== false, new URL(c.req.url).origin);
+      const product = await createOrganizationProduct(c.env.DB, organizationId, complete, new URL(c.req.url).origin, true);
+      return product ? linkProductToCatalog(c.env.DB, experience.id, organizationId, product.id, complete.visible, new URL(c.req.url).origin) : null;
+    })();
+    if (!created) return c.json(error('El producto no existe o no se pudo agregar al catálogo.', 'NOT_FOUND'), 404);
+    await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'catalog.product.linked', resourceType: 'product', resourceId: created.id, metadata: { experienceId: experience.id, name: created.name } });
+    return c.json(created, 201);
+  }
+  const order = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 sortOrder FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(experience.id, organizationId).first<{ sortOrder: number }>();
   const now = Date.now();
   const id = crypto.randomUUID();
   await c.env.DB.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, experience.id, complete.name, complete.description, complete.priceMinorUnits, complete.currency, complete.stock, Number(order?.sortOrder ?? 0), complete.visible ? 1 : 0, complete.mainAssetUrl, complete.ctaLabel, complete.ctaUrl, now, now).run();
@@ -194,12 +238,27 @@ catalogRoutes.post('/:id/catalog-products', manage, async (c) => {
 });
 
 catalogRoutes.get('/:id/catalog-products/:productId/images', read, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product } = await canonicalCatalogProduct(c);
+    if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    return c.json({ items: product.gallery });
+  }
   const { experience, product } = await catalogProduct(c);
   if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   return c.json({ items: await productImages(c, String(product.id)) });
 });
 
 catalogRoutes.post('/:id/catalog-products/:productId/images/reorder', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product } = await canonicalCatalogProduct(c);
+    if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    let body: { imageIds?: unknown };
+    try { body = await c.req.json(); } catch { return c.json(error('El cuerpo de la solicitud no es válido.'), 400); }
+    if (!Array.isArray(body.imageIds) || body.imageIds.some((imageId) => typeof imageId !== 'string') || body.imageIds.length !== product.gallery.length || new Set(body.imageIds).size !== product.gallery.length || body.imageIds.some((imageId) => !product.gallery.some((image) => image.id === imageId))) return c.json(error('El orden de imágenes no es válido.', 'VALIDATION_ERROR'), 400);
+    await c.env.DB.batch((body.imageIds as string[]).map((imageId, sortOrder) => c.env.DB.prepare('UPDATE product_images SET sort_order=? WHERE id=? AND product_id=? AND organization_id=?').bind(sortOrder, imageId, product.id, c.get('organization').id)));
+    await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.gallery.updated', resourceType: 'product', resourceId: product.id, metadata: { experienceId: experience.id, operation: 'reordered', imageCount: body.imageIds.length } });
+    return c.json({ items: (await canonicalCatalogProduct(c, product.id))?.product?.gallery ?? [] });
+  }
   const { experience, product } = await catalogProduct(c);
   if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   let body: { imageIds?: unknown };
@@ -218,6 +277,25 @@ catalogRoutes.post('/:id/catalog-products/:productId/images/reorder', manage, as
 });
 
 catalogRoutes.post('/:id/catalog-products/:productId/images', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product } = await canonicalCatalogProduct(c);
+    if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    if (await organizationProductGalleryCount(c.env.DB, c.get('organization').id, product.id) >= MAX_CATALOG_PRODUCT_IMAGES) return c.json(error(`Cada producto puede tener hasta ${MAX_CATALOG_PRODUCT_IMAGES} imágenes de galería.`, 'GALLERY_LIMIT_REACHED'), 422);
+    let body: { assetUrl?: unknown };
+    try { body = await c.req.json(); } catch { return c.json(error('El cuerpo de la solicitud no es válido.'), 400); }
+    const assetId = catalogAssetIdFromUrl(body.assetUrl, c.get('organization').id);
+    const asset = assetId ? await c.env.DB.prepare('SELECT id,mime_type mimeType,storage_key storageKey FROM organization_assets WHERE id=? AND organization_id=? AND archived_at IS NULL').bind(assetId, c.get('organization').id).first<{ id: string; mimeType: string; storageKey: string }>() : null;
+    if (!asset || !SUPPORTED_IMAGE_TYPES.includes(asset.mimeType as typeof SUPPORTED_IMAGE_TYPES[number])) return c.json(error('Seleccioná una imagen activa de la organización.', 'VALIDATION_ERROR', [{ code: 'GALLERY_ASSET_INVALID', path: 'assetUrl', message: 'La imagen debe ser un asset de imagen activo de la organización.' }]), 400);
+    if (product.gallery.some((image) => image.assetId === asset.id)) return c.json(error('Esta imagen ya está en la galería.', 'IMAGE_ALREADY_ADDED'), 409);
+    const imageId = crypto.randomUUID(); const now = Date.now();
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO product_images (id,organization_id,product_id,asset_id,sort_order,created_at) VALUES (?,?,?,?,?,?)').bind(imageId, c.get('organization').id, product.id, asset.id, product.gallery.length, now),
+      c.env.DB.prepare('UPDATE products SET updated_at=? WHERE id=? AND organization_id=?').bind(now, product.id, c.get('organization').id),
+    ]);
+    await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.gallery.updated', resourceType: 'product', resourceId: product.id, metadata: { experienceId: experience.id, operation: 'added', imageCount: product.gallery.length + 1 } });
+    const row = await c.env.DB.prepare(`${productImageSelect} WHERE i.id=? AND i.organization_id=?`).bind(imageId, c.get('organization').id).first<Record<string, unknown>>();
+    return c.json({ image: row ? productImageFromRow(row, new URL(c.req.url).origin) : null }, 201);
+  }
   const { experience, product } = await catalogProduct(c);
   if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   let body: { assetUrl?: unknown };
@@ -242,6 +320,14 @@ catalogRoutes.post('/:id/catalog-products/:productId/images', manage, async (c) 
 });
 
 catalogRoutes.delete('/:id/catalog-products/:productId/images/:imageId', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product } = await canonicalCatalogProduct(c);
+    if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    const result = await c.env.DB.prepare('DELETE FROM product_images WHERE id=? AND product_id=? AND organization_id=?').bind(c.req.param('imageId'), product.id, c.get('organization').id).run();
+    if (!result.meta?.changes) return c.json(error('Imagen no encontrada.', 'NOT_FOUND'), 404);
+    await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.gallery.updated', resourceType: 'product', resourceId: product.id, metadata: { experienceId: experience.id, operation: 'removed', imageCount: Math.max(0, product.gallery.length - 1) } });
+    return c.json({ id: c.req.param('imageId'), removed: true });
+  }
   const { experience, product } = await catalogProduct(c);
   if (!experience || !product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   const organizationId = c.get('organization').id;
@@ -258,6 +344,30 @@ catalogRoutes.delete('/:id/catalog-products/:productId/images/:imageId', manage,
 });
 
 catalogRoutes.patch('/:id/catalog-products/:productId', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product: current } = await canonicalCatalogProduct(c);
+    if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    const body = await requestBody(c);
+    if (!body) return c.json(error('El cuerpo de la solicitud no es válido.'), 400);
+    const changes = productFromBody(body, true) ?? {};
+    const productChanges = { ...changes };
+    delete productChanges.visible;
+    const merged = { ...current, ...productChanges, visible: true };
+    const issues = catalogProductIssues(merged as CatalogProductInput);
+    if (!issues.some((issue) => issue.path.endsWith('.mainAssetUrl'))) {
+      const assetIssue = await productMainAssetIssue(c, merged.mainAssetUrl);
+      if (assetIssue) issues.push(assetIssue);
+    }
+    if (issues.length) return c.json(error('Revisá los datos del producto.', 'VALIDATION_ERROR', issues), 400);
+    const updated = Object.keys(productChanges).length
+      ? await updateOrganizationProduct(c.env.DB, c.get('organization').id, current.id, current, productChanges as never, new URL(c.req.url).origin)
+      : current;
+    const withAssociation = 'visible' in changes
+      ? await updateCatalogAssociationFirstClass(c.env.DB, experience.id, c.get('organization').id, current.id, { visible: Boolean(changes.visible) }, new URL(c.req.url).origin)
+      : updated;
+    await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.updated', resourceType: 'product', resourceId: current.id, metadata: { experienceId: experience.id, name: merged.name, changedFields: Object.keys(body) } });
+    return c.json(withAssociation ?? current);
+  }
   const { experience, product: current } = await catalogProduct(c);
   if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   const organizationId = c.get('organization').id;
@@ -284,6 +394,14 @@ catalogRoutes.patch('/:id/catalog-products/:productId', manage, async (c) => {
 });
 
 catalogRoutes.delete('/:id/catalog-products/:productId', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product: current } = await canonicalCatalogProduct(c);
+    if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    const archived = await archiveOrganizationProduct(c.env.DB, c.get('organization').id, current.id);
+    if (!archived) return c.json(error('El producto ya está archivado.', 'PRODUCT_ARCHIVED'), 409);
+    await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.archived', resourceType: 'product', resourceId: current.id, metadata: { experienceId: experience.id, name: current.name } });
+    return c.json({ id: current.id, archived: true });
+  }
   const { experience, product: row } = await catalogProduct(c);
   if (!experience || !row) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   const organizationId = c.get('organization').id;
@@ -294,6 +412,17 @@ catalogRoutes.delete('/:id/catalog-products/:productId', manage, async (c) => {
 });
 
 catalogRoutes.post('/:id/catalog-products/:productId/stock', manage, async (c) => {
+  if (await firstClassProductsAvailable(c.env.DB)) {
+    const { experience, product: current } = await canonicalCatalogProduct(c);
+    if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+    let body: { delta?: unknown };
+    try { body = await c.req.json(); } catch { return c.json(error('El cuerpo de la solicitud no es válido.'), 400); }
+    const delta = body.delta;
+    if (typeof delta !== 'number' || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 1_000_000_000) return c.json(error('El ajuste debe ser un entero distinto de cero.'), 400);
+    const result = await adjustOrganizationProductStock(c.env.DB, c.get('organization').id, current, delta, new URL(c.req.url).origin);
+    if (result.error) return c.json(error(result.error), 400);
+    return c.json(result.product ?? current);
+  }
   const { experience, product: current } = await catalogProduct(c);
   if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   const organizationId = c.get('organization').id;
