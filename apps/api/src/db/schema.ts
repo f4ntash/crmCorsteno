@@ -92,6 +92,26 @@ export const memberships = sqliteTable(
     index('memberships_org').on(t.organizationId),
   ],
 );
+export const organizationActivity = sqliteTable(
+  'organization_activity',
+  {
+    id: id(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    actorUserId: text('actor_user_id').references(() => users.id),
+    action: text('action').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: text('resource_id'),
+    metadata: text('metadata', { mode: 'json' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('organization_activity_org_created').on(t.organizationId, t.createdAt),
+    index('organization_activity_action').on(t.organizationId, t.action),
+    index('organization_activity_actor').on(t.organizationId, t.actorUserId),
+  ],
+);
 export const projects = sqliteTable(
   'projects',
   {

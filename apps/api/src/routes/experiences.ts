@@ -6,6 +6,7 @@ import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '..
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 import { buildRouletteOutcomes } from '../services/roulette-selector';
+import { recordActivityBestEffort } from '../services/activity';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -83,6 +84,12 @@ experienceRoutes.post('/claims/redeem', async (c) => {
   if (claim.status !== 'active') return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
   const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND organization_id=? AND status='active'").bind(userId, claim.id, organizationId).run();
   if (!update.meta?.changes) return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: userId }, {
+    action: 'claim.redeemed',
+    resourceType: 'claim',
+    resourceId: String(claim.id),
+    metadata: { prizeName: claim.prizeName, claimCode: code },
+  });
   return c.json({ prizeName: claim.prizeName, experienceId: claim.experienceId, status: 'redeemed', redeemedAt: new Date().toISOString() });
 });
 
@@ -135,6 +142,12 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
     await c.env.DB.prepare('INSERT INTO events (id,organization_id,project_id,application_id,event_name,properties,occurred_at,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, application.projectId, context.applicationId, 'roulette_prize_redeemed', JSON.stringify({ experienceId, claimId: c.req.param('claimId') }), Date.now(), Date.now()).run();
   })().catch(() => undefined);
   const row = await c.env.DB.prepare('SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<Record<string, unknown>>();
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: userId }, {
+    action: 'claim.redeemed',
+    resourceType: 'claim',
+    resourceId: c.req.param('claimId'),
+    metadata: { prizeName: row?.prizeName, claimCode: row?.code },
+  });
   return c.json(presentClaim(row ?? {}));
 });
 
@@ -366,6 +379,7 @@ experienceRoutes.post('/:id/publish', async (c) => {
   await syncPrizeInventory(c.env.DB, id, readyDraft);
   await ensureAnalyticsApplication(c.env.DB, id, organizationId, String(row.name ?? 'Roulette'));
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.published', resourceType: 'experience', resourceId: id, metadata: { name: row.name } });
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
 });
 
@@ -391,6 +405,7 @@ experienceRoutes.post('/:id/clone', async (c) => {
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
     .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, null, null).run();
   const cloned = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.cloned', resourceType: 'experience', resourceId: id, metadata: { name: `${String(source.name)} - Copia`, sourceName: source.name } });
   try { return c.json(present(cloned ?? {}), 201); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid cloned experience JSON' } }, 500); }
 });
 
@@ -462,6 +477,12 @@ experienceRoutes.post('/:id/inventory/:prizeId/adjust', async (c) => {
   if (!update.meta?.changes) return c.json(bad('Stock cannot be negative'), 400);
   await c.env.DB.prepare('INSERT INTO experience_prize_inventory_events (id, experience_id, prize_id, type, quantity) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), id, prizeId, delta > 0 ? 'manual_add' : 'manual_remove', amount).run();
   const current = await c.env.DB.prepare('SELECT stock_available stockAvailable, delivered_count deliveredCount FROM experience_prize_inventory WHERE experience_id=? AND prize_id=?').bind(id, prizeId).first<{ stockAvailable: number; deliveredCount: number }>();
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, {
+    action: 'inventory.adjusted',
+    resourceType: 'prize',
+    resourceId: prizeId,
+    metadata: { experienceName: row.name, prizeName: prize.name, delta, before: inventory.stockAvailable ?? 0, after: current?.stockAvailable ?? 0 },
+  });
   return c.json({ item: { prizeId, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: normalizePrizeConfig(prize).enabled, weight: normalizePrizeConfig(prize).weight, stockMode: 'limited', stockAvailable: current?.stockAvailable ?? 0, deliveredCount: current?.deliveredCount ?? 0 } });
 });
 
@@ -488,6 +509,7 @@ experienceRoutes.post('/', async (c) => {
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, NULL, ?, ?)`)
     .bind(id, c.get('organization').id, name, slug, type, draftConfig, startsAt ?? null, endsAt ?? null).run();
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
+  await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'experience.created', resourceType: 'experience', resourceId: id, metadata: { name, type } });
   return c.json(present(row ?? {}), 201);
 });
 
@@ -558,6 +580,9 @@ experienceRoutes.patch('/:id', async (c) => {
   fields.push('updated_at=CURRENT_TIMESTAMP');
   await c.env.DB.prepare(`UPDATE experiences SET ${fields.join(', ')} WHERE id=? AND organization_id=?`).bind(...values, c.req.param('id'), c.get('organization').id).run();
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(c.req.param('id'), c.get('organization').id).first<Record<string, unknown>>();
+  const nextStatus = typeof body.status === 'string' ? body.status : current.status;
+  const action = body.status !== undefined && current.status !== nextStatus ? nextStatus === 'published' ? 'experience.published' : current.status === 'published' ? 'experience.unpublished' : 'experience.updated' : 'experience.updated';
+  await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action, resourceType: 'experience', resourceId: c.req.param('id'), metadata: { name: row?.name ?? current.name, changedFields: Object.keys(body).filter((key) => allowed.some(([allowedKey]) => allowedKey === key)), previousStatus: current.status, status: nextStatus } });
   try { return c.json(present(row ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid stored experience JSON' } }, 500); }
 });
 

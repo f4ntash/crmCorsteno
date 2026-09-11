@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import '../analytics.css';
+import '../activity.css';
 import '../commercial.css';
 import '../home.css';
 import '../experiences.css';
@@ -18,6 +19,7 @@ import { isPlatformCommercialAdmin } from '../features/commercial/permissions';
 import { ClientOnboardingPage } from '../features/onboarding/pages/ClientOnboardingPage';
 import { RedeemPage } from '../features/claims/pages/RedeemPage';
 import { TeamPage } from '../features/team/TeamPage';
+import { ActivityPage } from '../features/activity/ActivityPage';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
@@ -56,6 +58,7 @@ function Shell() {
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>}
           {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>}
           {canRedeem && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
+          {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity">Actividad</NavLink>}
           {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
           {platformOperator && <>
             <p className="nav-section">Administración</p>
@@ -102,6 +105,7 @@ function Shell() {
           <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
           <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
           <Route path="redeem" element={canRedeem ? <RedeemPage org={o} canRedeem /> : <Navigate to="/app" replace />} />
+          <Route path="activity" element={currentPermissions.includes('activity.read') ? <ActivityPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"
