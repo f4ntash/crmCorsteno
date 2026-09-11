@@ -26,6 +26,32 @@ describe('GET /health', () => {
 });
 
 describe('development CORS', () => {
+  it('answers the public runtime identity preflight', async () => {
+    const response = await app.request(
+      '/public/experiences/catalog-qa',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'http://localhost:5175',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers':
+            'x-anonymous-user-id,x-session-id',
+        },
+      },
+      { ENVIRONMENT: 'development', APP_VERSION: 'test' },
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+      'http://localhost:5175',
+    );
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain(
+      'X-Anonymous-User-Id',
+    );
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain(
+      'X-Session-Id',
+    );
+  });
+
   it.each([
     'https://localhost:5173',
     'https://localhost:5175',

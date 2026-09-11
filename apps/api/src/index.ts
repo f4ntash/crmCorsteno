@@ -62,7 +62,7 @@ app.use('*', async (c, next) => {
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
     credentials: true,
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization'],
+    allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id'],
   })(c, next);
 });
 app.get('/health', health);
