@@ -14,4 +14,13 @@ describe('effective experience status', () => {
   ] as const)('%s calculates %s', (status, startsAt, endsAt, expected) => {
     expect(getEffectiveExperienceStatus(status, startsAt, endsAt, NOW)).toBe(expected);
   });
+
+  it('keeps the existing inclusive start and end boundary semantics', () => {
+    const start = '2026-06-15T12:00:00Z';
+    const end = '2026-06-15T12:00:00Z';
+
+    expect(getEffectiveExperienceStatus('published', start, null, NOW)).toBe('active');
+    expect(getEffectiveExperienceStatus('published', null, end, NOW)).toBe('active');
+    expect(getEffectiveExperienceStatus('published', null, end, NOW + 1)).toBe('expired');
+  });
 });

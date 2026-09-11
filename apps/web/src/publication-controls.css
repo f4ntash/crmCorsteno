@@ -1,10 +1,14 @@
 .publication-control { display: grid; min-height: 168px; gap: 14px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
 .publication-control-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .publication-control-heading h3 { margin: 5px 0 0; }
+.publication-status-explanation { margin: -4px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.45; }
 .publication-change-note { margin: 0; color: var(--warning); font-size: 12px; }
 .publication-dates { display: flex; flex-wrap: wrap; gap: 18px; color: var(--text-secondary); font-size: 12px; }
 .publication-dates span { display: grid; gap: 3px; }
 .publication-dates small { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.publication-timezone { margin: -6px 0 0; color: var(--text-muted); font-size: 11px; }
+.publication-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.publication-quick-actions button { min-height: 32px; padding-inline: 10px; font-size: 11px; }
 .publication-availability { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
 .publication-availability summary { color: var(--accent-strong); cursor: pointer; font-size: 12px; font-weight: 600; }
 .publication-availability-form { display: grid; gap: 10px; }
@@ -17,4 +21,4 @@
 .publication-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .publication-actions .publication-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; text-decoration: none; }
 .publication-actions button { min-height: 36px; }
-@media (max-width: 600px) { .publication-control { min-height: 0; padding: 16px; } .publication-control-heading { align-items: flex-start; } .publication-actions > * { flex: 1 1 calc(50% - 8px); text-align: center; } .publication-actions > button:first-child { flex-basis: 100%; } .publication-availability-actions > * { flex: 1; } }
+@media (max-width: 600px) { .publication-control { min-height: 0; padding: 16px; } .publication-control-heading { align-items: flex-start; } .publication-actions > * { flex: 1 1 calc(50% - 8px); text-align: center; } .publication-actions > button:first-child { flex-basis: 100%; } .publication-quick-actions > * { flex: 1 1 calc(50% - 8px); } .publication-availability-actions > * { flex: 1; } }
