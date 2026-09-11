@@ -19,7 +19,9 @@ export function normalizeRouletteDraft(value: unknown): RouletteConfig {
   const base = defaultDraft(Math.max(6, Math.min(10, segments.length || 6)));
   const fallbackSegments = base.segments.map((s) => ({ ...s, prizeId: finalPrizes[0]?.id ?? null }));
   const participation = (x?.participation ?? {}) as Partial<NonNullable<RouletteConfig['participation']>>;
-  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments, effects: x?.effects ?? { sound: true, vibration: true, celebration: true }, resultCta: x?.resultCta, participation: { maxSpinsPerDevice: participation.maxSpinsPerDevice ?? null, maxSpinsPerSession: participation.maxSpinsPerSession ?? null, cooldownSeconds: participation.cooldownSeconds ?? 0 } };
+  const branding = x?.branding && typeof x.branding === 'object' && !Array.isArray(x.branding) ? { logoUrl: x.branding.logoUrl ?? null, backgroundImageUrl: x.branding.backgroundImageUrl ?? null } : undefined;
+  const content = x?.content && typeof x.content === 'object' && !Array.isArray(x.content) ? { title: x.content.title, intro: x.content.intro, spinButtonLabel: x.content.spinButtonLabel, winMessage: x.content.winMessage, noPrizeMessage: x.content.noPrizeMessage } : undefined;
+  return { schemaVersion: 1, backgroundColor: typeof x?.backgroundColor === 'string' ? x.backgroundColor : base.backgroundColor, branding, content, prizes: finalPrizes, segments: segments.length ? segments : fallbackSegments, effects: x?.effects ?? { sound: true, vibration: true, celebration: true }, resultCta: x?.resultCta, participation: { maxSpinsPerDevice: participation.maxSpinsPerDevice ?? null, maxSpinsPerSession: participation.maxSpinsPerSession ?? null, cooldownSeconds: participation.cooldownSeconds ?? 0 } };
 }
 
 export function isValidRouletteDraft(draft: RouletteConfig) {

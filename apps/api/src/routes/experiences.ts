@@ -7,6 +7,8 @@ import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '
 import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 import { buildRouletteOutcomes } from '../services/roulette-selector';
 import { recordActivityBestEffort } from '../services/activity';
+import { validateImageFile } from '../services/assets';
+export { sanitizeSvg } from '../services/assets';
 
 const STATUSES = ['draft', 'published', 'paused'] as const;
 type ExperienceStatus = PersistedExperienceStatus;
@@ -193,11 +195,24 @@ function bad(message: string) {
   return { error: { code: 'BAD_REQUEST', message } };
 }
 const HEX = /^#[0-9a-f]{6}$/i;
-const ASSET_PATH = /^\/assets\/organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/;
+const ASSET_PATH = /^\/assets\/organizations\/[A-Za-z0-9_-]+\/(?:experiences\/[A-Za-z0-9_-]+|assets)\/[0-9a-f-]+\.(png|jpg|jpeg|webp|svg)$/i;
 export function validAssetUrl(value: unknown) {
   if (typeof value !== 'string') return false;
   if (ASSET_PATH.test(value)) return true;
   try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && ASSET_PATH.test(url.pathname) && !url.username && !url.password; } catch { return false; }
+}
+function assetReferencesBelongToOrganization(value: unknown, organizationId: string) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return true;
+  const config = value as Record<string, unknown>;
+  const refs: unknown[] = [];
+  const branding = config.branding;
+  if (branding && typeof branding === 'object' && !Array.isArray(branding)) refs.push((branding as Record<string, unknown>).logoUrl, (branding as Record<string, unknown>).backgroundImageUrl);
+  if (Array.isArray(config.prizes)) for (const prize of config.prizes) if (prize && typeof prize === 'object' && !Array.isArray(prize)) refs.push((prize as Record<string, unknown>).iconUrl);
+  const prefix = `/assets/organizations/${organizationId}/`;
+  return refs.every((ref) => {
+    if (typeof ref !== 'string') return true;
+    try { return new URL(ref, 'http://localhost').pathname.startsWith(prefix); } catch { return false; }
+  });
 }
 export function validDraftConfig(value: unknown): value is DraftConfig {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -307,14 +322,6 @@ async function ensureAnalyticsApplication(db: D1Database, experienceId: string, 
   if (actual) await db.prepare('UPDATE experiences SET project_id=?, application_id=? WHERE id=? AND organization_id=?').bind(project.id, actual.id, experienceId, organizationId).run();
 }
 
-const MAX_ASSET_BYTES = 2 * 1024 * 1024;
-const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-export function sanitizeSvg(value: string) {
-  if (!/^\s*(?:<\?xml[^>]*>\s*)?<svg\b/i.test(value) || !/<\/svg>\s*$/i.test(value)) return null;
-  if (/<\/?script\b|<\/?foreignObject\b|<\/?iframe\b|<\/?object\b|<\/?embed\b|<!DOCTYPE\b|<!ENTITY\b|\son[a-z0-9_-]+\s*=|(?:href|src|xlink:href)\s*=\s*["']\s*(?:https?:|\/\/|data:|javascript:)|url\s*\(/i.test(value)) return null;
-  return value;
-}
-
 experienceRoutes.post('/:id/assets', async (c) => {
   const id = c.req.param('id');
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, c.get('organization').id).first();
@@ -322,25 +329,13 @@ experienceRoutes.post('/:id/assets', async (c) => {
   const body = await c.req.parseBody().catch(() => null);
   const file = body && body.file instanceof File ? body.file : null;
   if (!file) return c.json(bad('A file is required'), 400);
-  if (file.size > MAX_ASSET_BYTES) return c.json(bad('File exceeds the 2 MB limit'), 413);
-  if (file.type !== 'image/png' && file.type !== 'image/svg+xml') return c.json(bad('Only PNG and SVG files are allowed'), 415);
-  let bytes: ArrayBuffer;
-  let extension: 'png' | 'svg';
-  if (file.type === 'image/png') {
-    bytes = await file.arrayBuffer();
-    const signature = new Uint8Array(bytes.slice(0, PNG_SIGNATURE.length));
-    if (signature.length !== PNG_SIGNATURE.length || !PNG_SIGNATURE.every((byte, index) => signature[index] === byte)) return c.json(bad('Invalid PNG file'), 400);
-    extension = 'png';
-  } else {
-    const text = await file.text();
-    const safe = sanitizeSvg(text);
-    if (!safe) return c.json(bad('SVG contains unsupported or executable content'), 400);
-    bytes = new TextEncoder().encode(safe).buffer;
-    extension = 'svg';
-  }
+  const validation = await validateImageFile(file, ['image/png', 'image/svg+xml']);
+  if (!validation.ok) return c.json(bad(validation.message), validation.status);
+  const bytes = validation.bytes;
+  const extension = validation.extension;
   const key = `organizations/${c.get('organization').id}/experiences/${id}/${crypto.randomUUID()}.${extension}`;
   if (!c.env.EXPERIENCE_ASSETS) return c.json({ error: { code: 'ASSET_STORAGE_UNAVAILABLE', message: 'Asset storage is not configured' } }, 503);
-  await c.env.EXPERIENCE_ASSETS.put(key, bytes, { httpMetadata: { contentType: file.type } });
+  await c.env.EXPERIENCE_ASSETS.put(key, bytes, { httpMetadata: { contentType: validation.mimeType } });
   return c.json({ url: `${new URL(c.req.url).origin}/assets/${key}`, key }, 201);
 });
 
@@ -372,6 +367,7 @@ experienceRoutes.post('/:id/publish', async (c) => {
   let draft: JsonValue | null;
   try { draft = parseJson(row.draftConfig as string | null); } catch { draft = null; }
   const readinessIssues = validateRoulettePublishReadiness(draft);
+  if (readinessIssues.length === 0 && !assetReferencesBelongToOrganization(draft, organizationId)) readinessIssues.push({ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' });
   if (readinessIssues.length) return c.json({ error: { code: 'PUBLISH_NOT_READY', message: 'La experiencia no está lista para publicar.', issues: readinessIssues } }, 422);
   const readyDraft = draft as DraftConfig;
   const snapshot = JSON.stringify(readyDraft);
@@ -501,7 +497,7 @@ experienceRoutes.post('/', async (c) => {
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
   let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'no-prize', name: 'Sin premio', enabled: true, weight: 1, stockMode: 'unlimited' }], segments: [], participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } });
   if (body.draft_config !== undefined) {
-    if (type !== 'roulette' || !validDraftConfig(body.draft_config)) return c.json(bad('Invalid roulette draft_config'), 400);
+    if (type !== 'roulette' || !validDraftConfig(body.draft_config) || !assetReferencesBelongToOrganization(body.draft_config, c.get('organization').id)) return c.json(bad('Invalid roulette draft_config'), 400);
     draftConfig = JSON.stringify(body.draft_config);
   }
   const id = crypto.randomUUID();
@@ -570,7 +566,7 @@ experienceRoutes.patch('/:id', async (c) => {
   for (const [key, column] of allowed) if (key in body) {
     if (key === 'name' && (typeof body[key] !== 'string' || !(body[key] as string).trim())) return c.json(bad('name must be a non-empty string'), 400);
     if (key === 'status' && (typeof body[key] !== 'string' || !STATUSES.includes(body[key] as ExperienceStatus))) return c.json(bad('Invalid status'), 400);
-    if (key === 'draft_config') { if (!validDraftConfig(body[key])) return c.json(bad('Invalid roulette draft_config'), 400); values.push(JSON.stringify(body[key])); } else values.push(body[key]);
+    if (key === 'draft_config') { if (!validDraftConfig(body[key]) || !assetReferencesBelongToOrganization(body[key], c.get('organization').id)) return c.json(bad('Invalid roulette draft_config'), 400); values.push(JSON.stringify(body[key])); } else values.push(body[key]);
     fields.push(`${column}=?`);
   }
   const starts = ('starts_at' in body ? body.starts_at : current.startsAt) as string | null;

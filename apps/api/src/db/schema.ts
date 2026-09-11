@@ -112,6 +112,30 @@ export const organizationActivity = sqliteTable(
     index('organization_activity_actor').on(t.organizationId, t.actorUserId),
   ],
 );
+export const organizationAssets = sqliteTable(
+  'organization_assets',
+  {
+    id: id(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    storageKey: text('storage_key').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    displayName: text('display_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    category: text('category').notNull().default('image'),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [
+    uniqueIndex('organization_assets_storage_key').on(t.storageKey),
+    index('organization_assets_org_created').on(t.organizationId, t.createdAt),
+    index('organization_assets_org_category').on(t.organizationId, t.category, t.archivedAt),
+  ],
+);
 export const projects = sqliteTable(
   'projects',
   {

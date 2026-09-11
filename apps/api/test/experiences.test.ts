@@ -164,6 +164,7 @@ describe('experience prize assets', () => {
   it('accepts only safe asset URLs in draft_config', () => {
     const base = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() };
     expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: '/assets/organizations/org-a/experiences/a/123e4567-e89b-12d3-a456-426614174000.png' }] })).toBe(true);
+    expect(validDraftConfig({ ...base, branding: { logoUrl: '/assets/organizations/org-a/assets/123e4567-e89b-12d3-a456-426614174000.webp' } })).toBe(true);
     expect(validDraftConfig({ ...base, prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: 'javascript:alert(1)' }] })).toBe(false);
   });
 });
@@ -177,6 +178,13 @@ describe('experience publishing', () => {
     expect(await response.json()).toEqual(expect.objectContaining({ config: JSON.parse(validDraft), prizeAvailability: expect.any(Object) }));
     expect((env as any).__spins).toHaveLength(0);
     expect((await app.fetch(new Request('http://localhost/experiences/a/preview'), env)).status).toBe(401);
+  });
+  it('rejects a draft asset reference from another organization at the API boundary', async () => {
+    const env = fixture(validDraft);
+    const forged = JSON.parse(validDraft);
+    forged.branding = { logoUrl: '/assets/organizations/org-b/assets/123e4567-e89b-12d3-a456-426614174000.png' };
+    const response = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ draft_config: forged }) });
+    expect(response.status).toBe(400);
   });
   it('publishes a snapshot and keeps it stable while draft changes', async () => {
     const env = fixture(validDraft);

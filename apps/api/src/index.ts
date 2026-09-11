@@ -12,6 +12,7 @@ import { requireAuth, requireOrganization } from './auth/middleware';
 import { publicExperienceRoutes } from './routes/public-experiences';
 import { commercialRoutes } from './routes/commercial';
 import { paymentWebhookRoutes } from './routes/payment-webhooks';
+import { assetRoutes } from './routes/assets';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -63,6 +64,7 @@ app.use('*', async (c, next) => {
 app.get('/health', health);
 app.route('/auth', authRoutes);
 app.route('/organizations', organizationRoutes);
+app.route('/organizations/assets', assetRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
@@ -72,7 +74,7 @@ app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);
-  if (!/^organizations\/[A-Za-z0-9_-]+\/experiences\/[A-Za-z0-9_-]+\/[0-9a-f-]+\.(png|svg)$/.test(key)) return c.notFound();
+  if (!/^organizations\/[A-Za-z0-9_-]+\/(?:experiences\/[A-Za-z0-9_-]+|assets)\/[0-9a-f-]+\.(png|jpg|jpeg|webp|svg)$/.test(key)) return c.notFound();
   const object = await c.env.EXPERIENCE_ASSETS?.get(key);
   if (!object) return c.notFound();
   const headers = new Headers();

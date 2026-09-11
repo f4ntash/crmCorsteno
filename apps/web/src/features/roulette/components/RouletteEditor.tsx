@@ -9,6 +9,7 @@ import { ParticipationControls } from './ParticipationControls';
 import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { ProbabilitySummary } from './ProbabilitySummary';
 import { calculateEffectiveRouletteProbabilities } from '@corsteno/types';
+import { AssetPicker } from '../../assets/AssetPicker';
 
 type Inventory = {
   prizeId: string;
@@ -66,7 +67,6 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
   } | null>(null);
   const [amount, setAmount] = useState('1');
   const [adjustError, setAdjustError] = useState('');
-  const [brandingUpload, setBrandingUpload] = useState<'logoUrl' | 'backgroundImageUrl' | null>(null);
   const {
     draft,
     setDraft,
@@ -160,22 +160,6 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
       setAdjustError((e as Error).message);
     }
   }
-  async function uploadBrandingAsset(file: File, field: 'logoUrl' | 'backgroundImageUrl') {
-    if (file.type !== 'image/png' && file.type !== 'image/svg+xml') {
-      setError('Solo se aceptan PNG o SVG.');
-      return;
-    }
-    setBrandingUpload(field);
-    setError('');
-    try {
-      const result = (await experiencesApi.uploadAsset(id, org, file)) as { url: string };
-      setDraft({ ...draft, branding: { ...draft.branding, [field]: result.url } });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBrandingUpload(null);
-    }
-  }
   const preview = {
     ...draft,
     effects: {
@@ -198,14 +182,8 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
             <h4>Branding &amp; Content</h4>
             {!brandingAvailable && <p className="field-help">Disponible en planes con Branding y CTA avanzados.</p>}
             <div className="branding-upload-grid">
-              <label className="secondary branding-upload">
-                {brandingUpload === 'logoUrl' ? 'Subiendo logo…' : 'Subir logo'}
-                <input type="file" accept="image/png,image/svg+xml" hidden disabled={!canEdit || !brandingAvailable} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadBrandingAsset(file, 'logoUrl'); e.currentTarget.value = ''; }} />
-              </label>
-              <label className="secondary branding-upload">
-                {brandingUpload === 'backgroundImageUrl' ? 'Subiendo fondo…' : 'Subir fondo'}
-                <input type="file" accept="image/png,image/svg+xml" hidden disabled={!canEdit || !brandingAvailable} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadBrandingAsset(file, 'backgroundImageUrl'); e.currentTarget.value = ''; }} />
-              </label>
+              <div><span className="field-label">Logo</span><AssetPicker org={org} value={draft.branding?.logoUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, logoUrl: url } })} categories={['logo', 'image']} canUpload={canEdit && brandingAvailable} disabled={!canEdit || !brandingAvailable} label="Elegir logo" /></div>
+              <div><span className="field-label">Imagen de fondo</span><AssetPicker org={org} value={draft.branding?.backgroundImageUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, backgroundImageUrl: url } })} categories={['background', 'image']} canUpload={canEdit && brandingAvailable} disabled={!canEdit || !brandingAvailable} label="Elegir fondo" /></div>
             </div>
             {(draft.branding?.logoUrl || draft.branding?.backgroundImageUrl) && <p className="field-help">Los assets cargados se aplican al runtime al publicar.</p>}
             <label>Título de la experiencia<input maxLength={120} disabled={!canEdit || !brandingAvailable} value={draft.content?.title ?? ''} placeholder="Ruleta de premios" onChange={(e) => setDraft({ ...draft, content: { ...draft.content, title: e.target.value } })} /></label>
