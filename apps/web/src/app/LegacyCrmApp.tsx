@@ -88,7 +88,7 @@ function Shell() {
           </div>
         </header>
         <Routes>
-          <Route index element={<Home org={o} />} />
+          <Route index element={<Home org={o} isPlatformAdmin={platformOperator} />} />
           <Route path="analytics" element={<Analytics org={o} />} />
           <Route path="experiences" element={<ExperiencesPage org={o} canCreate={platformOperator} />} />
           <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />

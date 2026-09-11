@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { apiRequest } from '../../shared/api/client';
+export { OperationsHome as Home } from './OperationsHome';
 
 type Project = { id: string; name: string };
 type Application = {
@@ -359,7 +360,7 @@ export function Rank({ title, items }: { title: string; items: Item[] }) {
     </section>
   );
 }
-export function Home({ org }: { org: string }) {
+export function LegacyHome({ org }: { org: string }) {
   const [apps, setApps] = useState<Application[]>([]),
     [app, setApp] = useState<Application>(),
     [summary, setSummary] = useState<Summary>(),

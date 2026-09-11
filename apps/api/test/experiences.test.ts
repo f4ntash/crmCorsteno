@@ -351,6 +351,11 @@ describe('experience participation limits', () => {
   it('rejects invalid participation configuration', async () => {
     expect(validDraftConfig(JSON.parse(config({ maxSpinsPerDevice: 0, maxSpinsPerSession: null, cooldownSeconds: 0 })))).toBe(false); expect(validDraftConfig(JSON.parse(config({ maxSpinsPerDevice: null, maxSpinsPerSession: null, cooldownSeconds: 604801 })))).toBe(false);
   });
+  it('returns an organization-scoped seven-day operations summary', async () => {
+    const response = await request('/experiences/operations-summary', fixture());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ range: '7d', items: expect.any(Array) }));
+  });
 });
 
 const prizeConfigForParticipation = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() });

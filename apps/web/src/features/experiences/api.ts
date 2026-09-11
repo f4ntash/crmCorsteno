@@ -22,6 +22,8 @@ export type PrizeClaim = {
 export const experiencesApi = {
   list: (organizationId: string) =>
     apiRequest<Experience[]>('/experiences', organizationId),
+  operationsSummary: (organizationId: string) =>
+    apiRequest<{ range: '7d'; items: Array<{ experienceId: string; recentUsers: number; lastActivityAt: number | null; claimsGenerated: number; pendingClaims: number; soldOutLimitedPrizes: number }> }>('/experiences/operations-summary', organizationId),
   get: (id: string, organizationId: string) =>
     apiRequest<Experience & { draftConfig: unknown; publishedConfig: unknown }>(
       `/experiences/${id}`,

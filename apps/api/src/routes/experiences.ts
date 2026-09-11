@@ -134,6 +134,7 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
 });
 
 const select = `SELECT id, organization_id organizationId, name, slug, type, status,
+  application_id applicationId,
   schema_version schemaVersion, draft_config draftConfig, published_config publishedConfig,
   starts_at startsAt, ends_at endsAt, created_at createdAt, updated_at updatedAt
   FROM experiences`;
@@ -484,6 +485,21 @@ experienceRoutes.post('/', async (c) => {
     .bind(id, c.get('organization').id, name, slug, type, draftConfig, startsAt ?? null, endsAt ?? null).run();
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
   return c.json(present(row ?? {}), 201);
+});
+
+experienceRoutes.get('/operations-summary', async (c) => {
+  const organizationId = c.get('organization').id;
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const experiences = await c.env.DB.prepare('SELECT id FROM experiences WHERE organization_id=?').bind(organizationId).all<{ id: string }>();
+  const [activity, claims, inventory] = await Promise.all([
+    c.env.DB.prepare('SELECT e.id experienceId,COUNT(DISTINCT ev.anonymous_user_id) recentUsers,MAX(ev.occurred_at) lastActivityAt FROM experiences e LEFT JOIN events ev ON ev.application_id=e.application_id AND ev.organization_id=e.organization_id AND ev.occurred_at>=? WHERE e.organization_id=? GROUP BY e.id').bind(since, organizationId).all<{ experienceId: string; recentUsers: number; lastActivityAt: number | null }>(),
+    c.env.DB.prepare("SELECT experience_id experienceId,COUNT(*) generated,SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) pending FROM roulette_prize_claims WHERE organization_id=? GROUP BY experience_id").bind(organizationId).all<{ experienceId: string; generated: number; pending: number }>(),
+    c.env.DB.prepare("SELECT experience_id experienceId,SUM(CASE WHEN stock_mode='limited' AND COALESCE(stock_available,0)<=0 THEN 1 ELSE 0 END) soldOutLimitedPrizes FROM experience_prize_inventory WHERE experience_id IN (SELECT id FROM experiences WHERE organization_id=?) GROUP BY experience_id").bind(organizationId).all<{ experienceId: string; soldOutLimitedPrizes: number }>(),
+  ]);
+  const activityById = new Map(activity.results.map((item) => [item.experienceId, item]));
+  const claimsById = new Map(claims.results.map((item) => [item.experienceId, item]));
+  const inventoryById = new Map(inventory.results.map((item) => [item.experienceId, item]));
+  return c.json({ range: '7d', items: experiences.results.map(({ id }) => { const recent = activityById.get(id); const claim = claimsById.get(id); const stock = inventoryById.get(id); return { experienceId: id, recentUsers: Number(recent?.recentUsers ?? 0), lastActivityAt: recent?.lastActivityAt ?? null, claimsGenerated: Number(claim?.generated ?? 0), pendingClaims: Number(claim?.pending ?? 0), soldOutLimitedPrizes: Number(stock?.soldOutLimitedPrizes ?? 0) }; }) });
 });
 
 experienceRoutes.get('/', async (c) => {
