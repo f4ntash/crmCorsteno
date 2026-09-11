@@ -12,7 +12,7 @@ function CatalogProductCard({ product }: { product: CatalogPublicProduct }) {
   const image = images[selectedImage];
   return <article className="catalog-product">
     <div className="catalog-product-media">
-      <div className="catalog-product-image">{image ? <img src={image} alt="" /> : <span>Sin imagen</span>}</div>
+      <div className="catalog-product-image">{image ? <img src={image} alt={product.name} /> : <span>Sin imagen</span>}</div>
       {images.length > 1 && <div className="catalog-product-thumbnails" role="list" aria-label={`Imágenes de ${product.name}`}>
         {images.map((url, index) => <button type="button" className={`catalog-product-thumbnail${selectedImage === index ? ' is-selected' : ''}`} key={`${url}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Ver imagen ${index + 1} de ${product.name}`} aria-current={selectedImage === index ? 'true' : undefined}><img src={url} alt="" /></button>)}
       </div>}
