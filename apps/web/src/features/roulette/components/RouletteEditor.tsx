@@ -10,16 +10,35 @@ import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { ProbabilitySummary } from './ProbabilitySummary';
 import { calculateEffectiveRouletteProbabilities } from '@corsteno/types';
 import { AssetPicker } from '../../assets/AssetPicker';
-import { ConfigFields } from '../../../shared/config/ConfigFields';
-import type { ConfigFieldDefinition } from '../../../shared/config/fields';
+import { ConfigEditor } from '../../../shared/config/ConfigEditor';
+import type { ConfigSectionDefinition } from '../../../shared/config/sections';
+import { normalizeRouletteDraft } from '../hooks/useRouletteDraft';
 
-const rouletteContentFields: ConfigFieldDefinition[] = [
-  { key: 'title', type: 'text', label: 'Título de la experiencia', maxLength: 120, placeholder: 'Ruleta de premios' },
-  { key: 'intro', type: 'textarea', label: 'Intro e instrucciones', maxLength: 500, placeholder: 'Girá la ruleta y descubrí tu premio.' },
-  { key: 'spinButtonLabel', type: 'text', label: 'Texto del botón de giro', maxLength: 40, placeholder: 'Girar' },
-  { key: 'winMessage', type: 'text', label: 'Mensaje de premio', maxLength: 240, placeholder: '¡GANASTE!' },
-  { key: 'noPrizeMessage', type: 'text', label: 'Mensaje sin premio', maxLength: 240, placeholder: '¡GRACIAS POR JUGAR!' },
+const rouletteContentSections: ConfigSectionDefinition[] = [
+  {
+    id: 'content',
+    title: 'Contenido',
+    description: 'Definí qué verá y leerá la persona que participa.',
+    fields: [
+      { key: 'title', type: 'text', label: 'Título de la experiencia', maxLength: 120, placeholder: 'Ruleta de premios' },
+      { key: 'intro', type: 'textarea', label: 'Intro e instrucciones', maxLength: 500, placeholder: 'Girá la ruleta y descubrí tu premio.' },
+      { key: 'spinButtonLabel', type: 'text', label: 'Texto del botón de giro', maxLength: 40, placeholder: 'Girar' },
+    ],
+  },
+  {
+    id: 'results',
+    title: 'Resultados',
+    description: 'Mensajes para cada resultado del giro.',
+    fields: [
+      { key: 'winMessage', type: 'text', label: 'Mensaje de premio', maxLength: 240, placeholder: '¡GANASTE!' },
+      { key: 'noPrizeMessage', type: 'text', label: 'Mensaje sin premio', maxLength: 240, placeholder: '¡GRACIAS POR JUGAR!' },
+    ],
+  },
 ];
+
+function contentValues(value: unknown) {
+  return (normalizeRouletteDraft(value).content ?? {}) as Record<string, unknown>;
+}
 
 type Inventory = {
   prizeId: string;
@@ -70,6 +89,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [contentBaseline, setContentBaseline] = useState<Record<string, unknown>>({});
   const [adjusting, setAdjusting] = useState<{
     prizeId: string;
     name: string;
@@ -110,6 +130,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
     apiRequest<Experience & { draftConfig: unknown }>(`/experiences/${id}`, org)
       .then((experience) => {
         reset(experience.draftConfig);
+        setContentBaseline(contentValues(experience.draftConfig));
         void Promise.all([reloadInventory(), reloadOperations()]);
       })
       .catch(() => setError('No se pudo cargar la experiencia.'))
@@ -137,6 +158,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
         body: JSON.stringify({ draft_config: draft }),
       });
       reset(draft);
+      setContentBaseline({ ...(draft.content ?? {}) });
       setMessage('Borrador guardado.');
     } catch (e) {
       setError((e as Error).message);
@@ -196,7 +218,7 @@ function RouletteEditorContent({ org, id, redemptionAvailable, brandingAvailable
               <div><span className="field-label">Imagen de fondo</span><AssetPicker org={org} value={draft.branding?.backgroundImageUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, backgroundImageUrl: url } })} categories={['background', 'image']} canUpload={canEdit && brandingAvailable} disabled={!canEdit || !brandingAvailable} label="Elegir fondo" /></div>
             </div>
             {(draft.branding?.logoUrl || draft.branding?.backgroundImageUrl) && <p className="field-help">Los assets cargados se aplican al runtime al publicar.</p>}
-            <ConfigFields fields={rouletteContentFields} values={(draft.content ?? {}) as Record<string, unknown>} onChange={(key, value) => setDraft({ ...draft, content: { ...draft.content, [key]: value as string } })} disabled={!canEdit || !brandingAvailable} />
+            <ConfigEditor sections={rouletteContentSections} initialValues={contentBaseline} values={(draft.content ?? {}) as Record<string, unknown>} onChange={(key, value) => setDraft({ ...draft, content: { ...draft.content, [key]: value as string } })} disabled={!canEdit || !brandingAvailable} />
           </section>
           <label>
             Fondo

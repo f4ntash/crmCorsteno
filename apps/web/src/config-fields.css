@@ -6,3 +6,19 @@
 .config-field-description { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .config-field-error { color: #ef9999; font-size: 12px; }
 .config-field-missing { margin: 0; color: #ef9999; font-size: 12px; }
+.config-editor { display: grid; gap: 16px; }
+.config-editor-section { display: grid; gap: 12px; min-width: 0; }
+.config-editor-section + .config-editor-section { padding-top: 14px; border-top: 1px solid var(--border); }
+.config-editor-section-heading { display: block; }
+.config-editor-section-heading h5 { margin: 0; color: var(--text); font-size: 13px; }
+.config-editor-section-heading p, .config-editor-section-heading small { display: block; margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.config-editor-section summary { cursor: pointer; list-style: none; }
+.config-editor-section summary::-webkit-details-marker { display: none; }
+.config-editor-section summary strong::after { margin-left: 7px; color: var(--text-muted); content: '▾'; font-size: 11px; }
+.config-editor-section:not([open]) summary strong::after { content: '▸'; }
+.config-editor-validation { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid #6b4548; border-radius: var(--radius-sm); background: rgba(107,69,72,.14); color: var(--text-secondary); font-size: 12px; }
+.config-editor-validation strong { color: var(--text); }
+.config-editor-validation ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; }
+.config-editor-save-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+.config-editor-save-row button { margin-left: auto; }
+@media (max-width: 600px) { .config-editor-save-row button { width: 100%; margin-left: 0; } }
