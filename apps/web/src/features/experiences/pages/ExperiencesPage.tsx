@@ -2,8 +2,8 @@ import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
-import type { Experience } from '../types';
-import { rouletteTemplates } from '../../roulette/templates';
+import type { Experience, ExperienceTemplate } from '../types';
+import { experiencesApi } from '../api';
 import { Dialog } from '../../../shared/ui/Dialog';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(
@@ -42,6 +42,7 @@ export function ExperiencesPage({
   const navigate = useNavigate();
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Experience[]>([]),
+    [templates, setTemplates] = useState<ExperienceTemplate[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(false),
     [modal, setModal] = useState(false),
@@ -59,9 +60,14 @@ export function ExperiencesPage({
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   };
+  const loadTemplates = () => {
+    if (!org) return;
+    experiencesApi.templates(org).then(setTemplates).catch(() => setTemplates([]));
+  };
   useEffect(() => {
     setItems([]);
     load();
+    loadTemplates();
   }, [org]);
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -74,7 +80,7 @@ export function ExperiencesPage({
         body: JSON.stringify({
           name: name.trim(),
           type,
-          ...(type === 'roulette' && templateId ? { draft_config: rouletteTemplates.find((item) => item.id === templateId)?.config } : {}),
+          ...(templateId ? { template_id: templateId } : {}),
         }),
       });
       setModal(false);
@@ -167,13 +173,17 @@ export function ExperiencesPage({
               </label>
               <fieldset>
                 <legend>Tipo de experiencia</legend>
-                {Object.entries(experienceTypes).map(([value, option]) => <label key={value}><input type="radio" name="experience-type" checked={type === value} onChange={() => { setType(value as 'roulette' | 'product-catalog'); if (value !== 'roulette') setTemplateId(null); }} />{option.label}<small>{option.description}</small></label>)}
+                <div className="template-options template-type-options">
+                  {Object.entries(experienceTypes).map(([value, option]) => <label className="template-option" key={value}><input type="radio" name="experience-type" checked={type === value} onChange={() => { setType(value as 'roulette' | 'product-catalog'); setTemplateId(null); }} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}
+                </div>
               </fieldset>
-              {type === 'roulette' && <fieldset>
-                <legend>Plantilla inicial</legend>
-                <label><input type="radio" name="template" checked={templateId === null} onChange={() => setTemplateId(null)} />Desde cero</label>
-                {rouletteTemplates.map((template) => <label key={template.id}><input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} />{template.name} <small>{template.description}</small></label>)}
-              </fieldset>}
+              <fieldset>
+                <legend>¿Cómo querés empezar?</legend>
+                {templates.filter((template) => template.type === type).length ? <div className="template-options">
+                  <label className="template-option"><input type="radio" name="template" checked={templateId === null} onChange={() => setTemplateId(null)} /><span><strong>Desde cero</strong><small>Usá la configuración inicial del tipo de experiencia.</small></span></label>
+                  {templates.filter((template) => template.type === type).map((template) => <label className="template-option" key={template.id}><input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} /><span><strong>{template.name}</strong><small>{template.description}</small></span></label>)}
+                </div> : <p className="template-empty">No pudimos cargar las opciones iniciales. Podés empezar desde cero.</p>}
+              </fieldset>
               {saveError && <p className="error">{saveError}</p>}
               <div className="dialog-actions">
                 <button

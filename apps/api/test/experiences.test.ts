@@ -74,6 +74,46 @@ describe('experiences tenant isolation and validation', () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual(expect.objectContaining({ type: 'roulette' }));
   });
+  it('lists and resolves only known templates on the server', async () => {
+    const templates = await request('/experiences/templates', fixture());
+    expect(templates.status).toBe(200);
+    expect(await templates.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'roulette-event', type: 'roulette', name: 'Ruleta de premios para evento' }),
+      expect.objectContaining({ id: 'roulette-local-promo', type: 'roulette' }),
+      expect.objectContaining({ id: 'roulette-brand-activation', type: 'roulette' }),
+      expect.objectContaining({ id: 'catalog-commercial', type: 'product-catalog' }),
+    ]));
+  });
+  it('creates a Roulette draft from a known template and ignores client config when a template is selected', async () => {
+    const response = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Activación', type: 'roulette', template_id: 'roulette-event', draft_config: { schemaVersion: 1, backgroundColor: '#000000', prizes: [], segments: [] } }) });
+    expect(response.status).toBe(201);
+    const body = await response.json() as { draftConfig: { backgroundColor: string; prizes: Array<{ id: string; name: string }>; segments: unknown[] }; status: string };
+    expect(body.status).toBe('draft');
+    expect(body.draftConfig).toEqual(expect.objectContaining({ backgroundColor: '#111820', segments: expect.any(Array) }));
+    expect(body.draftConfig.prizes.map((prize) => prize.name)).toEqual(['Premio principal', 'Premio secundario', 'Premio sorpresa']);
+    expect(body.draftConfig.segments).toHaveLength(8);
+  });
+  it('creates the Product Catalog preset without creating fake products', async () => {
+    const response = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Catálogo', type: 'product-catalog', template_id: 'catalog-commercial' }) });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual(expect.objectContaining({ type: 'product-catalog', draftConfig: { schemaVersion: 1, title: 'Catálogo comercial', intro: 'Explorá nuestra selección de productos.' } }));
+  });
+  it('rejects unknown and cross-product templates', async () => {
+    const unknown = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Ruleta', type: 'roulette', template_id: 'missing-template' }) });
+    expect(unknown.status).toBe(400);
+    expect(await unknown.json()).toEqual({ error: { code: 'UNKNOWN_TEMPLATE', message: 'La plantilla no existe para este tipo de experiencia.' } });
+    const crossProduct = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Catálogo', type: 'product-catalog', template_id: 'roulette-event' }) });
+    expect(crossProduct.status).toBe(400);
+    expect(await crossProduct.json()).toEqual({ error: { code: 'UNKNOWN_TEMPLATE', message: 'La plantilla no existe para este tipo de experiencia.' } });
+  });
+  it('keeps omitted template behavior and supports the existing segment-count initializer', async () => {
+    const legacy = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Desde cero', type: 'roulette' }) });
+    expect(legacy.status).toBe(201);
+    expect(await legacy.json()).toEqual(expect.objectContaining({ draftConfig: expect.objectContaining({ segments: [] }) }));
+    const resized = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Evento 10', type: 'roulette', template_id: 'roulette-local-promo', segment_count: 10 }) });
+    expect(resized.status).toBe(201);
+    expect((await resized.json() as { draftConfig: { segments: unknown[] } }).draftConfig.segments).toHaveLength(10);
+  });
   it('creates a registered second type without Roulette defaults', async () => {
     const testProduct: ExperienceTypeDefinition = { type: 'test-product', label: 'Producto de prueba', createDraftConfig: () => ({ kind: 'test-product' }), validateDraft: (value) => Boolean(value && typeof value === 'object'), validatePublishReadiness: () => [] };
     const registry = experienceTypeRegistry as Map<string, ExperienceTypeDefinition>;

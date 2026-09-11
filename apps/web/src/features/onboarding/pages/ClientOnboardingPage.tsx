@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 import { commercialApi, type Plan } from '../../commercial/api';
 import { experiencesApi } from '../../experiences/api';
-import { rouletteTemplates } from '../../roulette/templates';
+import type { ExperienceTemplate } from '../../experiences/types';
 import { publicExperienceUrl } from '../../../shared/runtime/publicExperienceUrl';
 
 type Mode = 'later' | 'offline' | 'free' | 'courtesy' | 'configure';
@@ -23,7 +23,8 @@ export function ClientOnboardingPage() {
     [customerPassword, setCustomerPassword] = useState(''),
     [planId, setPlanId] = useState(''),
     [mode, setMode] = useState<Mode>('configure'),
-    [templateId, setTemplateId] = useState('minimal'),
+    [templates, setTemplates] = useState<ExperienceTemplate[]>([]),
+    [templateId, setTemplateId] = useState(''),
     [experienceName, setExperienceName] = useState(''),
     [segmentCount, setSegmentCount] = useState(6),
     [plans, setPlans] = useState<Plan[]>([]),
@@ -31,12 +32,16 @@ export function ClientOnboardingPage() {
     [created, setCreated] = useState<Created>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const template = useMemo(
-    () =>
-      rouletteTemplates.find((item) => item.id === templateId) ??
-      rouletteTemplates[0],
-    [templateId],
-  );
+  async function loadTemplates(id: string) {
+    try {
+      const available = await experiencesApi.templates(id);
+      setTemplates(available);
+      setTemplateId(available.find((item) => item.type === 'roulette')?.id ?? '');
+    } catch {
+      setTemplates([]);
+      setTemplateId('');
+    }
+  }
   async function createOrganization() {
     if (
       !organizationName.trim() ||
@@ -70,6 +75,7 @@ export function ClientOnboardingPage() {
       setOrg(result);
       setCustomerPassword('');
       await loadPlans(result.id);
+      await loadTemplates(result.id);
       setStep(2);
     } catch (e) {
       setError((e as Error).message);
@@ -89,17 +95,10 @@ export function ClientOnboardingPage() {
     setBusy(true);
     setError('');
     try {
-      const config = {
-        ...template.config,
-        segments: template.config.segments.slice(
-          0,
-          Math.max(6, Math.min(10, segmentCount)),
-        ),
-      };
       const experience = (await experiencesApi.create(org.id, {
         name: experienceName.trim(),
         type: 'roulette',
-        draft_config: config,
+        ...(templateId ? { template_id: templateId, segment_count: segmentCount } : {}),
       })) as { id: string; slug: string };
       setCreated({
         organizationId: org.id,
@@ -296,7 +295,8 @@ export function ClientOnboardingPage() {
                   value={templateId}
                   onChange={(e) => setTemplateId(e.target.value)}
                 >
-                  {rouletteTemplates.map((item) => (
+                  <option value="">Desde cero</option>
+                  {templates.filter((item) => item.type === 'roulette').map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
                     </option>

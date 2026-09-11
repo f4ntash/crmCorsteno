@@ -1,5 +1,5 @@
 import { apiRequest } from '../../shared/api/client';
-import type { Experience } from './types';
+import type { Experience, ExperienceTemplate } from './types';
 export type ExperienceSpin = {
   id: string;
   experienceId: string;
@@ -42,6 +42,8 @@ export type CatalogProductWrite = Omit<CatalogProduct, 'sortOrder' | 'gallery'>;
 export const experiencesApi = {
   list: (organizationId: string) =>
     apiRequest<Experience[]>('/experiences', organizationId),
+  templates: (organizationId: string) =>
+    apiRequest<ExperienceTemplate[]>('/experiences/templates', organizationId),
   operationsSummary: (organizationId: string) =>
     apiRequest<{ range: '7d'; items: Array<{ experienceId: string; recentUsers: number; lastActivityAt: number | null; claimsGenerated: number; pendingClaims: number; soldOutLimitedPrizes: number }> }>('/experiences/operations-summary', organizationId),
   get: (id: string, organizationId: string) =>

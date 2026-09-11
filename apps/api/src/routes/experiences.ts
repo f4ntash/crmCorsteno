@@ -11,6 +11,7 @@ import { recordActivityBestEffort } from '../services/activity';
 import { validateImageFile } from '../services/assets';
 import { ensureExperienceAnalyticsApplication } from '../services/experience-analytics';
 import { cloneCatalogProducts, publishCatalogSnapshot, PRODUCT_CATALOG_TYPE } from '../services/product-catalog';
+import { createExperienceTemplateDraft, listExperienceTemplates, resolveExperienceTemplate } from '../services/experience-templates';
 export { sanitizeSvg } from '../services/assets';
 export { normalizeParticipationConfig, normalizePrizeConfig, validDraftConfig, validAssetUrl, validateRoulettePublishReadiness } from '../services/roulette-config';
 export type { DraftConfig, ParticipationConfig, PrizeConfig, PublishReadinessIssue } from '../services/roulette-config';
@@ -404,6 +405,11 @@ experienceRoutes.post('/:id/inventory/:prizeId/adjust', async (c) => {
   return c.json({ item: { prizeId, name: prize.name, iconUrl: prize.iconUrl ?? null, enabled: normalizePrizeConfig(prize).enabled, weight: normalizePrizeConfig(prize).weight, stockMode: 'limited', stockAvailable: current?.stockAvailable ?? 0, deliveredCount: current?.deliveredCount ?? 0 } });
 });
 
+experienceRoutes.get('/templates', async (c) => {
+  const type = c.req.query('type');
+  return c.json(listExperienceTemplates(type));
+});
+
 experienceRoutes.post('/', async (c) => {
   if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
   const capacity = await canCreateOrganizationExperience(c.env.DB, c.get('organization').id);
@@ -419,15 +425,23 @@ experienceRoutes.post('/', async (c) => {
   const typeDefinition = resolveExperienceType(type);
   if (!typeDefinition) return c.json(unsupportedExperienceType(), 400);
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
+  const templateId = body.template_id;
+  if (templateId !== undefined && templateId !== null && typeof templateId !== 'string') return c.json(bad('template_id must be a string'), 400);
   let draftConfig: string;
   try {
-    const initialDraft = JSON.stringify(typeDefinition.createDraftConfig());
+    const template = templateId === undefined || templateId === null ? null : resolveExperienceTemplate(type, templateId);
+    if (templateId !== undefined && templateId !== null && !template) return c.json({ error: { code: 'UNKNOWN_TEMPLATE', message: 'La plantilla no existe para este tipo de experiencia.' } }, 400);
+    const requestedSegmentCount = body.segment_count;
+    if (template && requestedSegmentCount !== undefined && (typeof requestedSegmentCount !== 'number' || !Number.isInteger(requestedSegmentCount) || requestedSegmentCount < 6 || requestedSegmentCount > 10)) return c.json(bad('segment_count must be an integer between 6 and 10'), 400);
+    const initialConfig = template ? createExperienceTemplateDraft(template, requestedSegmentCount as number | undefined) : typeDefinition.createDraftConfig();
+    if (template && !typeDefinition.validateDraft(initialConfig)) return c.json(bad('Invalid experience template configuration'), 500);
+    const initialDraft = JSON.stringify(initialConfig);
     if (typeof initialDraft !== 'string') return c.json(bad('Invalid experience default configuration'), 500);
     draftConfig = initialDraft;
   } catch {
     return c.json(bad('Invalid experience default configuration'), 500);
   }
-  if (body.draft_config !== undefined) {
+  if (body.draft_config !== undefined && (templateId === undefined || templateId === null)) {
     const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body.draft_config) : body.draft_config;
     if (!typeDefinition.validateDraft(normalized)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'El borrador tiene campos inválidos.', issues: typeDefinition.validatePublishReadiness(normalized) } }, 400);
     if (!assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json({ error: { code: 'INVALID_DRAFT_CONFIG', message: 'Los assets deben pertenecer a la organización.', issues: [{ code: 'ASSET_REFERENCE_INVALID', path: 'branding/prizes', message: 'Los assets deben pertenecer a la organización.' }] } }, 400);
@@ -435,8 +449,8 @@ experienceRoutes.post('/', async (c) => {
   }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
-  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, NULL, ?, ?)`)
-    .bind(id, c.get('organization').id, name, slug, type, draftConfig, startsAt ?? null, endsAt ?? null).run();
+  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
+    .bind(id, c.get('organization').id, name, slug, type, 1, draftConfig, startsAt ?? null, endsAt ?? null).run();
   await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId: c.get('organization').id, experienceType: type, name });
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'experience.created', resourceType: 'experience', resourceId: id, metadata: { name, type } });
