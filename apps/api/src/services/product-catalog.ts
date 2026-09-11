@@ -1,8 +1,9 @@
+import { CATALOG_PRODUCT_LIMITS, catalogProductFieldErrors } from '@corsteno/types';
 import { assetUrl, SUPPORTED_IMAGE_TYPES } from './assets';
 import { validAssetUrl, type PublishReadinessIssue } from './roulette-config';
 
 export const PRODUCT_CATALOG_TYPE = 'product-catalog';
-export const MAX_CATALOG_PRODUCT_IMAGES = 6;
+export const MAX_CATALOG_PRODUCT_IMAGES = CATALOG_PRODUCT_LIMITS.galleryImages;
 
 export type ProductCatalogConfig = {
   schemaVersion: 1;
@@ -43,12 +44,6 @@ export type CatalogProduct = CatalogProductInput & {
   updatedAt: number;
 };
 
-const MAX_NAME = 120;
-const MAX_DESCRIPTION = 1000;
-const MAX_CTA_LABEL = 80;
-const MAX_CTA_URL = 2048;
-const MAX_PRICE = 9_000_000_000_000_000;
-const MAX_STOCK = 1_000_000_000;
 const ORGANIZATION_ASSET_PATH = /^\/assets\/organizations\/([A-Za-z0-9_-]+)\/assets\/([0-9a-f-]+)\.(png|jpg|jpeg|webp|svg)$/i;
 
 export function createDefaultProductCatalogConfig(): ProductCatalogConfig {
@@ -57,16 +52,6 @@ export function createDefaultProductCatalogConfig(): ProductCatalogConfig {
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function validExternalUrl(value: unknown) {
-  if (typeof value !== 'string' || value.length > MAX_CTA_URL) return false;
-  try {
-    const url = new URL(value);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
-  } catch {
-    return false;
-  }
 }
 
 export function validateProductCatalogDraft(value: unknown): value is ProductCatalogConfig {
@@ -88,16 +73,23 @@ export function productCatalogDraftIssues(value: unknown): PublishReadinessIssue
 }
 
 export function catalogProductIssues(product: Partial<CatalogProductInput>, path = 'products'): PublishReadinessIssue[] {
+  const fieldErrors = catalogProductFieldErrors(product as Record<string, unknown>);
   const issues: PublishReadinessIssue[] = [];
-  if (typeof product.name !== 'string' || !product.name.trim() || product.name.trim().length > MAX_NAME) issues.push({ code: 'PRODUCT_NAME_INVALID', path: `${path}.name`, message: 'Cada producto visible necesita un nombre de hasta 120 caracteres.' });
-  if (typeof product.description !== 'string' || product.description.length > MAX_DESCRIPTION) issues.push({ code: 'PRODUCT_DESCRIPTION_INVALID', path: `${path}.description`, message: 'La descripción debe tener hasta 1000 caracteres.' });
-  if (typeof product.priceMinorUnits !== 'number' || !Number.isSafeInteger(product.priceMinorUnits) || product.priceMinorUnits < 0 || product.priceMinorUnits > MAX_PRICE) issues.push({ code: 'PRODUCT_PRICE_INVALID', path: `${path}.priceMinorUnits`, message: 'El precio debe ser un entero no negativo en unidades menores.' });
-  if (typeof product.currency !== 'string' || !/^[A-Z]{3}$/.test(product.currency)) issues.push({ code: 'PRODUCT_CURRENCY_INVALID', path: `${path}.currency`, message: 'La moneda debe usar un código de tres letras.' });
-  if (typeof product.stock !== 'number' || !Number.isInteger(product.stock) || product.stock < 0 || product.stock > MAX_STOCK) issues.push({ code: 'PRODUCT_STOCK_INVALID', path: `${path}.stock`, message: 'El stock debe ser un entero no negativo.' });
+  const issueMeta: Record<string, { code: string; message: string }> = {
+    name: { code: 'PRODUCT_NAME_INVALID', message: 'Cada producto visible necesita un nombre de hasta 120 caracteres.' },
+    description: { code: 'PRODUCT_DESCRIPTION_INVALID', message: `La descripción debe tener hasta ${CATALOG_PRODUCT_LIMITS.description} caracteres.` },
+    priceMinorUnits: { code: 'PRODUCT_PRICE_INVALID', message: 'El precio debe ser un entero no negativo en unidades menores.' },
+    currency: { code: 'PRODUCT_CURRENCY_INVALID', message: 'La moneda debe usar un código de tres letras.' },
+    stock: { code: 'PRODUCT_STOCK_INVALID', message: 'El stock debe ser un entero no negativo.' },
+    visible: { code: 'PRODUCT_VISIBILITY_INVALID', message: 'La visibilidad del producto no es válida.' },
+    ctaLabel: { code: 'PRODUCT_CTA_LABEL_INVALID', message: `El texto del botón debe tener hasta ${CATALOG_PRODUCT_LIMITS.ctaLabel} caracteres.` },
+    ctaUrl: { code: 'PRODUCT_CTA_URL_INVALID', message: 'El enlace del producto no es válido.' },
+  };
+  for (const field of Object.keys(fieldErrors)) {
+    const meta = issueMeta[field];
+    if (meta) issues.push({ code: meta.code, path: `${path}.${field}`, message: meta.message });
+  }
   if (product.mainAssetUrl !== null && product.mainAssetUrl !== undefined && !validAssetUrl(product.mainAssetUrl)) issues.push({ code: 'PRODUCT_ASSET_INVALID', path: `${path}.mainAssetUrl`, message: 'La imagen principal debe ser un asset de la organización.' });
-  if (product.ctaLabel !== null && product.ctaLabel !== undefined && (typeof product.ctaLabel !== 'string' || product.ctaLabel.length > MAX_CTA_LABEL)) issues.push({ code: 'PRODUCT_CTA_LABEL_INVALID', path: `${path}.ctaLabel`, message: 'El texto del botón debe tener hasta 80 caracteres.' });
-  if (product.ctaUrl !== null && product.ctaUrl !== undefined && !validExternalUrl(product.ctaUrl)) issues.push({ code: 'PRODUCT_CTA_URL_INVALID', path: `${path}.ctaUrl`, message: 'El enlace del producto no es válido.' });
-  if (typeof product.visible !== 'boolean') issues.push({ code: 'PRODUCT_VISIBILITY_INVALID', path: `${path}.visible`, message: 'La visibilidad del producto no es válida.' });
   return issues;
 }
 

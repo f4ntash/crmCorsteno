@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { catalogProductFieldErrors, parseMoneyToMinor } from '@corsteno/types';
 import app from '../src';
 import { productCatalogExperienceType, resolveExperienceType } from '../src/services/experience-types';
 import { catalogInventoryCsv } from '../src/services/catalog-report';
@@ -56,6 +57,38 @@ describe('product-catalog type', () => {
     expect(created.status).toBe(201);
     expect((await request('/experiences/wrong/catalog-products', env)).status).toBe(404);
     expect((await request('/experiences/catalog-1/catalog-products', { DB: db({ role: 'viewer' }) }, { method: 'POST', body: '{}' })).status).toBe(403);
+  });
+
+  it('keeps money parsing and product field validation strict and shared', () => {
+    expect(parseMoneyToMinor('12,50')).toBe(1250);
+    expect(parseMoneyToMinor('12.5')).toBe(1250);
+    expect(parseMoneyToMinor('12abc')).toBeNull();
+    expect(parseMoneyToMinor('-12')).toBeNull();
+    expect(parseMoneyToMinor('12,345')).toBeNull();
+    expect(parseMoneyToMinor('1 000')).toBeNull();
+    expect(parseMoneyToMinor('9'.repeat(20))).toBeNull();
+
+    const errors = catalogProductFieldErrors({ name: '   ', description: 'ok', priceMinorUnits: '12abc', currency: 'ARS', stock: 1.5, visible: true, ctaLabel: null, ctaUrl: 'javascript:alert(1)' });
+    expect(errors).toEqual(expect.objectContaining({ name: expect.any(String), priceMinorUnits: expect.any(String), stock: expect.any(String), ctaUrl: expect.any(String) }));
+  });
+
+  it('returns field-specific API issues instead of silently coercing bad product input', async () => {
+    const response = await request('/experiences/catalog-1/catalog-products', { DB: db() }, { method: 'POST', body: JSON.stringify({ name: 'Producto', description: '', priceMinorUnits: '12abc', currency: 'ARS', stock: 1.5, visible: true, mainAssetUrl: null, ctaLabel: null, ctaUrl: 'javascript:alert(1)' }) });
+    expect(response.status).toBe(400);
+    const payload = await response.json() as { error?: { code?: string; issues?: Array<{ code: string; path: string }> } };
+    expect(payload.error?.code).toBe('VALIDATION_ERROR');
+    expect(payload.error?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'PRODUCT_PRICE_INVALID', path: 'products.priceMinorUnits' }),
+      expect.objectContaining({ code: 'PRODUCT_STOCK_INVALID', path: 'products.stock' }),
+      expect.objectContaining({ code: 'PRODUCT_CTA_URL_INVALID', path: 'products.ctaUrl' }),
+    ]));
+  });
+
+  it('rejects a main image that is missing from the active organization asset library', async () => {
+    const response = await request('/experiences/catalog-1/catalog-products', { DB: db() }, { method: 'POST', body: JSON.stringify({ name: 'Producto', description: '', priceMinorUnits: 100, currency: 'ARS', stock: 1, visible: true, mainAssetUrl: '/assets/organizations/org-a/assets/00000000-0000-4000-8000-000000000001.png', ctaLabel: null, ctaUrl: null }) });
+    expect(response.status).toBe(400);
+    const payload = await response.json() as { error?: { issues?: Array<{ code: string }> } };
+    expect(payload.error?.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PRODUCT_ASSET_INVALID' })]));
   });
 });
 

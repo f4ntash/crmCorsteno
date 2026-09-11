@@ -25,6 +25,15 @@ function error(message: string, code = 'BAD_REQUEST', issues?: unknown[]) {
   return { error: { code, message, ...(issues?.length ? { issues } : {}) } };
 }
 
+async function requestBody(c: CatalogContext) {
+  try {
+    const body = await c.req.json() as unknown;
+    return body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 async function catalogExperience(c: CatalogContext) {
   return c.env.DB.prepare('SELECT id,name,type FROM experiences WHERE id=? AND organization_id=? AND type=?').bind(c.req.param('id'), c.get('organization').id, PRODUCT_CATALOG_TYPE).first<{ id: string; name: string; type: string }>();
 }
@@ -54,66 +63,56 @@ async function catalogProducts(c: CatalogContext, experienceId: string, organiza
   return rows.results.map((row) => ({ ...catalogProductFromRow(row), gallery: byProduct.get(String(row.id)) ?? [] }));
 }
 
-function optionalString(value: unknown, max: number) {
+function optionalString(value: unknown) {
   if (value === undefined || value === null || value === '') return null;
-  return typeof value === 'string' && value.trim().length <= max ? value.trim() : undefined;
+  return typeof value === 'string' ? value.trim() : value;
 }
 
-function productFromBody(body: Record<string, unknown>, partial = false): Partial<CatalogProductInput> | null {
-  const result: Partial<CatalogProductInput> = {};
+function productFromBody(body: Record<string, unknown>, partial = false): Record<string, unknown> | null {
+  const result: Record<string, unknown> = {};
   if (!partial || 'name' in body) {
-    if (typeof body.name !== 'string') return null;
-    result.name = body.name.trim();
+    result.name = typeof body.name === 'string' ? body.name.trim() : body.name ?? '';
   }
   if (!partial || 'description' in body) {
-    const description = optionalString(body.description, 1000);
-    if (description === undefined) return null;
+    const description = optionalString(body.description);
     result.description = description ?? '';
   }
   if (!partial || 'priceMinorUnits' in body || 'price_minor_units' in body) {
-    const value = body.priceMinorUnits ?? body.price_minor_units;
-    if (value === undefined && !partial) result.priceMinorUnits = 0;
-    else if (typeof value !== 'number' || !Number.isSafeInteger(value)) return null;
-    else result.priceMinorUnits = value;
+    const value = 'priceMinorUnits' in body ? body.priceMinorUnits : body.price_minor_units;
+    result.priceMinorUnits = value === undefined && !partial ? 0 : value;
   }
   if (!partial || 'currency' in body) {
     if (body.currency === undefined && !partial) result.currency = 'ARS';
-    else if (typeof body.currency !== 'string') return null;
-    else result.currency = body.currency.trim().toUpperCase();
+    else result.currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : body.currency;
   }
   if (!partial || 'stock' in body) {
     if (body.stock === undefined && !partial) result.stock = 0;
-    else if (typeof body.stock !== 'number' || !Number.isInteger(body.stock)) return null;
     else result.stock = body.stock;
   }
   if (!partial || 'visible' in body) {
     if (body.visible === undefined && !partial) result.visible = true;
-    else if (typeof body.visible !== 'boolean') return null;
     else result.visible = body.visible;
   }
   if (!partial || 'mainAssetUrl' in body || 'main_asset_url' in body) {
-    const value = body.mainAssetUrl ?? body.main_asset_url;
-    if (value !== null && value !== undefined && value !== '' && !validAssetUrl(value)) return null;
-    result.mainAssetUrl = value === null || value === undefined || value === '' ? null : value as string;
+    const value = 'mainAssetUrl' in body ? body.mainAssetUrl : body.main_asset_url;
+    result.mainAssetUrl = value === null || value === undefined || value === '' ? null : typeof value === 'string' ? value.trim() : value;
   }
   if (!partial || 'ctaLabel' in body || 'cta_label' in body) {
-    const value = optionalString(body.ctaLabel ?? body.cta_label, 80);
-    if (value === undefined) return null;
-    result.ctaLabel = value;
+    const value = 'ctaLabel' in body ? body.ctaLabel : body.cta_label;
+    result.ctaLabel = optionalString(value);
   }
   if (!partial || 'ctaUrl' in body || 'cta_url' in body) {
-    const raw = body.ctaUrl ?? body.cta_url;
-    if (raw !== null && raw !== undefined && raw !== '' && typeof raw !== 'string') return null;
-    result.ctaUrl = raw === null || raw === undefined || raw === '' ? null : String(raw).trim();
+    const raw = 'ctaUrl' in body ? body.ctaUrl : body.cta_url;
+    result.ctaUrl = raw === null || raw === undefined || raw === '' ? null : typeof raw === 'string' ? raw.trim() : raw;
   }
   return result;
 }
 
-function completeProduct(value: Partial<CatalogProductInput>): CatalogProductInput {
+function completeProduct(value: Record<string, unknown>): CatalogProductInput {
   return {
-    name: value.name ?? '', description: value.description ?? '', priceMinorUnits: value.priceMinorUnits ?? 0,
-    currency: value.currency ?? 'ARS', stock: value.stock ?? 0, visible: value.visible ?? true,
-    mainAssetUrl: value.mainAssetUrl ?? null, ctaLabel: value.ctaLabel ?? null, ctaUrl: value.ctaUrl ?? null,
+    name: (value.name ?? '') as string, description: (value.description ?? '') as string, priceMinorUnits: (value.priceMinorUnits ?? 0) as number,
+    currency: (value.currency ?? 'ARS') as string, stock: (value.stock ?? 0) as number, visible: (value.visible ?? true) as boolean,
+    mainAssetUrl: (value.mainAssetUrl ?? null) as string | null, ctaLabel: (value.ctaLabel ?? null) as string | null, ctaUrl: (value.ctaUrl ?? null) as string | null,
   };
 }
 
@@ -127,6 +126,19 @@ async function organizationImageAsset(c: CatalogContext, value: unknown) {
   const assetId = catalogAssetIdFromUrl(value, organizationId);
   if (!assetId) return null;
   return c.env.DB.prepare('SELECT id,storage_key storageKey,mime_type mimeType FROM organization_assets WHERE id=? AND organization_id=? AND archived_at IS NULL').bind(assetId, organizationId).first<{ id: string; storageKey: string; mimeType: string }>();
+}
+
+async function productMainAssetIssue(c: CatalogContext, value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const organizationId = c.get('organization').id;
+  if (!assetBelongsToOrganization(typeof value === 'string' ? value : null, organizationId)) {
+    return { code: 'PRODUCT_ASSET_ORGANIZATION', path: 'mainAssetUrl', message: 'La imagen principal debe pertenecer a la organización.' };
+  }
+  if (!validAssetUrl(value)) return null;
+  const asset = await organizationImageAsset(c, value);
+  return asset && SUPPORTED_IMAGE_TYPES.includes(asset.mimeType as typeof SUPPORTED_IMAGE_TYPES[number])
+    ? null
+    : { code: 'PRODUCT_ASSET_INVALID', path: 'mainAssetUrl', message: 'La imagen principal debe ser una imagen activa de la organización.' };
 }
 
 catalogRoutes.get('/:id/catalog-products', read, async (c) => {
@@ -160,12 +172,15 @@ catalogRoutes.post('/:id/catalog-products/reorder', manage, async (c) => {
 catalogRoutes.post('/:id/catalog-products', manage, async (c) => {
   const experience = await catalogExperience(c);
   if (!experience) return c.json(error('Catálogo no encontrado.', 'NOT_FOUND'), 404);
-  let body: Record<string, unknown>;
-  try { body = await c.req.json(); } catch { return c.json(error('El cuerpo de la solicitud no es válido.'), 400); }
+  const body = await requestBody(c);
+  if (!body) return c.json(error('El cuerpo de la solicitud no es válido.'), 400);
   const value = productFromBody(body);
   const product = value ? completeProduct(value) : null;
   const issues = product ? catalogProductIssues(product) : [{ code: 'PRODUCT_INVALID', path: 'product', message: 'Los datos del producto no son válidos.' }];
-  if (product && !assetBelongsToOrganization(product.mainAssetUrl, c.get('organization').id)) issues.push({ code: 'PRODUCT_ASSET_ORGANIZATION', path: 'mainAssetUrl', message: 'La imagen principal debe pertenecer a la organización.' });
+  if (product && !issues.some((issue) => issue.path.endsWith('.mainAssetUrl'))) {
+    const assetIssue = await productMainAssetIssue(c, product.mainAssetUrl);
+    if (assetIssue) issues.push(assetIssue);
+  }
   if (issues.length) return c.json(error('Revisá los datos del producto.', 'VALIDATION_ERROR', issues), 400);
   const organizationId = c.get('organization').id;
   const order = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 sortOrder FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(experience.id, organizationId).first<{ sortOrder: number }>();
@@ -246,13 +261,16 @@ catalogRoutes.patch('/:id/catalog-products/:productId', manage, async (c) => {
   const { experience, product: current } = await catalogProduct(c);
   if (!experience || !current) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
   const organizationId = c.get('organization').id;
-  let body: Record<string, unknown>;
-  try { body = await c.req.json(); } catch { return c.json(error('El cuerpo de la solicitud no es válido.'), 400); }
+  const body = await requestBody(c);
+  if (!body) return c.json(error('El cuerpo de la solicitud no es válido.'), 400);
   const changes = productFromBody(body, true);
   if (!changes || !Object.keys(changes).length) return c.json(error('No hay cambios válidos para guardar.'), 400);
   const merged = { ...catalogProductFromRow(current), ...changes };
-  const issues = catalogProductIssues(merged);
-  if (!assetBelongsToOrganization(merged.mainAssetUrl, organizationId)) issues.push({ code: 'PRODUCT_ASSET_ORGANIZATION', path: 'mainAssetUrl', message: 'La imagen principal debe pertenecer a la organización.' });
+  const issues = catalogProductIssues(merged as CatalogProductInput);
+  if (!issues.some((issue) => issue.path.endsWith('.mainAssetUrl'))) {
+    const assetIssue = await productMainAssetIssue(c, merged.mainAssetUrl);
+    if (assetIssue) issues.push(assetIssue);
+  }
   if (issues.length) return c.json(error('Revisá los datos del producto.', 'VALIDATION_ERROR', issues), 400);
   const columns: string[] = [];
   const values: unknown[] = [];
