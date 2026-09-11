@@ -2,11 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import app from '../src';
 
-function fixture(role = 'admin', targetRole = 'member', admins = 2) {
+function fixture(role = 'admin', targetRole = 'member', admins = 2, membershipStatus = 'active') {
   const statements: Array<{ sql: string; args: unknown[] }> = [];
   const DB: any = { prepare(sql: string) { return { bind(...args: unknown[]) { const statement: any = { __sql: sql, __args: args }; statement.first = async () => {
     if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'actor', email: 'actor@test.local', name: 'Actor', platformRole: 'user', expires_at: Date.now() + 60000 };
-    if (sql.includes('JOIN memberships m ON')) return args[0] === 'org-b' ? null : { id: 'org-a', name: 'Org A', slug: 'org-a', role };
+    if (sql.includes('JOIN memberships m ON')) return args[0] === 'org-b' || membershipStatus !== 'active' ? null : { id: 'org-a', name: 'Org A', slug: 'org-a', role };
     if (sql.includes('FROM memberships') && sql.includes('user_id=?')) return { role: targetRole, status: 'active' };
     if (sql.includes('COUNT(*) count')) return { count: admins };
     if (sql.includes('FROM users WHERE')) return null;
@@ -19,7 +19,10 @@ function request(path: string, env: any, init: RequestInit = {}) { return app.fe
 describe('organization member management', () => {
   it('lists only the current organization members for an authorized organization context', async () => { const response = await request('/organizations/members', fixture()); expect(response.status).toBe(200); expect((await response.json() as any).items).toHaveLength(2); });
   it('creates a member through the existing initial-password account flow', async () => { const env = fixture(); const response = await request('/organizations/members', env, { method: 'POST', body: JSON.stringify({ email: 'new@test.local', name: 'New User', password: 'password', role: 'member' }) }); expect(response.status).toBe(201); expect((await response.json() as any).password).toBeUndefined(); expect(env.statements.some((item) => item.sql.includes('password_hash') && !item.args.includes('password'))).toBe(true); });
+  it('allows an authorized admin to assign the operator role', async () => { const env = fixture(); const created = await request('/organizations/members', env, { method: 'POST', body: JSON.stringify({ email: 'operator@test.local', name: 'Event Staff', password: 'password', role: 'operator' }) }); expect(created.status).toBe(201); expect((await created.json() as any).role).toBe('operator'); const updated = await request('/organizations/members/other', env, { method: 'PATCH', body: JSON.stringify({ role: 'operator' }) }); expect(updated.status).toBe(200); });
   it('rejects admin privilege escalation and protects the last administrator', async () => { expect((await request('/organizations/members/other', fixture('admin'), { method: 'PATCH', body: JSON.stringify({ role: 'owner' }) })).status).toBe(403); expect((await request('/organizations/members/other', fixture('admin', 'admin', 1), { method: 'PATCH', body: JSON.stringify({ role: 'member' }) })).status).toBe(409); });
   it('revokes membership without deleting the user', async () => { const env = fixture(); const response = await request('/organizations/members/other', env, { method: 'DELETE' }); expect(response.status).toBe(200); expect(env.statements.some((item) => item.sql.includes('UPDATE memberships SET status'))).toBe(true); expect(env.statements.some((item) => item.sql.includes('DELETE FROM users'))).toBe(false); });
   it('denies team management to a member and prevents cross-organization context', async () => { expect((await request('/organizations/members/other', fixture('member'), { method: 'DELETE' })).status).toBe(403); const env = fixture(); const response = await request('/organizations/members', env, { headers: { 'X-Organization-Id': 'org-b' } }); expect(response.status).toBe(403); });
+  it('does not grant operators team management', async () => { expect((await request('/organizations/members', fixture('operator'))).status).toBe(403); });
+  it('removes an operator membership from organization access immediately', async () => { expect((await request('/organizations/members', fixture('operator', 'member', 2, 'inactive'))).status).toBe(403); });
 });

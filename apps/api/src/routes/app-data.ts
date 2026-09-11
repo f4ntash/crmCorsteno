@@ -11,6 +11,7 @@ export const appDataRoutes = new Hono<{
   Variables: Variables;
 }>();
 appDataRoutes.use('*', requireAuth, requireOrganization);
+appDataRoutes.use('*', async (c, next) => c.get('organization').role === 'operator' ? c.json({ error: { code: 'FORBIDDEN', message: 'Permission denied' } }, 403) : next());
 appDataRoutes.get('/dashboard/summary', async (c) => {
   const o = c.get('organization');
   const db = c.env.DB;

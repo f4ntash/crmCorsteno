@@ -12,6 +12,7 @@ type Vars = {
 };
 export const analyticsRoutes = new Hono<{ Bindings: Env; Variables: Vars }>();
 analyticsRoutes.use('*', requireAuth, requireOrganization);
+analyticsRoutes.use('*', async (c, next) => c.get('organization').role === 'operator' ? c.json({ error: { code: 'FORBIDDEN', message: 'Permission denied' } }, 403) : next());
 const rangeOf = (x: string | undefined): Range =>
   x === '24h' || x === '7d' || x === '30d' || x === 'all' ? x : '7d';
 const sinceOf = (r: Range) =>

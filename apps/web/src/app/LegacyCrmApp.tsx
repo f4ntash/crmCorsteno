@@ -39,8 +39,11 @@ function Shell() {
   useEffect(() => setNavigationOpen(false), [location.pathname]);
   if (!m) return <main className="app-loading" aria-live="polite"><span className="loading-mark" />Cargando espacio de trabajo…</main>;
   const platformOperator = ['super_admin', 'corsteno_admin'].includes(m.user.platformRole);
-  const canManage = m.memberships.find((x) => x.organizationId === o)?.permissions.includes('crm.manage') ?? false;
   const currentOrganization = m.memberships.find((x) => x.organizationId === o);
+  const currentPermissions = currentOrganization?.permissions ?? [];
+  const canManage = currentPermissions.includes('crm.manage');
+  const canRedeem = currentPermissions.includes('claims.redeem');
+  const isRedemptionOperator = canRedeem && !canManage;
   const navClass = ({ isActive }: { isActive: boolean }) => isActive ? 'active' : undefined;
   return (
     <div className="shell">
@@ -50,10 +53,10 @@ function Shell() {
         <nav aria-label="Navegación principal">
           <p>Espacio de trabajo</p>
           <NavLink end className={navClass} to="/app">Resumen</NavLink>
-          <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>
-          <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>
-          {canManage && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
-          {currentOrganization && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
+          {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences">Experiencias</NavLink>}
+          {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics">Resultados</NavLink>}
+          {canRedeem && <NavLink className={navClass} to="/app/redeem">Canjear premio</NavLink>}
+          {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team">Equipo</NavLink>}
           {platformOperator && <>
             <p className="nav-section">Administración</p>
             <NavLink className={navClass} to="/app/commercial">Catálogo comercial</NavLink>
@@ -91,15 +94,15 @@ function Shell() {
           </div>
         </header>
         <Routes>
-          <Route index element={<Home org={o} isPlatformAdmin={platformOperator} />} />
-          <Route path="analytics" element={<Analytics org={o} />} />
-          <Route path="experiences" element={<ExperiencesPage org={o} canCreate={platformOperator} />} />
-          <Route path="experiences/:id" element={<ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+          <Route index element={<Home org={o} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator} />} />
+          <Route path="analytics" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <Analytics org={o} />} />
+          <Route path="experiences" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
+          <Route path="experiences/:id" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
           <Route path="commercial" element={platformOperator ? <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
           <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
           <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
-          <Route path="redeem" element={canManage ? <RedeemPage org={o} /> : <Navigate to="/app" replace />} />
-          <Route path="team" element={currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
+          <Route path="redeem" element={canRedeem ? <RedeemPage org={o} canRedeem /> : <Navigate to="/app" replace />} />
+          <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
           <Route
             path="*"
             element={

@@ -115,6 +115,12 @@ describe('roulette prize claim operations', () => {
     expect(second.status).toBe(409);
   });
   it('requires manage permission and keeps tenant isolation', async () => {
+    const operator = environment('operator');
+    expect((await request('/experiences/claims/lookup?code=abcd2345-efgh6789', operator)).status).toBe(200);
+    expect((await request('/experiences/experience-1/claims/claim-1/redeem', operator, { method: 'POST' })).status).toBe(200);
+    expect((await request('/experiences/experience-1', operator)).status).toBe(403);
+    expect((await request('/experiences/experience-1/claims', operator)).status).toBe(403);
+    expect((await request('/experiences/experience-1/inventory/prize-1/adjust', operator, { method: 'POST', body: JSON.stringify({ delta: 1 }) })).status).toBe(403);
     expect(
       (
         await request(

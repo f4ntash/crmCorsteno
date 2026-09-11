@@ -5,7 +5,7 @@ import type { Env } from '../index';
 
 export const organizationRoutes = new Hono<{ Bindings: Env }>();
 const platformAdmins = ['corsteno_admin', 'super_admin'];
-const roles = ['owner', 'admin', 'member', 'viewer'] as const;
+const roles = ['owner', 'admin', 'member', 'viewer', 'operator'] as const;
 function isPlatformAdmin(role: string) { return platformAdmins.includes(role); }
 function isRole(value: unknown): value is typeof roles[number] { return typeof value === 'string' && roles.includes(value as typeof roles[number]); }
 
@@ -24,7 +24,7 @@ organizationRoutes.post('/members', requireAuth, requireOrganization, requireOrg
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
-  const role = body.role === 'admin' || body.role === 'viewer' ? body.role : 'member';
+  const role = body.role === 'admin' || body.role === 'viewer' || body.role === 'operator' ? body.role : 'member';
   if (!/^\S+@\S+\.\S+$/.test(email) || name.length > 120 || (name && name.length < 2) || (password && (password.length < 8 || password.length > 200))) return c.json({ error: { code: 'BAD_REQUEST', message: 'Email válido, nombre opcional y contraseña de 8 a 200 caracteres para cuentas nuevas' } }, 400);
   if (role === 'admin' && organization.role !== 'owner' && !isPlatformAdmin(actor.platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Solo el propietario puede asignar administradores' } }, 403);
   const existing = await c.env.DB.prepare('SELECT id,name,email,status,password_hash passwordHash,platform_role platformRole FROM users WHERE email_normalized=?').bind(email).first<{ id: string; name: string; email: string; status: string; passwordHash: string; platformRole: string }>();

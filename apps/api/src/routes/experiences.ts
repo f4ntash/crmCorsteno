@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
@@ -55,10 +56,14 @@ type Variables = {
 
 export const experienceRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 experienceRoutes.use('*', requireAuth, requireOrganization);
-experienceRoutes.get('*', requireOrganizationPermission('crm.read'));
-experienceRoutes.post('*', requireOrganizationPermission('crm.manage'));
-experienceRoutes.patch('*', requireOrganizationPermission('crm.manage'));
-experienceRoutes.delete('*', requireOrganizationPermission('crm.manage'));
+experienceRoutes.use('*', async (c, next) => {
+  const path = c.req.path.split('?')[0] ?? c.req.path;
+  const claimOperation = (c.req.method === 'GET' && path.endsWith('/claims/lookup')) ||
+    (c.req.method === 'POST' && (path.endsWith('/claims/redeem') || /\/claims\/[^/]+\/redeem$/.test(path)));
+  const permission = claimOperation ? 'claims.redeem' : c.req.method === 'GET' ? 'crm.read' : 'crm.manage';
+  const authorize = requireOrganizationPermission(permission) as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+  return authorize(c, next);
+});
 
 function isPlatformOperator(platformRole: string) { return ['super_admin', 'corsteno_admin'].includes(platformRole); }
 
