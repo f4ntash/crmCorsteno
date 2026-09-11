@@ -27,13 +27,17 @@ export type CatalogProduct = {
   priceMinorUnits: number;
   currency: string;
   stock: number;
+  sortOrder: number;
   visible: boolean;
   mainAssetUrl: string | null;
+  gallery: CatalogProductImage[];
   ctaLabel: string | null;
   ctaUrl: string | null;
   createdAt: number;
   updatedAt: number;
 };
+export type CatalogProductImage = { id: string; organizationId: string; experienceId: string; productId: string; assetId: string; url: string; sortOrder: number; createdAt: number };
+export type CatalogProductWrite = Omit<CatalogProduct, 'sortOrder' | 'gallery'>;
 
 export const experiencesApi = {
   list: (organizationId: string) =>
@@ -153,8 +157,12 @@ export const experiencesApi = {
       body: JSON.stringify({ code }),
   }),
   catalogProducts: (id: string, organizationId: string) => apiRequest<{ items: CatalogProduct[]; hasUnpublishedChanges: boolean }>(`/experiences/${id}/catalog-products`, organizationId),
-  createCatalogProduct: (id: string, organizationId: string, body: Omit<CatalogProduct, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
-  updateCatalogProduct: (id: string, organizationId: string, productId: string, body: Partial<Omit<CatalogProduct, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
+  createCatalogProduct: (id: string, organizationId: string, body: Omit<CatalogProductWrite, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products`, organizationId, { method: 'POST', body: JSON.stringify(body) }),
+  updateCatalogProduct: (id: string, organizationId: string, productId: string, body: Partial<Omit<CatalogProductWrite, 'id' | 'organizationId' | 'experienceId' | 'createdAt' | 'updatedAt'>>) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   archiveCatalogProduct: (id: string, organizationId: string, productId: string) => apiRequest<{ id: string; archived: boolean }>(`/experiences/${id}/catalog-products/${productId}`, organizationId, { method: 'DELETE' }),
   adjustCatalogStock: (id: string, organizationId: string, productId: string, delta: number) => apiRequest<CatalogProduct>(`/experiences/${id}/catalog-products/${productId}/stock`, organizationId, { method: 'POST', body: JSON.stringify({ delta }) }),
+  reorderCatalogProducts: (id: string, organizationId: string, productIds: string[]) => apiRequest<{ items: CatalogProduct[] }>(`/experiences/${id}/catalog-products/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ productIds }) }),
+  addCatalogProductImage: (id: string, organizationId: string, productId: string, assetUrl: string) => apiRequest<{ image: CatalogProductImage }>(`/experiences/${id}/catalog-products/${productId}/images`, organizationId, { method: 'POST', body: JSON.stringify({ assetUrl }) }),
+  removeCatalogProductImage: (id: string, organizationId: string, productId: string, imageId: string) => apiRequest<{ id: string; removed: boolean }>(`/experiences/${id}/catalog-products/${productId}/images/${imageId}`, organizationId, { method: 'DELETE' }),
+  reorderCatalogProductImages: (id: string, organizationId: string, productId: string, imageIds: string[]) => apiRequest<{ items: CatalogProductImage[] }>(`/experiences/${id}/catalog-products/${productId}/images/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ imageIds }) }),
 };

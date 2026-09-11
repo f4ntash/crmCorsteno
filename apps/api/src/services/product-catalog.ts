@@ -1,11 +1,24 @@
+import { assetUrl, SUPPORTED_IMAGE_TYPES } from './assets';
 import { validAssetUrl, type PublishReadinessIssue } from './roulette-config';
 
 export const PRODUCT_CATALOG_TYPE = 'product-catalog';
+export const MAX_CATALOG_PRODUCT_IMAGES = 6;
 
 export type ProductCatalogConfig = {
   schemaVersion: 1;
   title?: string;
   intro?: string;
+};
+
+export type CatalogProductImage = {
+  id: string;
+  organizationId: string;
+  experienceId: string;
+  productId: string;
+  assetId: string;
+  url: string;
+  sortOrder: number;
+  createdAt: number;
 };
 
 export type CatalogProductInput = {
@@ -24,6 +37,8 @@ export type CatalogProduct = CatalogProductInput & {
   id: string;
   organizationId: string;
   experienceId: string;
+  sortOrder: number;
+  gallery: CatalogProductImage[];
   createdAt: number;
   updatedAt: number;
 };
@@ -34,6 +49,7 @@ const MAX_CTA_LABEL = 80;
 const MAX_CTA_URL = 2048;
 const MAX_PRICE = 9_000_000_000_000_000;
 const MAX_STOCK = 1_000_000_000;
+const ORGANIZATION_ASSET_PATH = /^\/assets\/organizations\/([A-Za-z0-9_-]+)\/assets\/([0-9a-f-]+)\.(png|jpg|jpeg|webp|svg)$/i;
 
 export function createDefaultProductCatalogConfig(): ProductCatalogConfig {
   return { schemaVersion: 1, title: 'Catálogo de productos', intro: '' };
@@ -93,36 +109,86 @@ export function catalogProductFromRow(row: Record<string, unknown>): CatalogProd
     mainAssetUrl: typeof row.mainAssetUrl === 'string' ? row.mainAssetUrl : null,
     ctaLabel: typeof row.ctaLabel === 'string' ? row.ctaLabel : null,
     ctaUrl: typeof row.ctaUrl === 'string' ? row.ctaUrl : null,
+    sortOrder: Number(row.sortOrder ?? 0), gallery: Array.isArray(row.gallery) ? row.gallery as CatalogProductImage[] : [],
     createdAt: Number(row.createdAt), updatedAt: Number(row.updatedAt),
   };
 }
 
-export const catalogProductSelect = `SELECT id,organization_id organizationId,experience_id experienceId,name,description,price_minor_units priceMinorUnits,currency,stock,visible,main_asset_url mainAssetUrl,cta_label ctaLabel,cta_url ctaUrl,created_at createdAt,updated_at updatedAt FROM catalog_products`;
+export function catalogImageFromRow(row: Record<string, unknown>, origin: string): CatalogProductImage {
+  return {
+    id: String(row.id), organizationId: String(row.organizationId), experienceId: String(row.experienceId),
+    productId: String(row.productId), assetId: String(row.assetId),
+    url: assetUrl(origin, String(row.storageKey)), sortOrder: Number(row.sortOrder ?? 0), createdAt: Number(row.createdAt),
+  };
+}
+
+export const catalogProductSelect = `SELECT id,organization_id organizationId,experience_id experienceId,name,description,price_minor_units priceMinorUnits,currency,stock,visible,main_asset_url mainAssetUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder,created_at createdAt,updated_at updatedAt FROM catalog_products`;
+export const catalogImageSelect = `SELECT i.id,i.organization_id organizationId,i.experience_id experienceId,i.product_id productId,i.asset_id assetId,i.sort_order sortOrder,i.created_at createdAt,a.storage_key storageKey FROM catalog_product_images i JOIN organization_assets a ON a.id=i.asset_id AND a.organization_id=i.organization_id AND a.archived_at IS NULL`;
+
+function organizationAssetId(value: unknown, organizationId: string) {
+  if (typeof value !== 'string') return null;
+  try {
+    const path = new URL(value, 'http://localhost').pathname;
+    const match = path.match(ORGANIZATION_ASSET_PATH);
+    return match && match[1] === organizationId ? match[2] : null;
+  } catch {
+    return null;
+  }
+}
+
+export function catalogAssetIdFromUrl(value: unknown, organizationId: string) {
+  return organizationAssetId(value, organizationId);
+}
 
 export async function validateProductCatalogPublishReadiness(db: D1Database, experienceId: string, organizationId: string, config: unknown): Promise<PublishReadinessIssue[]> {
   const issues = productCatalogDraftIssues(config);
   if (issues.length) return issues;
-  const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY created_at ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
+  const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY sort_order ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   if (!products.results.length) return [{ code: 'NO_VISIBLE_PRODUCTS', path: 'products', message: 'Agregá al menos un producto visible antes de publicar.' }];
   const productIssues = products.results.flatMap((row, index) => catalogProductIssues(catalogProductFromRow(row), `products[${index}]`));
-  const assetIssues = products.results.flatMap((row, index) => typeof row.mainAssetUrl === 'string' && !assetReferencesBelongToOrganization(row.mainAssetUrl, organizationId) ? [{ code: 'PRODUCT_ASSET_ORGANIZATION', path: `products[${index}].mainAssetUrl`, message: 'La imagen principal debe pertenecer a la organización.' }] : []);
-  return [...productIssues, ...assetIssues];
+  const galleryIssues = await db.prepare(`SELECT i.id,i.product_id productId,a.id assetId,a.organization_id assetOrganizationId,a.mime_type mimeType FROM catalog_product_images i JOIN catalog_products p ON p.id=i.product_id AND p.experience_id=? AND p.organization_id=? AND p.archived_at IS NULL AND p.visible=1 LEFT JOIN organization_assets a ON a.id=i.asset_id AND a.organization_id=i.organization_id AND a.archived_at IS NULL WHERE i.experience_id=? AND i.organization_id=? ORDER BY i.product_id,i.sort_order,i.id`).bind(experienceId, organizationId, experienceId, organizationId).all<Record<string, unknown>>();
+  const invalidGalleryAssets = galleryIssues.results.flatMap((row, index) => typeof row.assetId !== 'string' || row.assetOrganizationId !== organizationId || !SUPPORTED_IMAGE_TYPES.includes(String(row.mimeType) as typeof SUPPORTED_IMAGE_TYPES[number]) ? [{ code: 'PRODUCT_GALLERY_ASSET_INVALID', path: `products.gallery[${index}]`, message: 'Cada imagen de galería debe ser una imagen activa de la organización.' }] : []);
+  return [...productIssues, ...invalidGalleryAssets];
 }
 
-function assetReferencesBelongToOrganization(value: string, organizationId: string) {
-  try { return new URL(value, 'http://localhost').pathname.startsWith(`/assets/organizations/${organizationId}/`); } catch { return false; }
-}
-
-export async function publishCatalogSnapshot(db: D1Database, experienceId: string, organizationId: string) {
-  const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY created_at ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
+export async function publishCatalogSnapshot(db: D1Database, experienceId: string, organizationId: string, origin = '') {
+  const products = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL AND visible=1 ORDER BY sort_order ASC,id ASC`).bind(experienceId, organizationId).all<Record<string, unknown>>();
+  const images = await db.prepare(`${catalogImageSelect} WHERE i.experience_id=? AND i.organization_id=? ORDER BY i.product_id,i.sort_order,i.id`).bind(experienceId, organizationId).all<Record<string, unknown>>();
   const now = Date.now();
-  const statements = [db.prepare('DELETE FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(experienceId, organizationId)];
-  statements.push(...products.results.map((row) => db.prepare('INSERT INTO catalog_published_products (id,organization_id,experience_id,source_product_id,name,description,price_minor_units,currency,stock,main_asset_url,cta_label,cta_url,published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, experienceId, row.id, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now)));
+  const publishedIds = new Map<string, string>();
+  const statements = [
+    db.prepare('DELETE FROM catalog_published_product_images WHERE experience_id=? AND organization_id=?').bind(experienceId, organizationId),
+    db.prepare('DELETE FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(experienceId, organizationId),
+  ];
+  for (const row of products.results) {
+    const publishedId = crypto.randomUUID();
+    publishedIds.set(String(row.id), publishedId);
+    statements.push(db.prepare('INSERT INTO catalog_published_products (id,organization_id,experience_id,source_product_id,name,description,price_minor_units,currency,stock,sort_order,main_asset_url,cta_label,cta_url,published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(publishedId, organizationId, experienceId, row.id, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.sortOrder ?? 0, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now));
+  }
+  for (const row of images.results) {
+    const publishedProductId = publishedIds.get(String(row.productId));
+    if (!publishedProductId) continue;
+    const storedUrl = origin ? assetUrl(origin, String(row.storageKey)) : `/assets/${String(row.storageKey)}`;
+    statements.push(db.prepare('INSERT INTO catalog_published_product_images (id,organization_id,experience_id,published_product_id,source_image_id,asset_url,sort_order,published_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, experienceId, publishedProductId, row.id, storedUrl, row.sortOrder ?? 0, now));
+  }
   await db.batch(statements);
 }
 
 export async function cloneCatalogProducts(db: D1Database, sourceExperienceId: string, organizationId: string, targetExperienceId: string) {
-  const rows = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL ORDER BY created_at ASC,id ASC`).bind(sourceExperienceId, organizationId).all<Record<string, unknown>>();
+  const rows = await db.prepare(`${catalogProductSelect} WHERE experience_id=? AND organization_id=? AND archived_at IS NULL ORDER BY sort_order ASC,id ASC`).bind(sourceExperienceId, organizationId).all<Record<string, unknown>>();
   if (!rows.results.length) return;
-  await db.batch(rows.results.map((row) => db.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,stock,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, targetExperienceId, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.visible, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, Date.now(), Date.now())));
+  const productIds = new Map<string, string>();
+  const statements = rows.results.map((row) => {
+    const id = crypto.randomUUID();
+    productIds.set(String(row.id), id);
+    const now = Date.now();
+    return db.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, targetExperienceId, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.sortOrder ?? 0, row.visible, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now, now);
+  });
+  const images = await db.prepare('SELECT id,product_id productId,asset_id assetId,sort_order sortOrder,created_at createdAt FROM catalog_product_images WHERE experience_id=? AND organization_id=? ORDER BY product_id,sort_order,id').bind(sourceExperienceId, organizationId).all<Record<string, unknown>>();
+  statements.push(...images.results.flatMap((row) => {
+    const productId = productIds.get(String(row.productId));
+    if (!productId) return [];
+    return [db.prepare('INSERT INTO catalog_product_images (id,organization_id,experience_id,product_id,asset_id,sort_order,created_at) VALUES (?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, targetExperienceId, productId, row.assetId, row.sortOrder ?? 0, Date.now())];
+  }));
+  await db.batch(statements);
 }

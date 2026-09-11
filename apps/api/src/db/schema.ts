@@ -147,6 +147,7 @@ export const catalogProducts = sqliteTable(
     priceMinorUnits: integer('price_minor_units').notNull().default(0),
     currency: text('currency').notNull().default('ARS'),
     stock: integer('stock').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
     visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
     mainAssetUrl: text('main_asset_url'),
     ctaLabel: text('cta_label'),
@@ -155,7 +156,7 @@ export const catalogProducts = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
   },
-  (t) => [index('catalog_products_experience').on(t.experienceId, t.organizationId), index('catalog_products_visible').on(t.experienceId, t.visible, t.archivedAt)],
+  (t) => [index('catalog_products_experience').on(t.experienceId, t.organizationId), index('catalog_products_order').on(t.experienceId, t.organizationId, t.sortOrder, t.id), index('catalog_products_visible').on(t.experienceId, t.visible, t.archivedAt)],
 );
 export const catalogPublishedProducts = sqliteTable(
   'catalog_published_products',
@@ -169,12 +170,40 @@ export const catalogPublishedProducts = sqliteTable(
     priceMinorUnits: integer('price_minor_units').notNull().default(0),
     currency: text('currency').notNull().default('ARS'),
     stock: integer('stock').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
     mainAssetUrl: text('main_asset_url'),
     ctaLabel: text('cta_label'),
     ctaUrl: text('cta_url'),
     publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index('catalog_published_products_experience').on(t.experienceId, t.organizationId)],
+  (t) => [index('catalog_published_products_experience').on(t.experienceId, t.organizationId), index('catalog_published_products_order').on(t.experienceId, t.organizationId, t.sortOrder, t.id)],
+);
+export const catalogProductImages = sqliteTable(
+  'catalog_product_images',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    experienceId: text('experience_id').notNull(),
+    productId: text('product_id').notNull().references(() => catalogProducts.id),
+    assetId: text('asset_id').notNull().references(() => organizationAssets.id),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('catalog_product_images_product_asset').on(t.productId, t.assetId), index('catalog_product_images_product').on(t.productId, t.organizationId, t.sortOrder, t.id)],
+);
+export const catalogPublishedProductImages = sqliteTable(
+  'catalog_published_product_images',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    experienceId: text('experience_id').notNull(),
+    publishedProductId: text('published_product_id').notNull().references(() => catalogPublishedProducts.id),
+    sourceImageId: text('source_image_id'),
+    assetUrl: text('asset_url').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('catalog_published_product_images_product').on(t.publishedProductId, t.organizationId, t.sortOrder, t.id)],
 );
 export const projects = sqliteTable(
   'projects',

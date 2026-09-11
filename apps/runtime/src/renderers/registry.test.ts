@@ -14,6 +14,16 @@ describe('runtime experience renderer registry', () => {
     expect(resolveRuntimeRenderer('roulette')).toBe(runtimeRendererRegistry.get('roulette'));
   });
 
+  it('resolves the catalog renderer separately from Roulette', () => {
+    expect(resolveRuntimeRenderer('product-catalog')).toBe(runtimeRendererRegistry.get('product-catalog'));
+    expect(resolveRuntimeRenderer('product-catalog')).not.toBe(runtimeRendererRegistry.get('roulette'));
+  });
+
+  it('resolves the catalog renderer separately from Roulette', () => {
+    expect(resolveRuntimeRenderer('product-catalog')).toBe(runtimeRendererRegistry.get('product-catalog'));
+    expect(resolveRuntimeRenderer('product-catalog')).not.toBe(runtimeRendererRegistry.get('roulette'));
+  });
+
   it('returns no renderer for unsupported public types', () => {
     expect(resolveRuntimeRenderer('unsupported')).toBeNull();
     expect(resolveRuntimeRenderer(null)).toBeNull();

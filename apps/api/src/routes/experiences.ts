@@ -278,7 +278,7 @@ experienceRoutes.post('/:id/publish', async (c) => {
   const readyDraft = draft as DraftConfig;
   const snapshot = JSON.stringify(readyDraft);
   if (row.type === PRODUCT_CATALOG_TYPE) {
-    try { await publishCatalogSnapshot(c.env.DB, id, organizationId); } catch { return c.json({ error: { code: 'PUBLISH_FAILED', message: 'No se pudo preparar el catálogo publicado.' } }, 503); }
+    try { await publishCatalogSnapshot(c.env.DB, id, organizationId, new URL(c.req.url).origin); } catch { return c.json({ error: { code: 'PUBLISH_FAILED', message: 'No se pudo preparar el catálogo publicado.' } }, 503); }
   }
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
   if (row.type === 'roulette') await syncPrizeInventory(c.env.DB, id, readyDraft);
@@ -523,7 +523,9 @@ experienceRoutes.delete('/:id', async (c) => {
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   await c.env.DB.prepare('DELETE FROM subscription_experiences WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
+  await c.env.DB.prepare('DELETE FROM catalog_published_product_images WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM catalog_published_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
+  await c.env.DB.prepare('DELETE FROM catalog_product_images WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_access_periods WHERE experience_id=? AND organization_id=?').bind(id, organizationId).run();
   await c.env.DB.prepare('DELETE FROM experience_prize_inventory_events WHERE experience_id=?').bind(id).run();

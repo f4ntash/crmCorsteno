@@ -56,6 +56,7 @@ export type CatalogPublicProduct = {
   currency: string;
   stock: number;
   mainImageUrl: string | null;
+  gallery: string[];
   ctaLabel: string | null;
   ctaUrl: string | null;
 };
@@ -110,9 +111,14 @@ const productCatalogPublicExperienceAdapter: PublicExperienceAdapter<ProductCata
     let config: unknown;
     try { config = parsePublishedConfig(experience.publishedConfig); } catch { return { kind: 'inactive', reason: 'unavailable', status: 503 }; }
     if (!validateProductCatalogDraft(config)) return { kind: 'inactive', reason: 'unavailable', status: 503 };
-    const products = await db.prepare('SELECT name,description,price_minor_units priceMinorUnits,currency,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY rowid ASC').bind(experience.id, experience.organizationId).all<CatalogPublicProduct>();
+    const [products, images] = await Promise.all([
+      db.prepare('SELECT id,name,description,price_minor_units priceMinorUnits,currency,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY sort_order ASC,id ASC').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
+      db.prepare('SELECT published_product_id publishedProductId,asset_url assetUrl,sort_order sortOrder,id FROM catalog_published_product_images WHERE experience_id=? AND organization_id=? ORDER BY published_product_id,sort_order,id').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
+    ]);
     if (!products.results.length) return { kind: 'inactive', reason: 'unavailable', status: 503 };
-    return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.results.map((product) => ({ ...product, priceMinorUnits: Number(product.priceMinorUnits), stock: Number(product.stock), mainImageUrl: product.mainImageUrl ?? null, ctaLabel: product.ctaLabel ?? null, ctaUrl: product.ctaUrl ?? null })) } };
+    const galleryByProduct = new Map<string, string[]>();
+    for (const image of images.results) if (typeof image.publishedProductId === 'string' && typeof image.assetUrl === 'string') galleryByProduct.set(image.publishedProductId, [...(galleryByProduct.get(image.publishedProductId) ?? []), image.assetUrl]);
+    return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.results.map((product) => ({ name: String(product.name), description: String(product.description ?? ''), priceMinorUnits: Number(product.priceMinorUnits), currency: String(product.currency), stock: Number(product.stock), mainImageUrl: typeof product.mainImageUrl === 'string' ? product.mainImageUrl : null, gallery: galleryByProduct.get(String(product.id)) ?? [], ctaLabel: typeof product.ctaLabel === 'string' ? product.ctaLabel : null, ctaUrl: typeof product.ctaUrl === 'string' ? product.ctaUrl : null })) } };
   },
 };
 
