@@ -370,7 +370,6 @@ experienceRoutes.post('/:id/publish', async (c) => {
 });
 
 experienceRoutes.post('/:id/clone', async (c) => {
-  if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
   const capacity = await canCreateOrganizationExperience(c.env.DB, c.get('organization').id);
   if (!capacity.allowed) return c.json({ error: { code: 'EXPERIENCE_LIMIT_REACHED', message: 'Experience limit reached', current: capacity.current, limit: capacity.limit } }, 409);
   const sourceId = c.req.param('id');
@@ -390,7 +389,7 @@ experienceRoutes.post('/:id/clone', async (c) => {
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
-    .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, source.startsAt ?? null, source.endsAt ?? null).run();
+    .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, null, null).run();
   const cloned = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   try { return c.json(present(cloned ?? {}), 201); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid cloned experience JSON' } }, 500); }
 });

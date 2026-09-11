@@ -124,3 +124,4 @@
 @media(max-width:720px){.branding-upload-grid,.branding-copy-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.roulette-operations{padding:16px 0}.roulette-operations-heading{align-items:flex-start;gap:10px}.roulette-operation-metrics{display:grid;grid-template-columns:1fr 1fr}.roulette-operation-metric,.roulette-operation-metric:first-child{min-width:0;padding:10px 0;border-left:0;border-top:1px solid var(--border)}.roulette-operation-metric:nth-child(-n+2){border-top:0}.roulette-quick-actions>*{flex:1 1 calc(50% - 9px);text-align:center}.roulette-quick-actions .primary{flex-basis:100%}}
 @media(max-width:600px){.prize-operations-summary{grid-template-columns:1fr 1fr}.prize-operations-title{grid-column:1 / -1}.inventory-claim-summary{grid-column:1 / -1}}
+.clone-notice{margin:0 0 18px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text-secondary)}
