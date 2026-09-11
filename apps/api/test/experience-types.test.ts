@@ -20,6 +20,7 @@ describe('experience type registry', () => {
     const secondType: ExperienceTypeDefinition = {
       type: 'test-event',
       label: 'Evento de prueba',
+      createDraftConfig: () => ({ title: 'Evento' }),
       validateDraft: (value) => Boolean(value && typeof value === 'object' && (value as Record<string, unknown>).title === 'Evento'),
       normalizeDraft: (value) => ({ ...(value as Record<string, unknown>), normalized: true }),
       validatePublishReadiness: (value) => value && typeof value === 'object' && (value as Record<string, unknown>).normalized === true ? [] : [{ code: 'TEST_NOT_READY', path: 'config', message: 'El evento de prueba no está listo.' }],

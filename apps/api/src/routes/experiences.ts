@@ -5,10 +5,11 @@ import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
 import { getEffectiveExperienceAccessStatus, getExperienceAccessPeriods } from '../services/experience-access';
 import { canCreateOrganizationExperience, getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
-import { resolveExperienceType } from '../services/experience-types';
+import { defaultExperienceType, resolveExperienceType } from '../services/experience-types';
 import { normalizePrizeConfig, validDraftConfig, type DraftConfig } from '../services/roulette-config';
 import { recordActivityBestEffort } from '../services/activity';
 import { validateImageFile } from '../services/assets';
+import { ensureExperienceAnalyticsApplication } from '../services/experience-analytics';
 export { sanitizeSvg } from '../services/assets';
 export { normalizeParticipationConfig, normalizePrizeConfig, validDraftConfig, validAssetUrl, validateRoulettePublishReadiness } from '../services/roulette-config';
 export type { DraftConfig, ParticipationConfig, PrizeConfig, PublishReadinessIssue } from '../services/roulette-config';
@@ -62,7 +63,6 @@ experienceRoutes.use('*', async (c, next) => {
   const authorize = requireOrganizationPermission(permission) as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
   return authorize(c, next);
 });
-
 function isPlatformOperator(platformRole: string) { return ['super_admin', 'corsteno_admin'].includes(platformRole); }
 
 function presentClaim(row: Record<string, unknown>) {
@@ -224,17 +224,6 @@ async function syncPrizeInventory(db: D1Database, experienceId: string, config: 
     }
   }
 }
-async function ensureAnalyticsApplication(db: D1Database, experienceId: string, organizationId: string, name: string) {
-  const existing = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
-  if (existing?.applicationId) return;
-  const project = await db.prepare('SELECT id FROM projects WHERE organization_id=? ORDER BY created_at LIMIT 1').bind(organizationId).first<{ id: string }>();
-  if (!project) return;
-  const applicationId = crypto.randomUUID();
-  await db.prepare("INSERT OR IGNORE INTO applications (id, organization_id, project_id, name, slug, status, application_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', 'roulette', ?, ?)").bind(applicationId, organizationId, project.id, name, `roulette-${experienceId}`, Date.now(), Date.now()).run();
-  const actual = await db.prepare('SELECT id FROM applications WHERE organization_id=? AND project_id=? AND slug=?').bind(organizationId, project.id, `roulette-${experienceId}`).first<{ id: string }>();
-  if (actual) await db.prepare('UPDATE experiences SET project_id=?, application_id=? WHERE id=? AND organization_id=?').bind(project.id, actual.id, experienceId, organizationId).run();
-}
-
 experienceRoutes.post('/:id/assets', async (c) => {
   const id = c.req.param('id');
   const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, c.get('organization').id).first();
@@ -288,7 +277,7 @@ experienceRoutes.post('/:id/publish', async (c) => {
   const snapshot = JSON.stringify(readyDraft);
   await c.env.DB.prepare('UPDATE experiences SET published_config=?, status=\'published\', updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(snapshot, id, organizationId).run();
   await syncPrizeInventory(c.env.DB, id, readyDraft);
-  await ensureAnalyticsApplication(c.env.DB, id, organizationId, String(row.name ?? 'Roulette'));
+  await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId, experienceType: String(row.type), name: String(row.name ?? 'Experience') });
   const published = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.published', resourceType: 'experience', resourceId: id, metadata: { name: row.name } });
   try { return c.json(present(published ?? {})); } catch { return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Invalid published experience JSON' } }, 500); }
@@ -407,7 +396,7 @@ experienceRoutes.post('/', async (c) => {
   let body: Record<string, unknown>;
   try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
   const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const type = body.type === undefined ? 'roulette' : body.type;
+  const type = body.type === undefined ? defaultExperienceType : body.type;
   const startsAt = body.starts_at === null ? null : typeof body.starts_at === 'string' ? body.starts_at : undefined;
   const endsAt = body.ends_at === null ? null : typeof body.ends_at === 'string' ? body.ends_at : undefined;
   if (!name) return c.json(bad('name is required'), 400);
@@ -415,16 +404,24 @@ experienceRoutes.post('/', async (c) => {
   const typeDefinition = resolveExperienceType(type);
   if (!typeDefinition) return c.json(unsupportedExperienceType(), 400);
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
-  let draftConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'no-prize', name: 'Sin premio', enabled: true, weight: 1, stockMode: 'unlimited' }], segments: [], participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 } });
+  let draftConfig: string;
+  try {
+    const initialDraft = JSON.stringify(typeDefinition.createDraftConfig());
+    if (typeof initialDraft !== 'string') return c.json(bad('Invalid experience default configuration'), 500);
+    draftConfig = initialDraft;
+  } catch {
+    return c.json(bad('Invalid experience default configuration'), 500);
+  }
   if (body.draft_config !== undefined) {
     const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body.draft_config) : body.draft_config;
-    if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad(type === 'roulette' ? 'Invalid roulette draft_config' : 'Invalid experience draft_config'), 400);
+    if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad('Invalid experience draft_config'), 400);
     draftConfig = JSON.stringify(normalized);
   }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, NULL, ?, ?)`)
     .bind(id, c.get('organization').id, name, slug, type, draftConfig, startsAt ?? null, endsAt ?? null).run();
+  await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId: c.get('organization').id, experienceType: type, name });
   const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'experience.created', resourceType: 'experience', resourceId: id, metadata: { name, type } });
   return c.json(present(row ?? {}), 201);
@@ -491,7 +488,7 @@ experienceRoutes.patch('/:id', async (c) => {
       const typeDefinition = resolveExperienceType(current.type);
       if (!typeDefinition) return c.json(unsupportedExperienceType(), 422);
       const normalized = typeDefinition.normalizeDraft ? typeDefinition.normalizeDraft(body[key]) : body[key];
-      if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad(current.type === 'roulette' ? 'Invalid roulette draft_config' : 'Invalid experience draft_config'), 400);
+      if (!typeDefinition.validateDraft(normalized) || !assetReferencesBelongToOrganization(normalized, c.get('organization').id)) return c.json(bad('Invalid experience draft_config'), 400);
       values.push(JSON.stringify(normalized));
     } else values.push(body[key]);
     fields.push(`${column}=?`);

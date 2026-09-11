@@ -7,6 +7,7 @@ import {
 export type ExperienceTypeDefinition = {
   type: string;
   label: string;
+  createDraftConfig: () => unknown;
   validateDraft: (value: unknown) => boolean;
   normalizeDraft?: (value: unknown) => unknown;
   validatePublishReadiness: (value: unknown) => PublishReadinessIssue[];
@@ -17,9 +18,18 @@ export type ExperienceTypeRegistry = ReadonlyMap<string, ExperienceTypeDefinitio
 export const rouletteExperienceType: ExperienceTypeDefinition = {
   type: 'roulette',
   label: 'Roulette',
+  createDraftConfig: () => ({
+    schemaVersion: 1,
+    backgroundColor: '#111111',
+    prizes: [{ id: 'no-prize', name: 'Sin premio', enabled: true, weight: 1, stockMode: 'unlimited' }],
+    segments: [],
+    participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: null, cooldownSeconds: 0 },
+  }),
   validateDraft: validDraftConfig,
   validatePublishReadiness: validateRoulettePublishReadiness,
 };
+
+export const defaultExperienceType = rouletteExperienceType.type;
 
 export const experienceTypeRegistry: ExperienceTypeRegistry = new Map<string, ExperienceTypeDefinition>([
   [rouletteExperienceType.type, rouletteExperienceType],

@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import app from '../src';
 import { validDraftConfig, validateRoulettePublishReadiness } from '../src/routes/experiences';
+import { experienceTypeRegistry, type ExperienceTypeDefinition } from '../src/services/experience-types';
 
 type E = { id: string; organization_id: string; name: string; slug: string; type: string; status: string; schema_version: number; draft_config: string; published_config: string | null; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string };
 type AccessPeriod = { id: string; experience_id: string; organization_id: string; starts_at: string; ends_at: string; source: string; created_at: string; created_by: string | null; note: string | null };
@@ -45,6 +46,24 @@ describe('experiences tenant isolation and validation', () => {
   it('lists and reads only the current organization, parsing JSON', async () => { const env = fixture(); const list = await request('/experiences', env); expect(list.status).toBe(200); expect(await list.json()).toEqual([expect.objectContaining({ id: 'a', draftConfig: { segments: [] } })]); expect((await request('/experiences/b', env)).status).toBe(404); });
   it('rejects invalid dates/status and foreign mutations', async () => { const env = fixture(); const badDates = await request('/experiences', env, { method: 'POST', body: JSON.stringify({ name: 'x', starts_at: '2026-01-02', ends_at: '2026-01-01' }) }); expect(badDates.status).toBe(400); for (const status of ['nope', 'active', 'scheduled', 'expired']) { const badStatus = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ status }) }); expect(badStatus.status).toBe(400); } expect((await request('/experiences/b', env, { method: 'PATCH', body: JSON.stringify({ name: 'x' }) })).status).toBe(404); expect((await request('/experiences/b', env, { method: 'DELETE' })).status).toBe(404); });
   it('rejects an unsupported product type without treating it as Roulette', async () => { const response = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Evento', type: 'unsupported-event' }) }); expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: { code: 'UNSUPPORTED_EXPERIENCE_TYPE', message: 'El tipo de experiencia no está soportado.' } }); });
+  it('creates Roulette through the existing creation contract', async () => {
+    const response = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Ruleta', type: 'roulette' }) });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual(expect.objectContaining({ type: 'roulette' }));
+  });
+  it('creates a registered second type without Roulette defaults', async () => {
+    const testProduct: ExperienceTypeDefinition = { type: 'test-product', label: 'Producto de prueba', createDraftConfig: () => ({ kind: 'test-product' }), validateDraft: (value) => Boolean(value && typeof value === 'object'), validatePublishReadiness: () => [] };
+    const registry = experienceTypeRegistry as Map<string, ExperienceTypeDefinition>;
+    registry.set(testProduct.type, testProduct);
+    try {
+      expect(testProduct.createDraftConfig()).toEqual({ kind: testProduct.type });
+      const response = await request('/experiences', fixture(), { method: 'POST', body: JSON.stringify({ name: 'Evento de prueba', type: testProduct.type }) });
+      expect(response.status).toBe(201);
+      expect(await response.json()).toEqual(expect.objectContaining({ type: testProduct.type }));
+    } finally {
+      registry.delete(testProduct.type);
+    }
+  });
   it('rejects unsupported types at draft, publication, and clone boundaries', async () => { const env = fixture('{"segments":[]}', 'draft', null, 'owner', [], 'corsteno_admin', [], null, null, 'unsupported-event'); const expected = { error: { code: 'UNSUPPORTED_EXPERIENCE_TYPE', message: 'El tipo de experiencia no está soportado.' } }; const draft = await request('/experiences/a', env, { method: 'PATCH', body: JSON.stringify({ draft_config: {} }) }); expect(draft.status).toBe(422); expect(await draft.json()).toEqual(expected); const publish = await request('/experiences/a/publish', env, { method: 'POST' }); expect(publish.status).toBe(422); expect(await publish.json()).toEqual(expected); const clone = await request('/experiences/a/clone', env, { method: 'POST' }); expect(clone.status).toBe(422); expect(await clone.json()).toEqual(expected); });
 
   it('clones only an owned experience and resets operational state', async () => {
