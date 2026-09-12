@@ -251,6 +251,21 @@ export const productPublishedImages = sqliteTable(
   },
   (t) => [index('product_published_images_product').on(t.productId, t.organizationId, t.sortOrder, t.id)],
 );
+export const product3dConfig = sqliteTable(
+  'product_3d_config',
+  {
+    productId: text('product_id').primaryKey().references(() => products.id),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    draftConfig: text('draft_config'),
+    publishedConfig: text('published_config'),
+    draftModelAssetId: text('draft_model_asset_id').references(() => organizationAssets.id),
+    publishedModelAssetId: text('published_model_asset_id').references(() => organizationAssets.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('product_3d_config_organization').on(t.organizationId, t.updatedAt, t.productId), index('product_3d_config_draft_asset').on(t.organizationId, t.draftModelAssetId), index('product_3d_config_published_asset').on(t.organizationId, t.publishedModelAssetId)],
+);
 export const catalogExperienceProducts = sqliteTable(
   'catalog_experience_products',
   {

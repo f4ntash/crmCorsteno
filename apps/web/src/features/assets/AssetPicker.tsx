@@ -26,7 +26,7 @@ export function AssetPicker({ org, value, onChange, categories = [], canUpload =
     setLoading(true);
     setError('');
     try {
-      const result = await assetsApi.list(org, { limit: 50, search: searchValue.trim() || undefined });
+      const result = await assetsApi.list(org, { limit: 50, search: searchValue.trim() || undefined, category: categories.length === 1 ? categories[0] : undefined });
       setItems(allowed ? result.items.filter((item) => allowed.has(item.category)) : result.items);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'No se pudo cargar la biblioteca.');

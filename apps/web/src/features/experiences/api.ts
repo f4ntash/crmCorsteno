@@ -1,4 +1,5 @@
 import { apiRequest } from '../../shared/api/client';
+import type { Product3DConfig } from '@corsteno/types';
 import type { Experience, ExperienceTemplate } from './types';
 export type ExperienceSpin = {
   id: string;
@@ -49,6 +50,20 @@ export type OrganizationProduct = Omit<CatalogProduct, 'experienceId' | 'sortOrd
   publishedAt: number | null;
   usages: Array<{ experienceId: string; experienceName: string; sortOrder: number; visible: boolean }>;
   archivedAt: number | null;
+};
+export type Product3DAsset = { id: string; url: string; originalFilename: string; displayName: string; mimeType: string; byteSize: number; category: 'model-3d'; archivedAt: number | null };
+export type Product3DState = {
+  productId: string;
+  organizationId: string;
+  status: 'not_configured' | 'draft' | 'published' | 'changes' | 'error';
+  draftConfig: Product3DConfig | null;
+  publishedConfig: Product3DConfig | null;
+  draftModelAssetId: string | null;
+  publishedModelAssetId: string | null;
+  draftModel: Product3DAsset | null;
+  publishedModel: Product3DAsset | null;
+  draftIssues: Array<{ code: string; path: string; message: string }>;
+  publishedAt: number | null;
 };
 
 export const experiencesApi = {
@@ -192,4 +207,12 @@ export const productsApi = {
   addImage: (id: string, organizationId: string, assetUrl: string) => apiRequest<{ image: CatalogProductImage }>(`/products/${id}/images`, organizationId, { method: 'POST', body: JSON.stringify({ assetUrl }) }),
   removeImage: (id: string, organizationId: string, imageId: string) => apiRequest<{ id: string; removed: boolean }>(`/products/${id}/images/${imageId}`, organizationId, { method: 'DELETE' }),
   reorderImages: (id: string, organizationId: string, imageIds: string[]) => apiRequest<{ items: CatalogProductImage[] }>(`/products/${id}/images/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ imageIds }) }),
+};
+
+export const products3dApi = {
+  get: (id: string, organizationId: string) => apiRequest<Product3DState>(`/products/${id}/3d`, organizationId),
+  assets: (id: string, organizationId: string) => apiRequest<{ items: Product3DAsset[] }>(`/products/${id}/3d/assets`, organizationId),
+  update: (id: string, organizationId: string, body: { modelAssetId?: string | null; config?: Product3DConfig | null }) => apiRequest<Product3DState>(`/products/${id}/3d`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
+  upload: (id: string, organizationId: string, file: File) => { const body = new FormData(); body.append('file', file); return apiRequest<{ asset: Product3DAsset; state: Product3DState }>(`/products/${id}/3d/assets`, organizationId, { method: 'POST', body }); },
+  publish: (id: string, organizationId: string) => apiRequest<Product3DState>(`/products/${id}/3d/publish`, organizationId, { method: 'POST' }),
 };

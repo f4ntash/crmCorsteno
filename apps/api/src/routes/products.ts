@@ -2,10 +2,13 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
+import { createMiddleware } from 'hono/factory';
 import type { Env } from '../index';
 import { recordActivityBestEffort } from '../services/activity';
 import { catalogAssetIdFromUrl, MAX_CATALOG_PRODUCT_IMAGES } from '../services/product-catalog';
 import { SUPPORTED_IMAGE_TYPES } from '../services/assets';
+import { product3DConfigIssues, type Product3DConfig } from '@corsteno/types';
+import { getProduct3D, getProduct3DModelAssets, publishProduct3D, updateProduct3DDraft, uploadProduct3DModel } from '../services/product-3d';
 import {
   adjustOrganizationProductStock,
   archiveOrganizationProduct,
@@ -32,6 +35,10 @@ export const productRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
 productRoutes.use('*', requireAuth, requireOrganization);
 const read = requireOrganizationPermission('crm.read') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 const manage = requireOrganizationPermission('crm.manage') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+const platformOnly = createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
+  if (!['super_admin', 'corsteno_admin'].includes(c.get('user').platformRole)) return c.json(error('Solo un operador de Corsteno puede administrar la configuración 3D.', 'FORBIDDEN'), 403);
+  await next();
+});
 
 function error(message: string, code = 'BAD_REQUEST', issues?: unknown[]) {
   return { error: { code, message, ...(issues?.length ? { issues } : {}) } };
@@ -102,6 +109,73 @@ productRoutes.post('/', manage, async (c) => {
   if (!created) return c.json(error('No se pudo crear el producto.', 'INTERNAL_ERROR'), 500);
   await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'product.created', resourceType: 'product', resourceId: created.id, metadata: { name: created.name } });
   return c.json(created, 201);
+});
+
+productRoutes.get('/:id/3d', platformOnly, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  return c.json(await getProduct3D(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin));
+});
+
+productRoutes.get('/:id/3d/assets', platformOnly, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  return c.json({ items: await getProduct3DModelAssets(c.env.DB, product.organizationId, new URL(c.req.url).origin) });
+});
+
+productRoutes.patch('/:id/3d', platformOnly, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  if (product.status === 'archived') return c.json(error('Los productos archivados no se pueden editar.', 'PRODUCT_ARCHIVED'), 409);
+  const value = await body(c);
+  if (!value) return c.json(error('El cuerpo de la solicitud no es válido.'), 400);
+  const hasModel = Object.prototype.hasOwnProperty.call(value, 'modelAssetId') || Object.prototype.hasOwnProperty.call(value, 'draftModelAssetId');
+  const hasConfig = Object.prototype.hasOwnProperty.call(value, 'config') || Object.prototype.hasOwnProperty.call(value, 'draftConfig');
+  if (!hasModel && !hasConfig) return c.json(error('No hay cambios 3D para guardar.'), 400);
+  const rawModel = Object.prototype.hasOwnProperty.call(value, 'modelAssetId') ? value.modelAssetId : value.draftModelAssetId;
+  if (hasModel && rawModel !== null && (typeof rawModel !== 'string' || !rawModel.trim())) return c.json(error('El modelo GLB seleccionado no es válido.', 'VALIDATION_ERROR'), 400);
+  const rawConfig = Object.prototype.hasOwnProperty.call(value, 'config') ? value.config : value.draftConfig;
+  if (hasConfig && rawConfig !== null) {
+    const issues = product3DConfigIssues(rawConfig, 'draftConfig');
+    if (issues.length) return c.json(error('Revisá la configuración 3D.', 'VALIDATION_ERROR', issues), 400);
+  }
+  const before = await getProduct3D(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
+  const changes: { draftModelAssetId?: string | null; draftConfig?: Product3DConfig | null } = {};
+  if (hasModel) changes.draftModelAssetId = rawModel as string | null;
+  if (hasConfig) changes.draftConfig = rawConfig as Product3DConfig | null;
+  if (changes.draftModelAssetId) {
+    const asset = await c.env.DB.prepare('SELECT id FROM organization_assets WHERE id=? AND organization_id=? AND category=? AND mime_type=? AND archived_at IS NULL').bind(changes.draftModelAssetId, product.organizationId, 'model-3d', 'model/gltf-binary').first();
+    if (!asset) return c.json(error('Seleccioná un modelo GLB activo de la organización.', 'VALIDATION_ERROR', [{ code: 'PRODUCT_3D_MODEL_INVALID', path: 'draftModelAssetId', message: 'El modelo debe ser un GLB activo de la organización.' }]), 400);
+  }
+  const state = await updateProduct3DDraft(c.env.DB, product.organizationId, product.id, changes, new URL(c.req.url).origin);
+  if (hasModel && before.draftModelAssetId !== state.draftModelAssetId) await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: state.draftModelAssetId ? 'product.3d.model.replaced' : 'product.3d.model.removed', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, configured: Boolean(state.draftModelAssetId) } });
+  if (hasConfig) await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.3d.configuration.updated', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, configured: Boolean(state.draftConfig) } });
+  return c.json(state);
+});
+
+productRoutes.post('/:id/3d/assets', platformOnly, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  if (product.status === 'archived') return c.json(error('Los productos archivados no se pueden editar.', 'PRODUCT_ARCHIVED'), 409);
+  const form = await c.req.parseBody().catch(() => null);
+  const file = form && form.file instanceof File ? form.file : null;
+  if (!file) return c.json(error('Se necesita un archivo GLB.'), 400);
+  const before = await getProduct3D(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
+  const result = await uploadProduct3DModel(c.env.DB, c.env.EXPERIENCE_ASSETS, product.organizationId, c.get('user').id, file, new URL(c.req.url).origin);
+  if (result.error) return c.json(error(result.error.message, result.error.status === 503 ? 'ASSET_STORAGE_UNAVAILABLE' : 'MODEL_VALIDATION_ERROR'), result.error.status);
+  const state = await updateProduct3DDraft(c.env.DB, product.organizationId, product.id, { draftModelAssetId: result.asset!.id }, new URL(c.req.url).origin);
+  await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.3d.model.uploaded', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, replaced: Boolean(before.draftModelAssetId) } });
+  return c.json({ asset: result.asset, state }, 201);
+});
+
+productRoutes.post('/:id/3d/publish', platformOnly, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  if (product.status === 'archived') return c.json(error('Los productos archivados no se pueden publicar.', 'PRODUCT_ARCHIVED'), 409);
+  const result = await publishProduct3D(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
+  if (result.issues.length) return c.json(error('La configuración 3D no está lista para publicar.', 'PUBLISH_NOT_READY', result.issues), 422);
+  await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.3d.published', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, modelConfigured: Boolean(result.state?.publishedModelAssetId) } });
+  return c.json(result.state);
 });
 
 productRoutes.get('/:id', read, async (c) => {

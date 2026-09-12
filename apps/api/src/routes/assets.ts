@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import { recordActivityBestEffort } from '../services/activity';
-import { assetUrl, cleanOriginalFilename, organizationAssetKey, validateImageFile } from '../services/assets';
+import { assetUrl, cleanOriginalFilename, MODEL_ASSET_CATEGORY, organizationAssetKey, validateImageFile } from '../services/assets';
 import type { Env } from '../index';
 
 type Variables = {
@@ -15,6 +15,10 @@ assetRoutes.use('*', requireAuth, requireOrganization);
 
 const CATEGORY = /^[a-z][a-z0-9_-]{0,39}$/;
 const MAX_DISPLAY_NAME = 120;
+
+function isPlatformOperator(platformRole: string) {
+  return platformRole === 'super_admin' || platformRole === 'corsteno_admin';
+}
 
 function error(message: string, code = 'BAD_REQUEST') {
   return { error: { code, message } };
@@ -46,15 +50,18 @@ const assetSelect = 'SELECT id,storage_key storageKey,original_filename original
 
 assetRoutes.get('/', requireOrganizationPermission('assets.read'), async (c) => {
   const organizationId = c.get('organization').id;
+  const platformOperator = isPlatformOperator(c.get('user').platformRole);
   const query = c.req.query();
   const requestedLimit = Number(query.limit);
   const requestedOffset = Number(query.offset);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit || 24, 1), 50) : 24;
   const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset || 0, 0) : 0;
   if (query.category !== undefined && !validCategory(query.category)) return c.json(error('Invalid asset category'), 400);
+  if (query.category === MODEL_ASSET_CATEGORY && !platformOperator) return c.json(error('Los modelos 3D son de uso interno de Corsteno.', 'FORBIDDEN'), 403);
   if (query.search !== undefined && query.search.length > 80) return c.json(error('Search is too long'), 400);
   const values: (string | number)[] = [organizationId];
   let where = 'organization_id=? AND archived_at IS NULL';
+  if (query.category !== MODEL_ASSET_CATEGORY) { where += ' AND category!=?'; values.push(MODEL_ASSET_CATEGORY); }
   if (query.category) { where += ' AND category=?'; values.push(query.category); }
   if (query.search?.trim()) { where += " AND (display_name LIKE ? ESCAPE '\\' OR original_filename LIKE ? ESCAPE '\\')"; const pattern = likePattern(query.search.trim()); values.push(pattern, pattern); }
   const rows = await c.env.DB.prepare(`${assetSelect} WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).bind(...values, limit + 1, offset).all<Record<string, unknown>>();
@@ -69,6 +76,7 @@ assetRoutes.post('/', requireOrganizationPermission('assets.manage'), async (c) 
   if (!file) return c.json(error('A file is required'), 400);
   const category = body && typeof body.category === 'string' && body.category ? body.category : 'image';
   if (!validCategory(category)) return c.json(error('Invalid asset category'), 400);
+  if (category === MODEL_ASSET_CATEGORY) return c.json(error('Los modelos 3D se gestionan desde la configuración interna de producto.', 'FORBIDDEN'), 403);
   const validation = await validateImageFile(file);
   if (!validation.ok) return c.json(error(validation.message), validation.status);
   const rawDisplayName = body && typeof body.display_name === 'string' ? body.display_name : '';
@@ -111,6 +119,8 @@ assetRoutes.delete('/:id', requireOrganizationPermission('assets.manage'), async
   if (!row) return c.json(error('Asset not found', 'NOT_FOUND'), 404);
   const storageKey = String(row.storageKey);
   const reference = await c.env.DB.prepare('SELECT id FROM experiences WHERE organization_id=? AND (draft_config LIKE ? OR published_config LIKE ?) LIMIT 1').bind(organizationId, `%${storageKey}%`, `%${storageKey}%`).first();
+  const product3dReference = await c.env.DB.prepare('SELECT product_id productId,published_model_asset_id publishedModelAssetId FROM product_3d_config WHERE organization_id=? AND (draft_model_asset_id=? OR published_model_asset_id=?) LIMIT 1').bind(organizationId, id, id).first<{ productId: string; publishedModelAssetId: string | null }>();
+  if (product3dReference) return c.json(error('No se puede archivar un modelo 3D referenciado por un producto.', 'ASSET_REFERENCED'), 409);
   await c.env.DB.prepare('UPDATE organization_assets SET archived_at=?,updated_at=? WHERE id=? AND organization_id=? AND archived_at IS NULL').bind(Date.now(), Date.now(), id, organizationId).run();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'asset.archived', resourceType: 'asset', resourceId: id, metadata: { displayName: row.displayName, referenced: Boolean(reference) } });
   return c.json({ id, archived: true, referenced: Boolean(reference) });

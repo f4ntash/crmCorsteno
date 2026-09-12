@@ -9,12 +9,13 @@ type DialogProps = {
   children: ReactNode;
   onClose: () => void;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  className?: string;
 };
 
 const focusable =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Dialog({ open, title, description, children, onClose, initialFocusRef }: DialogProps) {
+export function Dialog({ open, title, description, children, onClose, initialFocusRef, className }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export function Dialog({ open, title, description, children, onClose, initialFoc
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div
         ref={panelRef}
-        className="dialog-panel"
+        className={`dialog-panel${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

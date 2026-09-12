@@ -86,7 +86,7 @@ app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);
-  if (!/^organizations\/[A-Za-z0-9_-]+\/(?:experiences\/[A-Za-z0-9_-]+|assets)\/[0-9a-f-]+\.(png|jpg|jpeg|webp|svg)$/.test(key)) return c.notFound();
+  if (!/^organizations\/[A-Za-z0-9_-]+\/(?:experiences\/[A-Za-z0-9_-]+|assets)\/[0-9a-f-]+\.(png|jpg|jpeg|webp|svg|glb)$/.test(key)) return c.notFound();
   const object = await c.env.EXPERIENCE_ASSETS?.get(key);
   if (!object) return c.notFound();
   const headers = new Headers();

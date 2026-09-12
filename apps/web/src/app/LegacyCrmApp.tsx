@@ -156,7 +156,7 @@ function Shell() {
           <Route path="analytics" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <Analytics org={o} />} />
           <Route path="reports" element={currentPermissions.includes('analytics.read') ? <ReportsPage org={o} /> : <Navigate to="/app" replace />} />
           <Route path="experiences" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
-          <Route path="products" element={isRedemptionOperator || !currentPermissions.includes('crm.read') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} />} />
+          <Route path="products" element={isRedemptionOperator || !currentPermissions.includes('crm.read') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} isPlatformOperator={platformOperator} />} />
           <Route path="experiences/:id" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
           <Route path="commercial" element={platformOperator ? <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
           <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />

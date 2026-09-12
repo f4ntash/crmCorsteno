@@ -75,6 +75,11 @@ export function formatActivity(item: ActivityPresentationItem) {
       if (operation === 'reordered') return `${actor} actualizó el orden de las imágenes de ${name}`;
       return `${actor} actualizó la galería de ${name}`;
     }
+    case 'product.3d.model.uploaded': return `${actor} cargó el modelo 3D de ${name}`;
+    case 'product.3d.model.replaced': return `${actor} reemplazó el modelo 3D de ${name}`;
+    case 'product.3d.model.removed': return `${actor} quitó el modelo 3D de ${name}`;
+    case 'product.3d.configuration.updated': return `${actor} actualizó la configuración 3D de ${name}`;
+    case 'product.3d.published': return `${actor} publicó la configuración 3D de ${name}`;
     case 'catalog.product.reordered': return `${actor} actualizó el orden de los productos`;
     case 'catalog.stock.adjusted': {
       const before = metadataNumber(item.metadata, 'before');
