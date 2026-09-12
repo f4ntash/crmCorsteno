@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import { recordActivityBestEffort } from '../services/activity';
+import { normalizeChannelUrl } from '../services/channel-origins';
+import { channelProduct, getChannelProducts, linkProductToChannel, reorderChannelProducts, unlinkProductFromChannel, updateChannelProduct } from '../services/channel-products';
+import { getOrganizationProduct } from '../services/organization-products';
 import type { Env } from '../index';
 
 export const CHANNEL_TYPES = ['external_site', 'corsteno_site', 'hosted_runtime'] as const;
@@ -23,6 +26,7 @@ type ChannelRow = {
   url: string | null;
   createdAt: number;
   updatedAt: number;
+  publicKey: string | null;
 };
 
 type LinkedExperience = {
@@ -35,7 +39,7 @@ type LinkedExperience = {
   endsAt: string | null;
 };
 
-const channelSelect = `SELECT id,organization_id organizationId,name,type,status,url,created_at createdAt,updated_at updatedAt FROM channels`;
+const channelSelect = `SELECT id,organization_id organizationId,name,type,status,url,public_key publicKey,created_at createdAt,updated_at updatedAt FROM channels`;
 
 export const channelRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 channelRoutes.use('*', requireAuth, requireOrganization);
@@ -57,25 +61,12 @@ function isChannelType(value: unknown): value is ChannelType {
   return typeof value === 'string' && CHANNEL_TYPES.includes(value as ChannelType);
 }
 
-function normalizeUrl(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(trimmed);
-    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password) return null;
-    parsed.hash = '';
-    return parsed.toString().replace(/\/$/, '') || parsed.origin;
-  } catch {
-    return null;
-  }
-}
-
 function parseUrl(value: unknown, required: boolean) {
   if (value === undefined || value === null) {
     return required ? { error: 'Ingresá una URL válida con http:// o https://.' } : { value: null };
   }
   if (typeof value !== 'string') return { error: 'La URL debe ser texto.' };
-  const normalized = normalizeUrl(value);
+  const normalized = normalizeChannelUrl(value);
   if (!normalized && (required || value.trim())) return { error: 'Ingresá una URL válida con http:// o https://.' };
   return { value: normalized };
 }
@@ -90,6 +81,7 @@ function present(row: Record<string, unknown>): ChannelRow {
     url: typeof row.url === 'string' ? row.url : null,
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
+    publicKey: typeof row.publicKey === 'string' ? row.publicKey : null,
   };
 }
 
@@ -101,12 +93,12 @@ async function getDetail(db: D1Database, id: string, organizationId: string) {
   const row = await getChannel(db, id, organizationId);
   if (!row) return null;
   const experiences = await db.prepare(`SELECT e.id,e.name,e.slug,e.type,e.status,e.starts_at startsAt,e.ends_at endsAt FROM experience_channels ec JOIN experiences e ON e.id=ec.experience_id AND e.organization_id=ec.organization_id WHERE ec.channel_id=? AND ec.organization_id=? ORDER BY e.name,e.id`).bind(id, organizationId).all<LinkedExperience>();
-  return { ...present(row), experiences: experiences.results };
+  return { ...present(row), experiences: experiences.results, products: await getChannelProducts(db, id, organizationId) };
 }
 
 channelRoutes.get('/', async (c) => {
   const organizationId = c.get('organization').id;
-  const rows = await c.env.DB.prepare(`SELECT c.id,c.organization_id organizationId,c.name,c.type,c.status,c.url,c.created_at createdAt,c.updated_at updatedAt,COUNT(ec.experience_id) linkedExperienceCount FROM channels c LEFT JOIN experience_channels ec ON ec.channel_id=c.id AND ec.organization_id=c.organization_id WHERE c.organization_id=? GROUP BY c.id,c.organization_id,c.name,c.type,c.status,c.url,c.created_at,c.updated_at ORDER BY CASE WHEN c.status='active' THEN 0 ELSE 1 END,c.name,c.id`).bind(organizationId).all<Record<string, unknown>>();
+  const rows = await c.env.DB.prepare(`SELECT c.id,c.organization_id organizationId,c.name,c.type,c.status,c.url,c.public_key publicKey,c.created_at createdAt,c.updated_at updatedAt,COUNT(ec.experience_id) linkedExperienceCount FROM channels c LEFT JOIN experience_channels ec ON ec.channel_id=c.id AND ec.organization_id=c.organization_id WHERE c.organization_id=? GROUP BY c.id,c.organization_id,c.name,c.type,c.status,c.url,c.public_key,c.created_at,c.updated_at ORDER BY CASE WHEN c.status='active' THEN 0 ELSE 1 END,c.name,c.id`).bind(organizationId).all<Record<string, unknown>>();
   return c.json(rows.results.map((row) => ({ ...present(row), linkedExperienceCount: Number(row.linkedExperienceCount ?? 0) })));
 });
 
@@ -122,8 +114,12 @@ channelRoutes.post('/', async (c) => {
   if (parsedUrl.error) return bad(parsedUrl.error);
   const now = Date.now();
   const id = crypto.randomUUID();
+  const publicKey = `site_${crypto.randomUUID().replaceAll('-', '')}`;
   try {
-    await c.env.DB.prepare('INSERT INTO channels (id,organization_id,name,type,status,url,created_at,updated_at) VALUES (?,?,?,? ,\'active\',?,?,?)').bind(id, organizationId, name, type, parsedUrl.value, now, now).run();
+    const insert = c.env.DB.prepare('INSERT INTO channels (id,organization_id,name,type,status,url,created_at,updated_at) VALUES (?,?,?,? ,\'active\',?,?,?)').bind(id, organizationId, name, type, parsedUrl.value, now, now);
+    const keyUpdate = c.env.DB.prepare('UPDATE channels SET public_key=? WHERE id=? AND organization_id=?').bind(publicKey, id, organizationId);
+    if (typeof c.env.DB.batch === 'function') await c.env.DB.batch([insert, keyUpdate]);
+    else { await insert.run(); await keyUpdate.run(); }
   } catch (error) {
     if (String(error).toLowerCase().includes('unique')) return c.json({ error: { code: 'CHANNEL_NAME_CONFLICT', message: 'Ya existe un sitio o canal con ese nombre en esta organización.' } }, 409);
     throw error;
@@ -203,4 +199,66 @@ channelRoutes.delete('/:id/experiences/:experienceId', async (c) => {
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.experience.unlinked', resourceType: 'channel', resourceId: channelId, metadata: { channelName: channel.name, experienceName: experience.name } });
   const detail = await getDetail(c.env.DB, channelId, organizationId);
   return c.json(detail);
+});
+
+channelRoutes.get('/:id/products', async (c) => {
+  const channel = await getChannel(c.env.DB, c.req.param('id'), c.get('organization').id);
+  if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
+  return c.json(await getChannelProducts(c.env.DB, c.req.param('id'), c.get('organization').id));
+});
+
+channelRoutes.post('/:id/products/reorder', async (c) => {
+  const organizationId = c.get('organization').id;
+  const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
+  if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
+  const channelId = String(channel.id);
+  const body = await c.req.json().catch(() => ({} as unknown)) as { productIds?: unknown };
+  if (!Array.isArray(body.productIds) || body.productIds.some((id) => typeof id !== 'string')) return bad('Elegí un orden válido de productos.');
+  const products = await getChannelProducts(c.env.DB, channelId, organizationId);
+  const currentIds = products.draft.map((product) => product.id);
+  const productIds = body.productIds as string[];
+  if (productIds.length !== currentIds.length || new Set(productIds).size !== productIds.length || productIds.some((id) => !currentIds.includes(id))) return bad('El orden debe incluir los productos conectados.');
+  await reorderChannelProducts(c.env.DB, channelId, organizationId, productIds);
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.products.reordered', resourceType: 'channel', resourceId: channelId, metadata: { channelName: String(channel.name) } });
+  return c.json(await getDetail(c.env.DB, channelId, organizationId));
+});
+
+channelRoutes.post('/:id/products', async (c) => {
+  const organizationId = c.get('organization').id;
+  const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
+  if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
+  const channelId = String(channel.id);
+  const body = await c.req.json().catch(() => ({} as unknown)) as { productId?: unknown; visible?: unknown };
+  if (typeof body.productId !== 'string' || !body.productId.trim()) return bad('Elegí un producto válido.');
+  const product = await getOrganizationProduct(c.env.DB, organizationId, body.productId.trim(), '');
+  if (!product || product.status !== 'active') return c.json({ error: { code: 'NOT_FOUND', message: 'El producto no pertenece a esta organización o está archivado.' } }, 404);
+  const linked = await linkProductToChannel(c.env.DB, channelId, organizationId, product.id, body.visible !== false);
+  if (!linked) return c.json({ error: { code: 'PRODUCT_LINK_FAILED', message: 'No se pudo conectar el producto.' } }, 409);
+  if (linked.id) await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.product.linked', resourceType: 'channel', resourceId: channelId, metadata: { channelName: String(channel.name), productName: product.name } });
+  return c.json(await getDetail(c.env.DB, channelId, organizationId));
+});
+
+channelRoutes.patch('/:id/products/:productId', async (c) => {
+  const organizationId = c.get('organization').id;
+  const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
+  if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
+  const channelId = String(channel.id);
+  const body = await c.req.json().catch(() => ({} as unknown)) as { visible?: unknown };
+  if (typeof body.visible !== 'boolean') return bad('La visibilidad del producto no es válida.');
+  const existing = await channelProduct(c.env.DB, channelId, organizationId, c.req.param('productId'));
+  if (!existing) return c.json({ error: { code: 'NOT_FOUND', message: 'El producto no está conectado a este sitio.' } }, 404);
+  await updateChannelProduct(c.env.DB, channelId, organizationId, c.req.param('productId'), body.visible);
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.product.visibility_changed', resourceType: 'channel', resourceId: channelId, metadata: { channelName: String(channel.name), productName: existing.name, visible: body.visible } });
+  return c.json(await getDetail(c.env.DB, channelId, organizationId));
+});
+
+channelRoutes.delete('/:id/products/:productId', async (c) => {
+  const organizationId = c.get('organization').id;
+  const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
+  if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
+  const channelId = String(channel.id);
+  const existing = await channelProduct(c.env.DB, channelId, organizationId, c.req.param('productId'));
+  if (!existing || !await unlinkProductFromChannel(c.env.DB, channelId, organizationId, c.req.param('productId'))) return c.json({ error: { code: 'NOT_FOUND', message: 'El producto no está conectado a este sitio.' } }, 404);
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.product.unlinked', resourceType: 'channel', resourceId: channelId, metadata: { channelName: String(channel.name), productName: existing.name } });
+  return c.json(await getDetail(c.env.DB, channelId, organizationId));
 });

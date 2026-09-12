@@ -515,6 +515,7 @@ export const channels = sqliteTable(
     type: text('type').notNull(),
     status: text('status').notNull().default('active'),
     url: text('url'),
+    publicKey: text('public_key').notNull(),
     ...timestamps,
   },
   (t) => [
@@ -556,4 +557,30 @@ export const channelContent = sqliteTable(
     ...timestamps,
   },
   (t) => [index('channel_content_organization').on(t.organizationId, t.updatedAt)],
+);
+export const channelProducts = sqliteTable(
+  'channel_products',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    channelId: text('channel_id').notNull().references(() => channels.id),
+    productId: text('product_id').notNull().references(() => products.id),
+    sortOrder: integer('sort_order').notNull().default(0),
+    visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('channel_products_channel_product').on(t.channelId, t.productId), index('channel_products_channel_order').on(t.channelId, t.organizationId, t.sortOrder, t.id)],
+);
+export const channelPublishedProducts = sqliteTable(
+  'channel_published_products',
+  {
+    id: id(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    channelId: text('channel_id').notNull().references(() => channels.id),
+    productId: text('product_id').notNull().references(() => products.id),
+    sortOrder: integer('sort_order').notNull().default(0),
+    visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('channel_published_products_channel_product').on(t.channelId, t.productId), index('channel_published_products_channel_order').on(t.channelId, t.organizationId, t.sortOrder, t.id)],
 );

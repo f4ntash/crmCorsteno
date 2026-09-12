@@ -79,6 +79,8 @@ export function SiteContentEditor({ org, channel, content, canEdit, canManageAss
 
   const sections = useMemo<ConfigSectionDefinition[]>(() => content.profile?.sections.map((section) => ({ ...section, fields: section.fields })) ?? [], [content.profile]);
   const draft = toContent(values);
+  const hasUnpublishedStructure = Boolean(channel.products?.hasUnpublishedChanges);
+  const hasPendingChanges = content.hasUnpublishedChanges || hasUnpublishedStructure;
 
   async function save() {
     if (saving || !canEdit) return false;
@@ -125,7 +127,7 @@ export function SiteContentEditor({ org, channel, content, canEdit, canManageAss
   return <div className="site-content-editor">
     <div className="site-content-status-row">
       <div><strong>{content.profile?.name}</strong><small>{content.profile?.description}</small></div>
-      <span className={`content-state ${content.hasUnpublishedChanges || dirty ? 'content-state-pending' : 'content-state-ready'}`}>{statusLabel(content, dirty)}</span>
+      <span className={`content-state ${hasPendingChanges || dirty ? 'content-state-pending' : 'content-state-ready'}`}>{dirty ? statusLabel(content, dirty) : hasPendingChanges ? 'Hay cambios sin publicar' : statusLabel(content, dirty)}</span>
     </div>
     <div className="site-content-preview" aria-label="Vista previa del contenido">
       <div className="site-content-preview-copy">
@@ -150,7 +152,7 @@ export function SiteContentEditor({ org, channel, content, canEdit, canManageAss
       saveError={error}
       assetContext={{ org, canUpload: canManageAssets }}
       onDirtyChange={setDirty}
-      secondaryAction={<div className="site-content-publish-action"><span>{content.publishedAt ? `Última publicación: ${new Date(content.publishedAt).toLocaleDateString('es-AR')}` : 'Todavía no hay una versión publicada.'}</span>{canEdit && <button type="button" className="button button-secondary" disabled={publishing || saving || dirty || !content.hasUnpublishedChanges} onClick={() => void publish()}>{publishing ? 'Publicando…' : content.publishedContent ? 'Publicar cambios' : 'Publicar contenido'}</button>}</div>}
+      secondaryAction={<div className="site-content-publish-action"><span>{content.publishedAt ? `Última publicación: ${new Date(content.publishedAt).toLocaleDateString('es-AR')}` : 'Todavía no hay una versión publicada.'}</span>{canEdit && <button type="button" className="button button-secondary" disabled={publishing || saving || dirty || !hasPendingChanges} onClick={() => void publish()}>{publishing ? 'Publicando…' : content.publishedContent ? 'Publicar cambios' : 'Publicar contenido'}</button>}</div>}
     />
     {!canEdit && <p className="field-help">Tu acceso permite consultar este contenido, pero no modificarlo.</p>}
   </div>;

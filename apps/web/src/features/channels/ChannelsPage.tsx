@@ -81,7 +81,7 @@ export function ChannelsPage({ org, canManage }: { org: string; canManage: boole
   return (
     <main className="page channels-page">
       <div className="page-heading">
-        <div><p className="eyebrow">ESPACIO DE TRABAJO / ENTREGA</p><h1>Sitios y canales</h1><p className="page-description">Registrá los destinos donde se pueden consumir tus experiencias. Las integraciones externas se conectarán en una próxima etapa.</p></div>
+        <div><p className="eyebrow">ESPACIO DE TRABAJO / ENTREGA</p><h1>Sitios y canales</h1><p className="page-description">Registrá los destinos donde se pueden consumir tus experiencias y contenido publicado.</p></div>
         {canManage && <button type="button" onClick={openCreate}>Nuevo sitio/canal</button>}
       </div>
       {loading ? <p className="loading-state"><span className="loading-mark" />Cargando sitios y canales…</p> : error ? <div className="empty"><h2>{error}</h2><button type="button" className="button button-secondary" onClick={() => void load()}>Reintentar</button></div> : items.length === 0 ? <div className="empty"><h2>No hay sitios o canales registrados.</h2><p>Agregá un destino para organizar dónde se entregan tus experiencias.</p>{canManage && <button type="button" onClick={openCreate}>Registrar primer sitio/canal</button>}</div> : (

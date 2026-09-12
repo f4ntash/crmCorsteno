@@ -20,9 +20,13 @@ export type Channel = {
   url: string | null;
   createdAt: number;
   updatedAt: number;
+  publicKey: string | null;
   linkedExperienceCount?: number;
   experiences?: ChannelExperience[];
+  products?: ChannelProductsState;
 };
+export type ChannelProduct = { id: string; productKey: string; name: string; status: 'active' | 'archived'; published: boolean; visible: boolean; sortOrder: number };
+export type ChannelProductsState = { draft: ChannelProduct[]; published: ChannelProduct[]; hasUnpublishedChanges: boolean };
 
 export type SiteContentFieldDefinition = {
   key: string;
@@ -76,6 +80,10 @@ export const channelsApi = {
   update: (id: string, organizationId: string, body: { name?: string; status?: ChannelStatus; url?: string | null }) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   linkExperience: (id: string, organizationId: string, experienceId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/experiences`, organizationId, { method: 'POST', body: JSON.stringify({ experienceId }) }),
   unlinkExperience: (id: string, organizationId: string, experienceId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/experiences/${encodeURIComponent(experienceId)}`, organizationId, { method: 'DELETE' }),
+  addProduct: (id: string, organizationId: string, productId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/products`, organizationId, { method: 'POST', body: JSON.stringify({ productId }) }),
+  removeProduct: (id: string, organizationId: string, productId: string) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/products/${encodeURIComponent(productId)}`, organizationId, { method: 'DELETE' }),
+  updateProduct: (id: string, organizationId: string, productId: string, visible: boolean) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/products/${encodeURIComponent(productId)}`, organizationId, { method: 'PATCH', body: JSON.stringify({ visible }) }),
+  reorderProducts: (id: string, organizationId: string, productIds: string[]) => apiRequest<Channel>(`/channels/${encodeURIComponent(id)}/products/reorder`, organizationId, { method: 'POST', body: JSON.stringify({ productIds }) }),
   getContent: (id: string, organizationId: string) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content`, organizationId),
   assignContentProfile: (id: string, organizationId: string, profileKey: string) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content-profile`, organizationId, { method: 'PUT', body: JSON.stringify({ profileKey }) }),
   saveContent: (id: string, organizationId: string, content: SiteContent) => apiRequest<ChannelContent>(`/channels/${encodeURIComponent(id)}/content`, organizationId, { method: 'PATCH', body: JSON.stringify({ content }) }),

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import { recordActivityBestEffort } from '../services/activity';
+import { channelProductPublishStatements } from '../services/channel-products';
 import { defaultSiteContent, SITE_CONTENT_PROFILE, SITE_CONTENT_PROFILE_KEY, SITE_CONTENT_PROFILE_VERSION, validateSiteContent, type SiteContent } from '../services/site-content';
 import type { Env } from '../index';
 
@@ -115,7 +116,10 @@ channelContentRoutes.post('/:id/content/publish', requireOrganizationPermission(
   const validation = await validateSiteContent(c.env.DB, organizationId, new URL(c.req.url).origin, draft);
   if (!validation.ok) return errorResponse('El contenido tiene campos inválidos.', 'INVALID_CONTENT', 422, validation.issues);
   const now = Date.now();
-  await c.env.DB.prepare('UPDATE channel_content SET published_content=?,published_at=?,updated_at=? WHERE channel_id=? AND organization_id=?').bind(JSON.stringify(validation.value), now, now, channel.id, organizationId).run();
+  const contentStatement = c.env.DB.prepare('UPDATE channel_content SET published_content=?,published_at=?,updated_at=? WHERE channel_id=? AND organization_id=?').bind(JSON.stringify(validation.value), now, now, channel.id, organizationId);
+  const productStatements = await channelProductPublishStatements(c.env.DB, channel.id, organizationId, now);
+  if (productStatements.length && typeof c.env.DB.batch === 'function') await c.env.DB.batch([contentStatement, ...productStatements]);
+  else await contentStatement.run();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'channel.content.published', resourceType: 'channel', resourceId: channel.id, metadata: { channelName: channel.name, profile: SITE_CONTENT_PROFILE.name } });
   return c.json(responseBody(channel, await getContent(c.env.DB, channel.id, organizationId)));
 });

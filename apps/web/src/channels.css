@@ -27,3 +27,16 @@
 .channel-empty h3 { margin: 0 0 5px; }
 @media (max-width: 900px) { .channel-list-head { display: none; } .channel-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; } .channel-row > .channel-type, .channel-row > .channel-count { grid-column: 1; } .channel-row > .channel-type { grid-row: 2; } .channel-row > .status { grid-column: 2; grid-row: 2; justify-self: end; } .channel-row > .channel-count { grid-row: 3; } .channel-row > .channel-open { grid-column: 2; grid-row: 1 / span 3; } .channel-detail-grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .channel-row { padding-inline: 0; } .channel-row-name strong { font-size: 14px; } .channel-row > .channel-open { align-self: center; } .channel-detail-heading { align-items: flex-start; flex-direction: column; } .channel-detail-heading > button { width: 100%; } .linked-experience-row { align-items: flex-start; flex-direction: column; } .linked-experience-row button { align-self: flex-start; } }
+.channel-integration-card, .channel-products-card { margin-top: 16px; }
+.channel-integration-card p { max-width: 720px; }
+.channel-key-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.channel-key-row code { flex: 1; min-width: 0; overflow: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface-muted); font-size: 13px; }
+.channel-product-list { margin-top: 16px; border-top: 1px solid var(--border); }
+.channel-product-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.channel-product-row.is-hidden { opacity: .65; }
+.channel-product-row strong, .channel-product-row small { display: block; }
+.channel-product-row small { margin-top: 4px; color: var(--muted); }
+.channel-product-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.channel-product-actions .button-quiet { padding-inline: 7px; }
+.channel-products-publish-note { margin: 14px 0 0; color: var(--accent-strong); font-size: 13px; }
+@media (max-width: 600px) { .channel-key-row { align-items: stretch; flex-direction: column; } .channel-product-row { align-items: flex-start; flex-direction: column; } .channel-product-actions { justify-content: flex-start; width: 100%; } }
