@@ -20,6 +20,9 @@ import { catalogRoutes } from './routes/catalog';
 import { channelRoutes } from './routes/channels';
 import { channelContentRoutes } from './routes/channel-content';
 import { productRoutes } from './routes/products';
+import { publicSiteRoutes } from './routes/public-sites';
+import { channelOrigin } from './services/channel-origins';
+import { findPublicSite } from './services/public-site';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -55,16 +58,26 @@ app.use('*', async (c, next) => {
     .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean) ?? [];
-  const allowedOrigins =
+  const configuredPublicOrigins = c.env.PUBLIC_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+  const publicSiteMatch = c.req.path.match(/^\/public\/v1\/sites\/([^/]+)(?:\/|$)/);
+  let allowedOrigins =
     c.env.ENVIRONMENT === 'development'
-      ? [...new Set([...developmentOrigins, ...configuredOrigins, ...(c.env.PUBLIC_ORIGINS?.split(',') ?? [])])]
+      ? [...new Set([...developmentOrigins, ...configuredOrigins, ...configuredPublicOrigins])]
       : c.req.path.startsWith('/public/')
-        ? [...configuredOrigins, ...(c.env.PUBLIC_ORIGINS?.split(',') ?? [])]
+        ? [...configuredOrigins, ...configuredPublicOrigins]
         : configuredOrigins;
+  const publicApiRequest = Boolean(publicSiteMatch);
+  if (publicApiRequest) {
+    let key = publicSiteMatch?.[1] ?? '';
+    try { key = decodeURIComponent(key); } catch { key = ''; }
+    const site = await findPublicSite(c.env.DB, key);
+    const registeredOrigin = channelOrigin(site?.url);
+    allowedOrigins = [...new Set([...allowedOrigins, ...(registeredOrigin ? [registeredOrigin] : [])])];
+  }
   return cors({
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
-    credentials: true,
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: !publicApiRequest,
+    allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id'],
   })(c, next);
 });
@@ -82,6 +95,7 @@ app.route('/channels', channelRoutes);
 app.route('/channels', channelContentRoutes);
 app.route('/public', publicExperienceRoutes);
 app.route('/public', roulettePublicExperienceRoutes);
+app.route('/public', publicSiteRoutes);
 app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
