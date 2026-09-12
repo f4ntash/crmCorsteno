@@ -8,6 +8,7 @@ import { buildRouletteOutcomes, secureRandomValue, selectLocalAcceptanceOutcome,
 import { generateClaimCode } from '../services/prize-claims';
 import { getExperienceEntitlements, subscriptionHasFeature } from '../services/commercial-entitlements';
 import { ensureExperienceAnalyticsApplication } from '../services/experience-analytics';
+import { hasActiveHostedChannel } from '../services/hosted-delivery';
 
 export const roulettePublicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
@@ -74,6 +75,7 @@ roulettePublicExperienceRoutes.post('/experiences/:slug/spin', async (c) => {
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
   if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
+  if (!await hasActiveHostedChannel(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
   const entitlements = await getExperienceEntitlements(c.env.DB, row.id, row.organization_id);
   if (row.type !== 'roulette') return c.json({ active: false, reason: 'unavailable' }, 503);
   let config: DraftConfig | null;
@@ -151,6 +153,7 @@ roulettePublicExperienceRoutes.post('/experiences/:slug/events', async (c) => {
   const row = await c.env.DB.prepare('SELECT id,organization_id,name,type,starts_at,ends_at FROM experiences WHERE slug=? AND status=\'published\'').bind(c.req.param('slug')).first<{ id: string; organization_id: string; name: string; type: string; starts_at: string | null; ends_at: string | null }>();
   if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   if (getEffectiveExperienceStatus('published', row.starts_at, row.ends_at) !== 'active' || !await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  if (!await hasActiveHostedChannel(c.env.DB, row.id, row.organization_id)) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   const body = await c.req.json().catch(() => ({} as { event?: string; userId?: string; sessionId?: string; properties?: Record<string, unknown> }));
   const event = body.event as AnalyticsEvent;
   if (!['experience_view', 'roulette_spin_click', 'roulette_spin_started', 'roulette_spin_completed', 'roulette_result_cta_click', 'roulette_ar_open_click', 'roulette_ar_session_started', 'roulette_ar_placed', 'roulette_ar_session_ended'].includes(event)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid experience event' } }, 400);

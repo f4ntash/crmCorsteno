@@ -4,6 +4,7 @@ import { getEffectiveExperienceStatus } from '../services/experience-status';
 import { hasCommercialAccess } from '../services/public-experience-access';
 import { getExperienceEntitlements } from '../services/commercial-entitlements';
 import { resolvePublicExperienceAdapter } from '../services/public-experience-types';
+import { hasActiveHostedChannel } from '../services/hosted-delivery';
 
 export const publicExperienceRoutes = new Hono<{ Bindings: Env }>();
 
@@ -27,6 +28,7 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   const effectiveStatus = getEffectiveExperienceStatus(row.status as 'draft' | 'published' | 'paused', row.starts_at, row.ends_at);
   if (row.status !== 'published' || effectiveStatus !== 'active') return c.json({ active: false, reason: effectiveStatus });
   if (!await hasCommercialAccess(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
+  if (!await hasActiveHostedChannel(c.env.DB, row.id, row.organization_id)) return c.json({ active: false, reason: 'unavailable' });
 
   const adapter = resolvePublicExperienceAdapter(row.type);
   if (!adapter) return c.json({ active: false, reason: 'unavailable' }, 503);

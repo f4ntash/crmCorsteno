@@ -11,7 +11,7 @@ const channelStatusLabels: Record<Channel['status'], string> = {
 };
 
 function channelLocation(channel: Channel) {
-  if (channel.type === 'hosted_runtime') return 'Entrega pública de Corsteno';
+  if (channel.type === 'hosted_runtime') return 'Entrega pública opcional de Corsteno';
   return channel.url ?? 'Sin dominio registrado';
 }
 
@@ -102,7 +102,7 @@ export function ChannelsPage({ org, canManage }: { org: string; canManage: boole
           <fieldset>
             <legend>Tipo de destino</legend>
             <div className="channel-type-options">
-              {(Object.entries(channelTypeLabels) as Array<[ChannelType, string]>).map(([value, label]) => <label className="template-option" key={value}><input type="radio" name="channel-type" checked={form.type === value} onChange={() => setForm({ ...form, type: value, url: value === 'hosted_runtime' ? '' : form.url })} /><span><strong>{label}</strong><small>{value === 'external_site' ? 'Una web que ya existe y donde luego se podrá integrar contenido.' : value === 'corsteno_site' ? 'Un sitio que Corsteno podrá construir en una etapa posterior.' : 'El enlace público alojado por Corsteno para esta organización.'}</small></span></label>)}
+              {(Object.entries(channelTypeLabels) as Array<[ChannelType, string]>).map(([value, label]) => <label className="template-option" key={value}><input type="radio" name="channel-type" checked={form.type === value} onChange={() => setForm({ ...form, type: value, url: value === 'hosted_runtime' ? '' : form.url })} /><span><strong>{label}</strong><small>{value === 'external_site' ? 'Una web que ya existe y donde luego se podrá integrar contenido.' : value === 'corsteno_site' ? 'Un sitio que Corsteno podrá construir en una etapa posterior.' : 'Un canal opcional para alojar experiencias públicas por Corsteno.'}</small></span></label>)}
             </div>
           </fieldset>
           {form.type !== 'hosted_runtime' && <label>{form.type === 'external_site' ? 'URL del sitio' : 'Dominio previsto (opcional)'}<input type="url" value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} placeholder="https://lumbrenorte.com.ar" maxLength={2048} /><small className="field-help">Solo se aceptan direcciones http:// o https://. No verificamos que el sitio esté online.</small></label>}

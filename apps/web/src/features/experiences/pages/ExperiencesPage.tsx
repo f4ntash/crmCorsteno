@@ -50,7 +50,8 @@ export function ExperiencesPage({
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState(''),
     [templateId, setTemplateId] = useState<string | null>(null),
-    [type, setType] = useState<'roulette' | 'product-catalog'>('roulette');
+    [type, setType] = useState<'roulette' | 'product-catalog'>('roulette'),
+    [delivery, setDelivery] = useState<'none' | 'hosted'>('none');
   const load = () => {
     if (!org) return;
     setLoading(true);
@@ -80,6 +81,7 @@ export function ExperiencesPage({
         body: JSON.stringify({
           name: name.trim(),
           type,
+          delivery,
           ...(templateId ? { template_id: templateId } : {}),
         }),
       });
@@ -87,6 +89,7 @@ export function ExperiencesPage({
       setName('');
       setTemplateId(null);
       setType('roulette');
+      setDelivery('none');
       navigate(`/app/experiences/${created.id}`);
     } catch (err) {
       setSaveError((err as Error).message);
@@ -183,8 +186,15 @@ export function ExperiencesPage({
                   <label className="template-option"><input type="radio" name="template" checked={templateId === null} onChange={() => setTemplateId(null)} /><span><strong>Desde cero</strong><small>Usá la configuración inicial del tipo de experiencia.</small></span></label>
                   {templates.filter((template) => template.type === type).map((template) => <label className="template-option" key={template.id}><input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} /><span><strong>{template.name}</strong><small>{template.description}</small></span></label>)}
                 </div> : <p className="template-empty">No pudimos cargar las opciones iniciales. Podés empezar desde cero.</p>}
-              </fieldset>
-              {saveError && <p className="error">{saveError}</p>}
+               </fieldset>
+               <fieldset>
+                 <legend>Canal de publicación</legend>
+                 <div className="template-options">
+                   <label className="template-option"><input type="radio" name="experience-delivery" checked={delivery === 'none'} onChange={() => setDelivery('none')} /><span><strong>Sin canal por ahora</strong><small>Prepará la experiencia y conectala más adelante.</small></span></label>
+                   <label className="template-option"><input type="radio" name="experience-delivery" checked={delivery === 'hosted'} onChange={() => setDelivery('hosted')} /><span><strong>Alojada por Corsteno</strong><small>Usá el enlace público administrado por Corsteno. La experiencia seguirá como borrador.</small></span></label>
+                 </div>
+               </fieldset>
+               {saveError && <p className="error">{saveError}</p>}
               <div className="dialog-actions">
                 <button
                   type="button"

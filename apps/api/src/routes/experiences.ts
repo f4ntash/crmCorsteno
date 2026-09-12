@@ -12,6 +12,7 @@ import { validateImageFile } from '../services/assets';
 import { ensureExperienceAnalyticsApplication } from '../services/experience-analytics';
 import { cloneCatalogProducts, publishCatalogSnapshot, PRODUCT_CATALOG_TYPE } from '../services/product-catalog';
 import { createExperienceTemplateDraft, listExperienceTemplates, resolveExperienceTemplate } from '../services/experience-templates';
+import { ensureOrganizationHostedChannel } from '../services/hosted-delivery';
 export { sanitizeSvg } from '../services/assets';
 export { normalizeParticipationConfig, normalizePrizeConfig, validDraftConfig, validAssetUrl, validateRoulettePublishReadiness } from '../services/roulette-config';
 export type { DraftConfig, ParticipationConfig, PrizeConfig, PublishReadinessIssue } from '../services/roulette-config';
@@ -427,6 +428,8 @@ experienceRoutes.post('/', async (c) => {
   if ((startsAt && Number.isNaN(new Date(startsAt).getTime())) || (endsAt && Number.isNaN(new Date(endsAt).getTime()))) return c.json(bad('Invalid date'), 400);
   const templateId = body.template_id;
   if (templateId !== undefined && templateId !== null && typeof templateId !== 'string') return c.json(bad('template_id must be a string'), 400);
+  const delivery = body.delivery === undefined ? 'none' : body.delivery;
+  if (delivery !== 'none' && delivery !== 'hosted') return c.json(bad('Elegí una opción de entrega válida.'), 400);
   let draftConfig: string;
   try {
     const template = templateId === undefined || templateId === null ? null : resolveExperienceTemplate(type, templateId);
@@ -449,11 +452,20 @@ experienceRoutes.post('/', async (c) => {
   }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
-  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
-    .bind(id, c.get('organization').id, name, slug, type, 1, draftConfig, startsAt ?? null, endsAt ?? null).run();
-  await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId: c.get('organization').id, experienceType: type, name });
-  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, c.get('organization').id).first<Record<string, unknown>>();
-  await recordActivityBestEffort(c.env.DB, { organizationId: c.get('organization').id, actorUserId: c.get('user').id }, { action: 'experience.created', resourceType: 'experience', resourceId: id, metadata: { name, type } });
+  const organizationId = c.get('organization').id;
+  const hostedChannel = delivery === 'hosted' ? await ensureOrganizationHostedChannel(c.env.DB, organizationId) : null;
+  const experienceInsert = c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
+    .bind(id, organizationId, name, slug, type, 1, draftConfig, startsAt ?? null, endsAt ?? null);
+  if (hostedChannel) {
+    const channelLink = c.env.DB.prepare('INSERT INTO experience_channels (id,organization_id,experience_id,channel_id,created_at) VALUES (?,?,?,?,?)')
+      .bind(crypto.randomUUID(), organizationId, id, hostedChannel.id, Date.now());
+    await c.env.DB.batch([experienceInsert, channelLink]);
+  } else {
+    await experienceInsert.run();
+  }
+  await ensureExperienceAnalyticsApplication({ db: c.env.DB, experienceId: id, organizationId, experienceType: type, name });
+  const row = await c.env.DB.prepare(`${select} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
+  await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'experience.created', resourceType: 'experience', resourceId: id, metadata: { name, type } });
   return c.json(present(row ?? {}), 201);
 });
 

@@ -77,6 +77,7 @@
 .workspace-channel-list strong, .workspace-channel-list span { min-width: 0; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-channel-list small { min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-channel-list .workspace-link { color: var(--accent-strong); font-size: 11px; }
+.workspace-channel-action { display: inline-block; margin-top: 14px; }
 .workspace-link { color: var(--accent-strong); font-size: 13px; font-weight: 600; }
 .publish-control { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
 .publish-control > span { color: var(--text); font-size: 15px; font-weight: 650; }

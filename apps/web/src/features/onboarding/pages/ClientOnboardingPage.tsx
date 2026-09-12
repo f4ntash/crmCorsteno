@@ -27,6 +27,7 @@ export function ClientOnboardingPage() {
     [templateId, setTemplateId] = useState(''),
     [experienceName, setExperienceName] = useState(''),
     [segmentCount, setSegmentCount] = useState(6),
+    [delivery, setDelivery] = useState<'none' | 'hosted'>('none'),
     [plans, setPlans] = useState<Plan[]>([]),
     [org, setOrg] = useState<{ id: string; name: string }>(),
     [created, setCreated] = useState<Created>(),
@@ -98,6 +99,7 @@ export function ClientOnboardingPage() {
       const experience = (await experiencesApi.create(org.id, {
         name: experienceName.trim(),
         type: 'roulette',
+        delivery,
         ...(templateId ? { template_id: templateId, segment_count: segmentCount } : {}),
       })) as { id: string; slug: string };
       setCreated({
@@ -326,6 +328,14 @@ export function ClientOnboardingPage() {
                   ))}
                 </select>
               </label>
+              <label>
+                Canal de publicación
+                <select value={delivery} onChange={(e) => setDelivery(e.target.value as 'none' | 'hosted')}>
+                  <option value="none">Sin canal por ahora</option>
+                  <option value="hosted">Alojada por Corsteno</option>
+                </select>
+                <small className="field-help">La experiencia se crea como borrador. Podés conectarla después.</small>
+              </label>
             </div>
             <div className="onboarding-actions">
               <button
@@ -385,18 +395,12 @@ export function ClientOnboardingPage() {
         {step === 6 && created && (
           <>
             <header className="onboarding-card-heading">
-              <h2>6. QR listo</h2>
-              <p className="onboarding-url">{publicUrl}</p>
+              <h2>{delivery === 'hosted' ? '6. QR listo' : '6. Experiencia creada'}</h2>
+              {delivery === 'hosted' ? <p className="onboarding-url">{publicUrl}</p> : <p className="onboarding-support">La experiencia quedó publicada sin canal de publicación. Conectá un canal alojado desde su espacio cuando quieras.</p>}
             </header>
             <div className="onboarding-actions">
-              <a
-                className="button"
-                href={publicUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Abrir experiencia →
-              </a>
+              {delivery === 'hosted' && <a className="button" href={publicUrl} target="_blank" rel="noreferrer">Abrir experiencia →</a>}
+              {delivery !== 'hosted' && <button className="button" onClick={() => navigate(`/app/experiences/${created.experienceId}`)}>Abrir espacio →</button>}
             </div>
           </>
         )}
