@@ -20,7 +20,8 @@
     "analytics:demo": "tsx scripts/generate-demo-events.ts",
     "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",
     "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
-    "credentials:create-production": "tsx scripts/create-production-credential.ts"
+    "credentials:create-production": "tsx scripts/create-production-credential.ts",
+    "create:site": "tsx packages/site-generator/src/cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
