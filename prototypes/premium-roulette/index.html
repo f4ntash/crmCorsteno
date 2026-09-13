@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#100b07" />
+    <title>Corsteno · Roulette</title>
+  </head>
+  <body>
+    <main id="app" class="game-shell">
+      <div class="environment-layers" aria-hidden="true">
+        <img class="foliage-layer foliage-mid foliage-mid-left" src="/foliage-right-foreground.png" alt="" />
+        <img class="foliage-layer foliage-mid foliage-mid-right" src="/foliage-right-foreground.png" alt="" />
+      </div>
+
+      <div class="cinematic-haze" aria-hidden="true"></div>
+      <div class="dust-field" aria-hidden="true"></div>
+
+      <header class="brand" aria-label="Corsteno">
+        <span class="brand-name">Corsteno</span>
+        <span class="brand-subtitle">Experiencias interactivas</span>
+      </header>
+
+      <section class="game-stage" aria-label="Experiencia roulette visual">
+        <div class="roulette-scene">
+          <img class="roulette-layer roulette-shadow" src="/roulette-shadow.png" alt="" aria-hidden="true" />
+          <img class="roulette-layer roulette-base" src="/roulette-base.png" alt="" aria-hidden="true" />
+
+          <div class="roulette-object">
+            <div class="wheel-face" role="img" aria-label="Ruleta de seis segmentos con premios">
+              <div class="face-surface" aria-hidden="true"></div>
+              <div class="prize-list" aria-hidden="true">
+                <span class="prize prize--gift"><span class="prize-icon">✣</span><span class="prize-label">Regalo</span></span>
+                <span class="prize prize--percent"><span class="prize-icon">%</span><span class="prize-label">Descuento</span></span>
+                <span class="prize prize--coffee"><span class="prize-icon">☕︎</span><span class="prize-label">Café</span></span>
+                <span class="prize prize--star"><span class="prize-icon">★</span><span class="prize-label">Sorpresa</span></span>
+                <span class="prize prize--airplane"><span class="prize-icon">✈︎</span><span class="prize-label">Viaje</span></span>
+                <span class="prize prize--ticket"><span class="prize-icon">▣</span><span class="prize-label">Entrada</span></span>
+              </div>
+            </div>
+
+            <img class="roulette-layer roulette-inner-depth" src="/roulette-inner-depth.png" alt="" aria-hidden="true" />
+            <img class="roulette-layer roulette-frame" src="/roulette-frame.png" alt="" aria-hidden="true" />
+            <span class="wheel-light-sweep" aria-hidden="true"></span>
+            <img class="roulette-layer roulette-center-hub" src="/roulette-center-hub.png" alt="" aria-hidden="true" />
+
+            <button id="hub-hit" class="hub-hit" type="button" aria-label="Girar ruleta, vista visual solamente">
+              <span aria-hidden="true">GIRAR</span>
+            </button>
+
+            <img class="roulette-layer roulette-pointer" src="/roulette-pointer.png" alt="" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
+
+      <div class="foreground-foliage" aria-hidden="true">
+        <img class="foliage-layer foliage-foreground foliage-foreground-left" src="/foliage-right-foreground.png" alt="" />
+        <img class="foliage-layer foliage-foreground foliage-foreground-right" src="/foliage-right-foreground.png" alt="" />
+      </div>
+
+      <p class="instruction">Girá y descubrí tu premio</p>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

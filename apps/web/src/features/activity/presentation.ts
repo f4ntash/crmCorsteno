@@ -102,6 +102,10 @@ export function formatActivity(item: ActivityPresentationItem) {
     case 'channel.content_profile.assigned': return `${actor} preparó el perfil de contenido de ${channelName}`;
     case 'channel.content.draft_updated': return `${actor} actualizó el borrador de contenido de ${channelName}`;
     case 'channel.content.published': return `${actor} publicó el contenido de ${channelName}`;
+    case 'channel.product.linked': return `${actor} conectó el producto ${metadataText(item.metadata, 'productName') || 'al sitio'}`;
+    case 'channel.product.unlinked': return `${actor} desconectó el producto ${metadataText(item.metadata, 'productName') || 'del sitio'}`;
+    case 'channel.product.visibility_changed': return `${actor} actualizó la visibilidad de ${metadataText(item.metadata, 'productName') || 'un producto del sitio'}`;
+    case 'channel.products.reordered': return `${actor} actualizó el orden de los productos del sitio`;
     default: return `${actor} registró una acción en ${resourceLabel(item.resourceType)}`;
   }
 }

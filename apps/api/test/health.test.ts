@@ -95,3 +95,53 @@ describe('development CORS', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 });
+
+describe('production CORS', () => {
+  it.each([
+    'https://crm.corsteno.com',
+    'https://cosquinrock.corsteno.com',
+  ])('allows configured origin %s', async (origin) => {
+    const response = await app.request(
+      '/v1/events',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type,authorization',
+        },
+      },
+      {
+        ENVIRONMENT: 'production',
+        APP_VERSION: 'test',
+        WEB_ORIGINS:
+          'https://crm.corsteno.com,https://cosquinrock.corsteno.com',
+      },
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe(
+      'true',
+    );
+  });
+
+  it('rejects an unknown origin', async () => {
+    const response = await app.request(
+      '/v1/events',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://unknown.example',
+          'Access-Control-Request-Method': 'POST',
+        },
+      },
+      {
+        ENVIRONMENT: 'production',
+        APP_VERSION: 'test',
+        WEB_ORIGINS:
+          'https://crm.corsteno.com,https://cosquinrock.corsteno.com',
+      },
+    );
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+});

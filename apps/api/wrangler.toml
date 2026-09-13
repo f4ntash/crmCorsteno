@@ -5,7 +5,7 @@ compatibility_date = "2024-12-30"
 [vars]
 ENVIRONMENT = "production"
 APP_VERSION = "0.0.1"
-WEB_ORIGIN = "https://crm.corsteno.com"
+WEB_ORIGINS = "https://crm.corsteno.com,https://cosquinrock.corsteno.com"
 
 [[d1_databases]]
 binding = "DB"
@@ -16,6 +16,29 @@ migrations_dir = "src/db/migrations"
 [[r2_buckets]]
 binding = "EXPERIENCE_ASSETS"
 bucket_name = "corsteno-experience-assets"
+
+[[queues.producers]]
+binding = "LEAD_JOB_QUEUE"
+queue = "corsteno-lead-jobs"
+
+[[queues.consumers]]
+queue = "corsteno-lead-jobs"
+max_batch_size = 5
+max_batch_timeout = 5
+max_concurrency = 1
+max_retries = 3
+dead_letter_queue = "corsteno-lead-jobs-dlq"
+
+[env.development.vars]
+ENVIRONMENT = "development"
+APP_VERSION = "0.0.1-dev"
+WEB_ORIGINS = "https://crm.corsteno.com,https://cosquinrock.corsteno.com"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "corsteno-db"
+database_id = "e028adf0-ed6c-4e20-b74d-59b94910639f"
+migrations_dir = "src/db/migrations"
 
 [[env.development.r2_buckets]]
 binding = "EXPERIENCE_ASSETS"

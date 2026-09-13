@@ -21,8 +21,10 @@ import { channelRoutes } from './routes/channels';
 import { channelContentRoutes } from './routes/channel-content';
 import { productRoutes } from './routes/products';
 import { publicSiteRoutes } from './routes/public-sites';
+import { leadRoutes } from './routes/leads';
 import { channelOrigin } from './services/channel-origins';
 import { findPublicSite } from './services/public-site';
+import { consumeLeadJobBatch, type LeadJobMessage } from './services/lead-queue';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -40,6 +42,7 @@ export interface Env {
   PAYMENT_SUCCESS_URL?: string;
   PAYMENT_FAILURE_URL?: string;
   PAYMENT_PENDING_URL?: string;
+  LEAD_JOB_QUEUE: Queue<LeadJobMessage>;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -86,6 +89,7 @@ app.route('/auth', authRoutes);
 app.route('/organizations', organizationRoutes);
 app.route('/organizations/assets', assetRoutes);
 app.route('/products', productRoutes);
+app.route('/leads', leadRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);
@@ -173,4 +177,10 @@ app.get(
 app.route('/attention', attentionRoutes);
 app.route('/reports', reportsRoutes);
 app.route('/', appDataRoutes);
-export default app;
+const worker = Object.assign(app, {
+  async queue(batch: MessageBatch<LeadJobMessage>, env: Env) {
+    await consumeLeadJobBatch(batch, env.DB, (event, details) => console.log(JSON.stringify({ event, ...details })));
+  },
+});
+export default worker;
+export { app };
