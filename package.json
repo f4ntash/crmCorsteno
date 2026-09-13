@@ -20,6 +20,7 @@
     "analytics:demo": "tsx scripts/generate-demo-events.ts",
     "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",
     "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
+    "auth:reset-production-admin": "tsx scripts/reset-production-admin.ts",
     "credentials:create-production": "tsx scripts/create-production-credential.ts",
     "create:site": "tsx packages/site-generator/src/cli.ts"
   },
