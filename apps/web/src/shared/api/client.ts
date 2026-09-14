@@ -1,4 +1,4 @@
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://api.corsteno.com' : 'http://localhost:8787');
 
 export class ApiError extends Error {
   constructor(message: string, readonly details?: unknown, readonly code?: string) {

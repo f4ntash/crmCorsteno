@@ -28,3 +28,11 @@
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 @media (max-width: 1050px) { .leads-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }.leads-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }.leads-toolbar .leads-search { grid-column: 1 / -1; } }
 @media (max-width: 620px) { .leads-stage-note { display: none; }.leads-heading-actions { align-items: flex-start; flex-direction: column; }.leads-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.leads-toolbar { grid-template-columns: 1fr 1fr; }.leads-toolbar .leads-search { grid-column: 1 / -1; }.leads-table-footer { display: grid; gap: 5px; }.leads-job { grid-template-columns: 1fr; gap: 8px; }.leads-job > .button { justify-self: start; }.lead-drawer { width: 100%; }.lead-drawer-head, .lead-drawer-body { padding-inline: 18px; } }
+.leads-diagnostics { position: relative; }
+.leads-diagnostics summary { cursor: pointer; color: var(--muted, #667085); font-size: .82rem; }
+.leads-diagnostics > div { position: absolute; right: 0; z-index: 2; display: flex; gap: .5rem; padding: .7rem; background: var(--surface, #fff); border: 1px solid var(--border, #e4e7ec); border-radius: .75rem; box-shadow: 0 10px 30px rgba(16,24,40,.12); white-space: nowrap; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1.5rem; background: rgba(16,24,40,.45); }
+.modal-card { width: min(100%, 30rem); max-width: 30rem; padding: 1.25rem; background: var(--surface, #fff); border: 1px solid var(--border, #e4e7ec); border-radius: 1rem; box-shadow: 0 24px 60px rgba(16,24,40,.2); }
+.modal-card form { display: grid; gap: 1rem; }
+.modal-card form label { display: grid; gap: .4rem; font-weight: 600; }
+.modal-card form p { margin: 0; color: var(--muted, #667085); font-size: .9rem; line-height: 1.45; }

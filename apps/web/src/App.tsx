@@ -21,7 +21,7 @@ import { CommercialPage } from './features/commercial/pages/CommercialPage';
 import { SubscriptionsPage } from './features/commercial/pages/SubscriptionsPage';
 import { isPlatformCommercialAdmin } from './features/commercial/permissions';
 import { ClientOnboardingPage } from './features/onboarding/pages/ClientOnboardingPage';
-const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
+const api = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://api.corsteno.com' : 'http://localhost:8787');
 const runtime = import.meta.env.VITE_RUNTIME_BASE_URL ?? 'http://localhost:5174';
 type Me = {
   user: { name: string; platformRole: string };

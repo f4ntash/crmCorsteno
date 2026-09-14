@@ -5,6 +5,7 @@ import type { Env } from '../index';
 import { LEAD_JOB_LIMITS, LEAD_JOB_TYPES } from '../services/lead-jobs';
 import type { LeadJobMessage } from '../services/lead-queue';
 import { recordActivityBestEffort } from '../services/activity';
+import { FINDER_DRY_RUN_LIMITS, FINDER_EXTERNAL_MODE, FINDER_PERSIST_LIMITS, FINDER_PERSIST_MODE, FINDER_PERSIST_TEST_LIMIT, FINDER_PERSIST_TEST_MODE, FINDER_CATEGORIES, type FinderJobMessage } from '../services/finder-contract';
 
 type Variables = { user: { id: string; platformRole: string }; organization: { id: string; role: string } };
 type LeadContext = { Bindings: Env; Variables: Variables };
@@ -35,6 +36,7 @@ function mapInput(value: Record<string, unknown>, partial = false) {
   return result;
 }
 function outputRow(row: Record<string, unknown>) { return row; }
+function finderCategoryLabel(value: string) { return value.split(' ').map((part) => part ? part.charAt(0).toUpperCase() + part.slice(1) : part).join(' '); }
 
 leadRoutes.get('/', read, async (c) => {
   const org = c.get('organization').id; const q = c.req.query(); const values: (string | number)[] = [org]; const where = ['organization_id=?'];
@@ -53,6 +55,8 @@ leadRoutes.get('/', read, async (c) => {
   return c.json({ items: rows.results.map(outputRow), total: total?.total ?? 0, kpis: { total: Object.values(countMap).reduce((a, b) => a + Number(b), 0), new: countMap.NEW ?? 0, qualified: countMap.QUALIFIED ?? 0, toContact: countMap.TO_CONTACT ?? 0, replied: countMap.REPLIED ?? 0, meetings: countMap.MEETING ?? 0, opportunities: countMap.OPPORTUNITY ?? 0 }, jobs: jobs.results });
 });
 
+leadRoutes.get('/finder/categories', read, (c) => c.json({ items: FINDER_CATEGORIES.map((value) => ({ value, label: finderCategoryLabel(value) })) }));
+
 leadRoutes.get('/:id', read, async (c) => { const org = c.get('organization').id; const lead = await c.env.DB.prepare(`SELECT ${select} FROM leads WHERE id=? AND organization_id=?`).bind(c.req.param('id'), org).first(); if (!lead) return c.json(jsonError('Lead no encontrado.', 'NOT_FOUND'), 404); const jobs = await c.env.DB.prepare('SELECT id,type,status,progress,total,processed,succeeded,failed,metadata,error,created_at createdAt,started_at startedAt,finished_at finishedAt FROM lead_jobs WHERE organization_id=? ORDER BY created_at DESC LIMIT 20').bind(org).all(); return c.json({ lead, jobs: jobs.results }); });
 
 leadRoutes.get('/jobs/list', read, async (c) => c.json({ items: (await c.env.DB.prepare(`SELECT ${jobSelect} FROM lead_jobs WHERE organization_id=? ORDER BY created_at DESC LIMIT 50`).bind(c.get('organization').id).all()).results }));
@@ -62,17 +66,26 @@ leadRoutes.post('/jobs', manage, async (c) => {
   if (!body || typeof body.type !== 'string' || !LEAD_JOB_TYPES.includes(body.type as typeof LEAD_JOB_TYPES[number])) return c.json(jsonError('El tipo de job no es válido.', 'VALIDATION_ERROR'), 400);
   if (!body.metadata || typeof body.metadata !== 'object' || Array.isArray(body.metadata)) return c.json(jsonError('La metadata debe ser un objeto.', 'VALIDATION_ERROR'), 400);
   const metadata = body.metadata as Record<string, unknown>;
-  if (body.type !== 'FINDER' || metadata.mode !== 'test') return c.json(jsonError('En esta etapa solo está disponible el modo de prueba interno.', 'JOB_HANDLER_UNAVAILABLE'), 422);
-  const limit = Number(metadata.limit ?? LEAD_JOB_LIMITS.testDefaultSteps);
-  if (!Number.isInteger(limit) || limit < 1 || limit > LEAD_JOB_LIMITS.maxBatchSize) return c.json(jsonError(`El límite debe ser un entero entre 1 y ${LEAD_JOB_LIMITS.maxBatchSize}.`, 'VALIDATION_ERROR'), 400);
-  const serialized = JSON.stringify({ ...metadata, limit });
+  const external = body.type === 'FINDER' && [FINDER_EXTERNAL_MODE, FINDER_PERSIST_TEST_MODE, FINDER_PERSIST_MODE].includes(metadata.mode as string);
+  const persistTest = external && metadata.mode === FINDER_PERSIST_TEST_MODE;
+  const persist = external && metadata.mode === FINDER_PERSIST_MODE;
+  if (body.type !== 'FINDER' || (!external && metadata.mode !== 'test')) return c.json(jsonError('El modo de job no está disponible.', 'JOB_HANDLER_UNAVAILABLE'), 422);
+  const limit = Number(metadata.limit ?? (external ? FINDER_DRY_RUN_LIMITS.min : LEAD_JOB_LIMITS.testDefaultSteps));
+  const maxLimit = persistTest ? FINDER_PERSIST_TEST_LIMIT : persist ? 25 : external ? FINDER_DRY_RUN_LIMITS.max : LEAD_JOB_LIMITS.maxBatchSize;
+  if (persist && !FINDER_PERSIST_LIMITS.includes(limit as typeof FINDER_PERSIST_LIMITS[number])) return c.json(jsonError('La cantidad debe ser 5, 10 o 25.', 'VALIDATION_ERROR'), 400);
+  if (!Number.isInteger(limit) || limit < 1 || limit > maxLimit) return c.json(jsonError(`El límite debe ser un entero entre 1 y ${maxLimit}.`, 'VALIDATION_ERROR'), 400);
+  if (external && (typeof metadata.category !== 'string' || !FINDER_CATEGORIES.includes(metadata.category.trim().toLowerCase() as typeof FINDER_CATEGORIES[number]) || typeof metadata.location !== 'string' || !metadata.location.trim())) return c.json(jsonError('La categoría y ubicación del Finder externo son obligatorias y deben ser válidas.', 'VALIDATION_ERROR'), 400);
+  const normalizedMetadata = external ? { mode: persistTest ? FINDER_PERSIST_TEST_MODE : persist ? FINDER_PERSIST_MODE : FINDER_EXTERNAL_MODE, search: { category: String(metadata.category).trim().toLowerCase(), location: String(metadata.location).trim(), limit } } : { ...metadata, limit };
+  const serialized = JSON.stringify(normalizedMetadata);
   if (new TextEncoder().encode(serialized).byteLength > LEAD_JOB_LIMITS.maxMetadataBytes) return c.json(jsonError('La metadata del job es demasiado grande.', 'PAYLOAD_TOO_LARGE'), 413);
   const organizationId = c.get('organization').id; const active = await c.env.DB.prepare("SELECT COUNT(*) count FROM lead_jobs WHERE organization_id=? AND status IN ('QUEUED','RUNNING')").bind(organizationId).first<{ count: number }>();
   if (Number(active?.count ?? 0) >= LEAD_JOB_LIMITS.maxActivePerOrganization) return c.json(jsonError('La organización ya tiene el máximo de jobs activos.', 'JOB_LIMIT_REACHED'), 429);
+  if (external && !c.env.FINDER_JOB_QUEUE) return c.json(jsonError('El Finder externo no está configurado.', 'QUEUE_UNAVAILABLE'), 503);
   const now = Date.now(); const id = crypto.randomUUID(); await c.env.DB.prepare('INSERT INTO lead_jobs (id,organization_id,type,status,progress,total,processed,succeeded,failed,metadata,error,created_at,updated_at,started_at,finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, body.type, 'QUEUED', 0, limit, 0, 0, 0, serialized, null, now, now, null, null).run();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'lead_job.created', resourceType: 'lead_job', resourceId: id, metadata: { type: body.type, limit } });
   try {
-    await c.env.LEAD_JOB_QUEUE.send({ version: 1, jobId: id, organizationId } satisfies LeadJobMessage);
+    if (external) await c.env.FINDER_JOB_QUEUE?.send({ version: 1, jobId: id, organizationId } satisfies FinderJobMessage);
+    else await c.env.LEAD_JOB_QUEUE.send({ version: 1, jobId: id, organizationId } satisfies LeadJobMessage);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message.slice(0, 300) : 'No se pudo publicar el job.';
     await c.env.DB.prepare("UPDATE lead_jobs SET status='FAILED', error=?, finished_at=?, updated_at=? WHERE id=? AND organization_id=? AND status='QUEUED'").bind(message, Date.now(), Date.now(), id, organizationId).run();

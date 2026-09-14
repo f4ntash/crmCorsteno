@@ -5,3 +5,5 @@ dist/
 .env.*
 !.env.example
 *.log
+tmp/finder-*
+**/__pycache__/

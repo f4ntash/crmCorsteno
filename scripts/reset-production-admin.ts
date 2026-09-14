@@ -11,6 +11,27 @@ function quote(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+async function readHiddenPassword() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('La contraseña interactiva requiere una terminal segura.');
+  const stdin = process.stdin;
+  let value = '';
+  process.stdout.write('Nueva contraseña (mínimo 12 caracteres): ');
+  return await new Promise<string>((resolve, reject) => {
+    const cleanup = () => { stdin.setRawMode?.(false); stdin.pause(); stdin.removeListener('data', onData); };
+    const onData = (chunk: Buffer) => {
+      for (const char of chunk.toString('utf8')) {
+        if (char === '\u0003') { cleanup(); process.stdout.write('\n'); reject(new Error('Operación cancelada.')); return; }
+        if (char === '\r' || char === '\n') { cleanup(); process.stdout.write('\n'); resolve(value); return; }
+        if (char === '\u007f' || char === '\b') { value = value.slice(0, -1); continue; }
+        if (char >= ' ') value += char;
+      }
+    };
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+  });
+}
+
 export function buildResetSql(email: string, passwordHash: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const now = Date.now();
@@ -34,19 +55,20 @@ export async function executeResetSql(sql: string, runner: CommandRunner = execS
 
 export async function main() {
   const email = process.env.RESET_ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.RESET_ADMIN_PASSWORD;
   const execute = process.argv.includes('--execute');
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) throw new Error('Falta RESET_ADMIN_EMAIL válido.');
-  if (!password || password.length < 12 || password.length > 200) throw new Error('RESET_ADMIN_PASSWORD debe tener entre 12 y 200 caracteres.');
   if (execute && process.env.ENVIRONMENT !== 'production') throw new Error('La ejecución productiva requiere ENVIRONMENT=production.');
-  const passwordHash = await hashPassword(password);
-  const sql = buildResetSql(email, passwordHash);
   if (!execute) {
     console.log('Preview de reset de administrador (no se ejecutó).');
     console.log(`Usuario objetivo: ${email}`);
     console.log('Al ejecutar, solo se actualizará la contraseña del administrador existente y se invalidarán sus sesiones.');
     return;
   }
+  const password = process.env.RESET_ADMIN_PASSWORD ?? await readHiddenPassword();
+  if (password.length < 12 || password.length > 200) throw new Error('La contraseña debe tener entre 12 y 200 caracteres.');
+  const passwordHash = await hashPassword(password);
+  delete process.env.RESET_ADMIN_PASSWORD;
+  const sql = buildResetSql(email, passwordHash);
   await executeResetSql(sql);
   console.log(`Reset aplicado al administrador existente ${email}. Sesiones anteriores invalidadas.`);
 }

@@ -25,6 +25,8 @@ import { leadRoutes } from './routes/leads';
 import { channelOrigin } from './services/channel-origins';
 import { findPublicSite } from './services/public-site';
 import { consumeLeadJobBatch, type LeadJobMessage } from './services/lead-queue';
+import type { FinderJobMessage } from './services/finder-contract';
+import { finderInternalRoutes } from './routes/finder-internal';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -43,6 +45,8 @@ export interface Env {
   PAYMENT_FAILURE_URL?: string;
   PAYMENT_PENDING_URL?: string;
   LEAD_JOB_QUEUE: Queue<LeadJobMessage>;
+  FINDER_JOB_QUEUE?: Queue<FinderJobMessage>;
+  FINDER_SERVICE_SECRET?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -90,6 +94,7 @@ app.route('/organizations', organizationRoutes);
 app.route('/organizations/assets', assetRoutes);
 app.route('/products', productRoutes);
 app.route('/leads', leadRoutes);
+app.route('/internal/finder', finderInternalRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);

@@ -21,6 +21,10 @@ bucket_name = "corsteno-experience-assets"
 binding = "LEAD_JOB_QUEUE"
 queue = "corsteno-lead-jobs"
 
+[[queues.producers]]
+binding = "FINDER_JOB_QUEUE"
+queue = "corsteno-finder-jobs"
+
 [[queues.consumers]]
 queue = "corsteno-lead-jobs"
 max_batch_size = 5
