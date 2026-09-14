@@ -1,7 +1,6 @@
 import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 import type { CommercialEntitlements } from '@corsteno/types';
-
-const api = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
+import { runtimeApiBaseUrl as api } from '../config/runtimeEnvironment';
 export type InactivePublicExperienceResponse = { active: false; reason?: string };
 export type ActivePublicExperienceResponse = {
   active: true;

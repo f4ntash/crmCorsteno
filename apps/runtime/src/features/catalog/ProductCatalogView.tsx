@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createExperienceAnalytics } from '../../analytics/experienceAnalytics';
+import { runtimeApiBaseUrl } from '../../config/runtimeEnvironment';
 import type { CatalogPublicProduct } from '../../api/publicExperiencesApi';
 import './catalog.css';
 
@@ -22,7 +23,7 @@ function CatalogProductCard({ product }: { product: CatalogPublicProduct }) {
 }
 
 export function ProductCatalogView({ config, products, slug }: { config: unknown; products: CatalogPublicProduct[]; slug: string }) {
-  const analytics = useRef(createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
+  const analytics = useRef(createExperienceAnalytics(runtimeApiBaseUrl, slug));
   useEffect(() => { analytics.current.trackViewOnce(); }, [slug]);
   const copy: CatalogConfig = config && typeof config === 'object' && !Array.isArray(config) ? config as CatalogConfig : { schemaVersion: 1 };
   return <div className="catalog-runtime"><header className="catalog-runtime-header"><p className="catalog-runtime-kicker">CATÁLOGO</p><h1>{copy.title || 'Catálogo de productos'}</h1>{copy.intro && <p>{copy.intro}</p>}</header><div className="catalog-product-grid">{products.map((product, index) => <CatalogProductCard product={product} key={`${product.name}-${product.priceMinorUnits}-${index}`} />)}</div></div>;

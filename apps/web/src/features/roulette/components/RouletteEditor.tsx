@@ -6,7 +6,7 @@ import type { Experience } from '../../experiences/types';
 import type { RouletteConfig, RoulettePrize as Prize } from '../types';
 import { useRouletteDraft } from '../hooks/useRouletteDraft';
 import { ParticipationControls } from './ParticipationControls';
-import { runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
+import { previewExperienceUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { ProbabilitySummary } from './ProbabilitySummary';
 import { AssetPicker } from '../../assets/AssetPicker';
 import { Roulette3DPreview } from './Roulette3DPreview';
@@ -208,7 +208,7 @@ function RouletteEditorContent({
   const formValid = valid && Object.values(inputValidity).every(Boolean);
   const firstInvalidStep: StepId = Object.keys(fieldErrors).some((key) => key.startsWith('participation')) ? 'configuration' : Object.keys(fieldErrors).some((key) => key.startsWith('prizes')) ? 'prizes' : Object.keys(fieldErrors).some((key) => key.startsWith('segments')) ? 'roulette' : 'appearance';
   const preview = useMemo(() => ({ ...draft, effects: { sound: true, vibration: true, celebration: true, ...draft.effects } }), [draft]);
-  const previewUrl = `${runtimeBaseUrl}/test/experiences/${encodeURIComponent(id)}?org=${encodeURIComponent(org)}&returnTo=${encodeURIComponent(window.location.href)}`;
+  const previewUrl = previewExperienceUrl(id, org, window.location.href);
   const probability = calculateEffectiveRouletteProbabilities(draft, new Map(inventory.map((item) => [item.prizeId, item])));
   const probabilityByPrize = new Map(probability.outcomes.filter((outcome) => outcome.prizeId !== null).map((outcome) => [outcome.prizeId!, outcome.probability]));
 

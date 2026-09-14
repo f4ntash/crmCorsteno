@@ -10,7 +10,7 @@ import { ClaimsPanel } from '../components/ClaimsPanel';
 import { AccessPeriodPanel } from '../components/AccessPeriodPanel';
 import { RouletteOperationsOverview } from '../components/RouletteOperationsOverview';
 import { ExperienceQrModal } from '../components/ExperienceQrModal';
-import { publicExperienceUrl, runtimeBaseUrl } from '../../../shared/runtime/publicExperienceUrl';
+import { previewExperienceUrl, publicExperienceUrl } from '../../../shared/runtime/publicExperienceUrl';
 import { channelTypeLabels, channelsApi, type Channel } from '../../channels/api';
 type LegacyJson = ReturnType<JSON['parse']>;
 type ExperienceDetail = {
@@ -169,7 +169,7 @@ export function ExperienceDetailPage({
       setChannelSaving(false);
     }
   }
-  const previewUrl = `${runtimeBaseUrl}/test/experiences/${encodeURIComponent(id)}?org=${encodeURIComponent(org)}&returnTo=${encodeURIComponent(window.location.href)}`;
+  const previewUrl = previewExperienceUrl(id, org, window.location.href);
   const openPreview = () => {
     if (dirty) { window.alert('Guardá el borrador para probar los últimos cambios.'); return; }
     window.open(previewUrl, '_blank', 'noopener,noreferrer');

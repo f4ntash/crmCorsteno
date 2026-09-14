@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { RoulettePreview } from '../../../../web/src/RoulettePreview';
 import { Roulette3D } from '@corsteno/roulette-3d';
+import { runtimeApiBaseUrl } from '../../config/runtimeEnvironment';
 import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 import { publicExperiencesApi, ParticipationBlockedError, type SpinResult } from '../../api/publicExperiencesApi';
 import { createExperienceAnalytics, getParticipantIdentity } from '../../analytics/experienceAnalytics';
@@ -43,7 +44,7 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability, 
   const [availability, setAvailability] = useState(prizeAvailability);
   const [result, setResult] = useState<SpinResult | null>(initialResult ?? null);
   const pendingResult = useRef<SpinResult | null>(null);
-  const analytics = useRef(testMode ? { track: () => undefined, trackViewOnce: () => undefined } : createExperienceAnalytics(import.meta.env.VITE_API_URL ?? 'http://localhost:8787', slug));
+  const analytics = useRef(testMode ? { track: () => undefined, trackViewOnce: () => undefined } : createExperienceAnalytics(runtimeApiBaseUrl, slug));
   const participant = useRef(getParticipantIdentity());
   useEffect(() => setAvailability(prizeAvailability), [prizeAvailability]);
   useEffect(() => { if (result?.prizeAvailability) setAvailability(result.prizeAvailability); }, [result]);
