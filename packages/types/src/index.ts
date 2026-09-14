@@ -67,6 +67,7 @@ export * from './commercial';
 export * from './catalog';
 export * from './roulette';
 export * from './roulette-validation';
+export * from './experience-products';
 export * from './claimQr';
 export * from './product-3d';
 export * from './public-api';

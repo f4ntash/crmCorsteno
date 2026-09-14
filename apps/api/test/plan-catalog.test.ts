@@ -38,4 +38,10 @@ describe('commercial plan catalog', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([expect.objectContaining({ code: 'pro', priceAmountMinor: 2500000 })]);
   });
+
+  it('platform admin can create a plan with the existing catalog model', async () => {
+    const response = await request('/plans', fixture(), { method: 'POST', body: JSON.stringify({ code: 'starter-plus', name: 'Starter Plus', description: 'Plan nuevo', billing_interval: 'monthly', billing_interval_count: 1, price_amount_minor: 150000, currency: 'ARS', pricing_mode: 'paid', active: 1, available_for_sale: 1 }) });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual(expect.objectContaining({ code: 'starter-plus', name: 'Starter Plus', priceAmountMinor: 150000 }));
+  });
 });

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
+import { requireAuth, requireOrganization, requireOrganizationExperienceType, requireOrganizationPermission } from '../auth/middleware';
 import { recordActivityBestEffort } from '../services/activity';
 import { normalizeChannelUrl } from '../services/channel-origins';
 import { channelProduct, getChannelProducts, linkProductToChannel, reorderChannelProducts, unlinkProductFromChannel, updateChannelProduct } from '../services/channel-products';
@@ -40,6 +40,7 @@ type LinkedExperience = {
 };
 
 const channelSelect = `SELECT id,organization_id organizationId,name,type,status,url,public_key publicKey,created_at createdAt,updated_at updatedAt FROM channels`;
+const productCatalogAccess = requireOrganizationExperienceType('product-catalog') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 
 export const channelRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 channelRoutes.use('*', requireAuth, requireOrganization);
@@ -89,11 +90,17 @@ async function getChannel(db: D1Database, id: string, organizationId: string) {
   return db.prepare(`${channelSelect} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
 }
 
+async function hasProductCatalog(db: D1Database, organizationId: string) {
+  return Boolean(await db.prepare("SELECT id FROM experiences WHERE organization_id=? AND type='product-catalog' LIMIT 1").bind(organizationId).first());
+}
+
 async function getDetail(db: D1Database, id: string, organizationId: string) {
   const row = await getChannel(db, id, organizationId);
   if (!row) return null;
   const experiences = await db.prepare(`SELECT e.id,e.name,e.slug,e.type,e.status,e.starts_at startsAt,e.ends_at endsAt FROM experience_channels ec JOIN experiences e ON e.id=ec.experience_id AND e.organization_id=ec.organization_id WHERE ec.channel_id=? AND ec.organization_id=? ORDER BY e.name,e.id`).bind(id, organizationId).all<LinkedExperience>();
-  return { ...present(row), experiences: experiences.results, products: await getChannelProducts(db, id, organizationId) };
+  const detail = { ...present(row), experiences: experiences.results } as Record<string, unknown>;
+  if (await hasProductCatalog(db, organizationId)) detail.products = await getChannelProducts(db, id, organizationId);
+  return detail;
 }
 
 channelRoutes.get('/', async (c) => {
@@ -201,13 +208,13 @@ channelRoutes.delete('/:id/experiences/:experienceId', async (c) => {
   return c.json(detail);
 });
 
-channelRoutes.get('/:id/products', async (c) => {
+channelRoutes.get('/:id/products', productCatalogAccess, async (c) => {
   const channel = await getChannel(c.env.DB, c.req.param('id'), c.get('organization').id);
   if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
   return c.json(await getChannelProducts(c.env.DB, c.req.param('id'), c.get('organization').id));
 });
 
-channelRoutes.post('/:id/products/reorder', async (c) => {
+channelRoutes.post('/:id/products/reorder', productCatalogAccess, async (c) => {
   const organizationId = c.get('organization').id;
   const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
   if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
@@ -223,7 +230,7 @@ channelRoutes.post('/:id/products/reorder', async (c) => {
   return c.json(await getDetail(c.env.DB, channelId, organizationId));
 });
 
-channelRoutes.post('/:id/products', async (c) => {
+channelRoutes.post('/:id/products', productCatalogAccess, async (c) => {
   const organizationId = c.get('organization').id;
   const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
   if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
@@ -238,7 +245,7 @@ channelRoutes.post('/:id/products', async (c) => {
   return c.json(await getDetail(c.env.DB, channelId, organizationId));
 });
 
-channelRoutes.patch('/:id/products/:productId', async (c) => {
+channelRoutes.patch('/:id/products/:productId', productCatalogAccess, async (c) => {
   const organizationId = c.get('organization').id;
   const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
   if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);
@@ -252,7 +259,7 @@ channelRoutes.patch('/:id/products/:productId', async (c) => {
   return c.json(await getDetail(c.env.DB, channelId, organizationId));
 });
 
-channelRoutes.delete('/:id/products/:productId', async (c) => {
+channelRoutes.delete('/:id/products/:productId', productCatalogAccess, async (c) => {
   const organizationId = c.get('organization').id;
   const channel = await getChannel(c.env.DB, c.req.param('id'), organizationId);
   if (!channel) return c.json({ error: { code: 'NOT_FOUND', message: 'Sitio o canal no encontrado.' } }, 404);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalogProductFieldErrors, parseMoneyToMinor } from '@corsteno/types';
+import { catalogProductFieldErrors, normalizeCatalogCtaUrl, parseMoneyToMinor } from '@corsteno/types';
 import app from '../src';
 import { productCatalogExperienceType, resolveExperienceType } from '../src/services/experience-types';
 import { catalogInventoryCsv } from '../src/services/catalog-report';
@@ -10,7 +10,7 @@ function request(path: string, env: { DB: D1Database }, init: RequestInit = {}) 
   return app.fetch(new Request(`http://localhost${path}`, { ...init, headers: { Cookie: 'corsteno_session=test', 'X-Organization-Id': 'org-a', 'Content-Type': 'application/json', ...init.headers } }), env as never);
 }
 
-function db(options: { role?: string; catalog?: Array<Record<string, unknown>> } = {}) {
+function db(options: { role?: string; catalog?: Array<Record<string, unknown>>; productCatalogAssigned?: boolean } = {}) {
   const role = options.role ?? 'admin';
   const catalog = options.catalog ?? [];
   return {
@@ -21,6 +21,7 @@ function db(options: { role?: string; catalog?: Array<Record<string, unknown>> }
             async first<T>() {
               if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user-a', email: 'admin@example.com', name: 'Admin', platformRole: 'user', expires_at: Date.now() + 60_000 } as T;
               if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'Org A', slug: 'org-a', role } as T;
+              if (sql.includes('FROM experiences') && sql.includes('type=?')) return options.productCatalogAssigned === false || args[0] !== 'catalog-1' ? null : { id: 'catalog-1' } as T;
               if (sql.includes('SELECT id,name,type FROM experiences')) return args[0] === 'catalog-1' ? { id: 'catalog-1', name: 'Catálogo', type: 'product-catalog' } as T : null;
               if (sql.includes('FROM catalog_products') && sql.includes('WHERE id=?')) return catalog.find((item) => item.id === args[0]) as T ?? null;
               return null;
@@ -59,6 +60,12 @@ describe('product-catalog type', () => {
     expect((await request('/experiences/catalog-1/catalog-products', { DB: db({ role: 'viewer' }) }, { method: 'POST', body: '{}' })).status).toBe(403);
   });
 
+  it('rejects the organization product API when product-catalog is not assigned', async () => {
+    const response = await request('/products', { DB: db({ productCatalogAssigned: false }) });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: { code: 'PRODUCT_NOT_ASSIGNED', message: 'Este producto no está asignado a la organización.' } });
+  });
+
   it('keeps money parsing and product field validation strict and shared', () => {
     expect(parseMoneyToMinor('12,50')).toBe(1250);
     expect(parseMoneyToMinor('12.5')).toBe(1250);
@@ -70,6 +77,14 @@ describe('product-catalog type', () => {
 
     const errors = catalogProductFieldErrors({ name: '   ', description: 'ok', priceMinorUnits: '12abc', currency: 'ARS', stock: 1.5, visible: true, ctaLabel: null, ctaUrl: 'javascript:alert(1)' });
     expect(errors).toEqual(expect.objectContaining({ name: expect.any(String), priceMinorUnits: expect.any(String), stock: expect.any(String), ctaUrl: expect.any(String) }));
+  });
+
+  it('accepts WhatsApp phone numbers and normalizes them to wa.me', () => {
+    expect(normalizeCatalogCtaUrl('+54 9 3541 123456')).toBe('https://wa.me/5493541123456');
+    expect(catalogProductFieldErrors({ name: 'Producto', description: '', priceMinorUnits: 0, currency: 'ARS', stock: 0, visible: true, ctaLabel: 'Consultar', ctaUrl: '03541 123456' }, 'whatsapp')).not.toHaveProperty('ctaUrl');
+    expect(catalogProductFieldErrors({ name: 'Producto', description: '', priceMinorUnits: 0, currency: 'ARS', stock: 0, visible: true, ctaLabel: 'Abrir', ctaUrl: 'https://example.com' }, 'url')).not.toHaveProperty('ctaUrl');
+    expect(catalogProductFieldErrors({ name: 'Producto', description: '', priceMinorUnits: 0, currency: 'ARS', stock: 0, visible: true, ctaLabel: 'Abrir', ctaUrl: 'https://example.com' }, 'whatsapp')).toHaveProperty('ctaUrl');
+    expect(catalogProductFieldErrors({ name: 'Producto', description: '', priceMinorUnits: 0, currency: 'ARS', stock: 0, visible: true, ctaLabel: 'Abrir', ctaUrl: '3541' }, 'whatsapp')).toHaveProperty('ctaUrl');
   });
 
   it('returns field-specific API issues instead of silently coercing bad product input', async () => {

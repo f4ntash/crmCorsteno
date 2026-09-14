@@ -22,11 +22,16 @@ commercialRoutes.use('*', async (c, next) => {
   if (!isCommercialPath(c.req.path)) return next();
   const auth = requireAuth as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
   const organization = requireOrganization as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
-  return auth(c, async () => { await organization(c, next); });
+  return auth(c, async () => {
+    // Platform operators can manage the global plan catalog without a customer workspace.
+    if (c.req.path.startsWith('/plans') && isPlatformOperator(c.get('user').platformRole)) return next();
+    await organization(c, next);
+  });
 });
 commercialRoutes.use('*', async (c, next) => {
   if (!isCommercialPath(c.req.path)) return next();
   if (c.req.path.startsWith('/subscriptions') && !isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  if (c.req.path.startsWith('/plans') && isPlatformOperator(c.get('user').platformRole)) return next();
   const permission = (c.req.method === 'GET' ? requireOrganizationPermission('crm.read') : requireOrganizationPermission('crm.manage')) as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
   return permission(c, next);
 });
@@ -54,6 +59,29 @@ commercialRoutes.get('/plans/catalog', async (c) => {
   if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
   const rows = await c.env.DB.prepare('SELECT id,code,name,description,billing_interval billingInterval,billing_interval_count billingIntervalCount,included_access_days includedAccessDays,price_amount_minor priceAmountMinor,currency,active,available_for_sale availableForSale,pricing_mode pricingMode FROM plans ORDER BY active DESC, available_for_sale DESC, price_amount_minor ASC, name ASC').bind().all<Record<string, unknown>>();
   return c.json(rows.results.map(presentPlan));
+});
+
+commercialRoutes.post('/plans', async (c) => {
+  if (!isPlatformOperator(c.get('user').platformRole)) return c.json({ error: { code: 'FORBIDDEN', message: 'Platform administrator required' } }, 403);
+  let body: Record<string, unknown>;
+  try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
+  const code = typeof body.code === 'string' ? body.code.trim().toLowerCase() : '';
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  const description = body.description === undefined || body.description === null || typeof body.description === 'string' ? (body.description ?? null) : undefined;
+  const billingInterval = body.billing_interval;
+  const billingIntervalCount = body.billing_interval_count === undefined ? 1 : body.billing_interval_count;
+  const includedAccessDays = body.included_access_days === undefined || body.included_access_days === null ? null : body.included_access_days;
+  const pricingMode = body.pricing_mode ?? 'unconfigured';
+  const price = pricingMode === 'free' ? 0 : body.price_amount_minor;
+  const currency = typeof body.currency === 'string' ? body.currency.toUpperCase() : '';
+  const active = body.active === undefined ? 1 : body.active;
+  const available = body.available_for_sale === undefined ? 1 : body.available_for_sale;
+  if (!/^[a-z0-9][a-z0-9_-]{1,79}$/.test(code) || !name || name.length > 120 || description === undefined || !['monthly', 'yearly', 'one_time'].includes(String(billingInterval)) || !Number.isInteger(billingIntervalCount) || Number(billingIntervalCount) < 1 || (billingInterval === 'one_time' && (!Number.isInteger(includedAccessDays) || Number(includedAccessDays) < 1)) || !['paid', 'free', 'unconfigured'].includes(String(pricingMode)) || !Number.isSafeInteger(price) || Number(price) < 0 || (pricingMode === 'paid' && Number(price) <= 0) || (pricingMode === 'free' && Number(price) !== 0) || !['ARS', 'USD'].includes(currency) || ![0, 1].includes(Number(active)) || ![0, 1].includes(Number(available))) return c.json(bad('Invalid plan commercial fields'), 400);
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.prepare('INSERT INTO plans (id,code,name,description,billing_interval,billing_interval_count,included_access_days,price_amount_minor,currency,active,available_for_sale,pricing_mode) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, code, name, description, billingInterval, billingIntervalCount, includedAccessDays, price, currency, active, available, pricingMode).run();
+  } catch { return c.json({ error: { code: 'CONFLICT', message: 'El código del plan ya existe.' } }, 409); }
+  return c.json(presentPlan({ id, code, name, description, billingInterval, billingIntervalCount, includedAccessDays, priceAmountMinor: price, currency, active, availableForSale: available, pricingMode }), 201);
 });
 
 commercialRoutes.patch('/plans/:id', async (c) => {

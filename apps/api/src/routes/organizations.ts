@@ -40,6 +40,9 @@ organizationRoutes.get('/activity', requireAuth, requireOrganization, requireOrg
   if (from === null || to === null) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid activity date filter' } }, 400);
   const values: (string | number)[] = [organization.id];
   let where = 'a.organization_id=?';
+  // Platform activity is internal Corsteno context. Organization members may
+  // see their workspace history, but never actions performed by platform staff.
+  if (!isPlatformAdmin(c.get('user').platformRole)) where += " AND (u.platform_role IS NULL OR u.platform_role='user')";
   for (const [key, column] of [['action', 'a.action'], ['resourceType', 'a.resource_type']] as const) {
     const value = query[key];
     if (value !== undefined) {

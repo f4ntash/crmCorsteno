@@ -9,6 +9,7 @@ type DbState = {
   periods: any[];
   links: any[];
   access: any[];
+  payments: any[];
 };
 
 function fixture(role = 'owner', platformRole = 'corsteno_admin') {
@@ -18,7 +19,7 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
       { id: 'plan-off', code: 'off', name: 'Inactive', description: null, billingInterval: 'yearly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 1, currency: 'USD', active: 0, pricingMode: 'paid', availableForSale: 0 },
     ],
     experiences: [{ id: 'exp-a', organization_id: 'org-a', name: 'A', slug: 'a' }, { id: 'exp-b', organization_id: 'org-b', name: 'B', slug: 'b' }],
-    subscriptions: [], periods: [], links: [], access: [],
+    subscriptions: [], periods: [], links: [], access: [], payments: [],
   };
   const db = {
     prepare(sql: string) {
@@ -29,11 +30,12 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
           if (sql.includes('FROM organizations')) return { id: 'org-a', name: 'A', slug: 'a', role };
           if (sql.includes('FROM plans')) return state.plans.find((p) => p.id === args[0]) ?? null;
           if (sql.includes('subscription_periods') && sql.includes('idempotency_key')) return state.periods.find((p) => p.subscriptionId === args[0] && p.organizationId === args[1] && p.idempotencyKey === args[2]) ?? null;
+          if (sql.includes('commercial_payments') && sql.includes('idempotency_key')) return state.payments.find((p) => p.idempotencyKey === args[0] && p.organizationId === args[1]) ?? null;
           if (sql.includes('FROM subscriptions s')) {
             const sub = state.subscriptions.find((s) => s.id === args[0] && s.organizationId === args[1]);
             if (!sub) return null;
             const plan = state.plans.find((p) => p.id === sub.planId)!;
-            return { ...sub, planCode: plan.code, planName: plan.name, planDescription: plan.description };
+            return { ...sub, planCode: plan.code, planName: plan.name, planDescription: plan.description, pricingMode: plan.pricingMode, active: plan.active, availableForSale: plan.availableForSale };
           }
           return null;
         };
@@ -51,6 +53,7 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
           if (sql.startsWith('INSERT') && sql.includes('subscription_periods')) { state.periods.push({ id: args[0], subscriptionId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], status: args[5], idempotencyKey: args[6] ?? null, createdAt: '2026-01-01' }); }
           if (sql.startsWith('INSERT') && sql.includes('subscription_experiences')) state.links.push({ subscriptionId: args[0], experienceId: args[1], organizationId: args[2] });
           if (sql.startsWith('INSERT') && sql.includes('experience_access_periods')) state.access.push({ id: args[0], experienceId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], source: args[5], subscriptionPeriodId: args[8] });
+          if (sql.startsWith('INSERT') && sql.includes('commercial_payments')) state.payments.push({ id: args[0], organizationId: args[1], subscriptionId: args[2], idempotencyKey: args[11] });
           if (sql.startsWith('UPDATE subscriptions')) { const sub = state.subscriptions.find((s) => s.id === args[args.length - 2]); if (sub) { if (sql.includes('cancel_at_period_end=1')) sub.cancelAtPeriodEnd = 1; else { sub.currentPeriodStart = args[0]; sub.currentPeriodEnd = args[1]; sub.status = 'active'; sub.cancelAtPeriodEnd = 0; } } }
           return { meta: { changes: 1 } };
         };
@@ -67,6 +70,14 @@ function request(path: string, env: any, init: RequestInit = {}) {
 }
 
 describe('commercial plans and subscriptions', () => {
+  it('returns an empty list when no active plans are configured', async () => {
+    const env = fixture();
+    env.__state.plans = [];
+    const response = await request('/plans', env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+  });
+
   it('lists only active plans and stores integer price snapshots', async () => {
     const env = fixture();
     const plans = await request('/plans', env);
@@ -97,5 +108,16 @@ describe('commercial plans and subscriptions', () => {
     expect(env.__state.periods).toHaveLength(count);
     expect((await request(`/subscriptions/${subscription.id}/cancel`, env, { method: 'POST' })).status).toBe(200);
     expect(env.__state.access.length).toBe(2);
+  });
+
+  it('accepts bank transfer offline payments and deduplicates retries', async () => {
+    const env = fixture();
+    const created = await request('/subscriptions', env, { method: 'POST', body: JSON.stringify({ plan_id: 'plan-month', experience_ids: ['exp-a'], starts_at: '2099-09-10T00:00:00Z' }) });
+    const subscription = await created.json() as any;
+    const initialPeriods = env.__state.periods.length;
+    const init = { method: 'POST', headers: { 'Idempotency-Key': 'bank-transfer-1' }, body: JSON.stringify({ payment_method: 'bank_transfer', note: 'Comprobante QA' }) };
+    expect((await request(`/subscriptions/${subscription.id}/offline-payments`, env, init)).status).toBe(201);
+    expect((await request(`/subscriptions/${subscription.id}/offline-payments`, env, init)).status).toBe(200);
+    expect(env.__state.periods).toHaveLength(initialPeriods + 1);
   });
 });

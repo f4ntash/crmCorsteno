@@ -28,7 +28,8 @@ export function CommercialPage({
   const [plans, setPlans] = useState<Plan[]>([]),
     [error, setError] = useState(''),
     [editing, setEditing] = useState<string | null>(null),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [creating, setCreating] = useState(false);
   async function load() {
     try {
       setPlans(
@@ -41,7 +42,7 @@ export function CommercialPage({
     }
   }
   useEffect(() => {
-    if (org) void load();
+    if (org || canManageCatalog) void load();
   }, [org, canManageCatalog]);
   async function save(plan: Plan, form: HTMLFormElement) {
     const data = new FormData(form);
@@ -74,6 +75,17 @@ export function CommercialPage({
       setSaving(false);
     }
   }
+  async function create(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const pricingMode = String(data.get('pricingMode') ?? 'unconfigured');
+    const amount = pricingMode === 'free' ? 0 : parseMoneyToMinor(String(data.get('amount') ?? ''));
+    if (amount === null) { setError('Ingresá un importe válido con hasta dos decimales.'); return; }
+    setCreating(true); setError('');
+    try {
+      await commercialApi.createPlan(org, { code: String(data.get('code') ?? ''), name: String(data.get('name') ?? ''), description: String(data.get('description') ?? ''), billing_interval: String(data.get('interval') ?? 'monthly'), billing_interval_count: Number(data.get('intervalCount') ?? 1), included_access_days: data.get('includedDays') ? Number(data.get('includedDays')) : null, price_amount_minor: amount, pricing_mode: pricingMode, currency: String(data.get('currency') ?? 'ARS'), active: data.get('active') === 'on' ? 1 : 0, available_for_sale: data.get('available') === 'on' ? 1 : 0 });
+      setEditing(null); await load();
+    } catch (e) { setError((e as Error).message); } finally { setCreating(false); }
+  }
   return (
     <main className="page commercial-page">
       <div className="page-heading">
@@ -87,6 +99,7 @@ export function CommercialPage({
           <strong>Catálogo global</strong>
           <span>Operaciones de plataforma</span>
         </div>
+        {canManageCatalog && <button type="button" onClick={() => { setError(''); setEditing('new'); }}>Crear plan</button>}
       </div>
       {error && (
         <p className="error" role="alert">
@@ -94,7 +107,27 @@ export function CommercialPage({
         </p>
       )}
       <div className="experience-list commercial-list">
-        {plans.map((plan) => {
+        {editing === 'new' && <form className="card commercial-create-form" onSubmit={(event) => { event.preventDefault(); void create(event.currentTarget); }}>
+          <h2>Nuevo plan comercial</h2>
+          <label>Código<input name="code" required pattern="[a-z0-9][a-z0-9_-]{1,79}" placeholder="starter-plus" /></label>
+          <label>Nombre<input name="name" required maxLength={120} /></label>
+          <label>Descripción<textarea name="description" /></label>
+          <label>Modalidad<select name="interval" defaultValue="monthly"><option value="monthly">Mensual</option><option value="yearly">Anual</option><option value="one_time">Pago único</option></select></label>
+          <label>Períodos<input name="intervalCount" type="number" min="1" defaultValue="1" required /></label>
+          <label>Días incluidos (pago único)<input name="includedDays" type="number" min="1" /></label>
+          <label>Tipo de precio<select name="pricingMode"><option value="unconfigured">Precio pendiente</option><option value="paid">Pagado</option><option value="free">Gratis</option></select></label>
+          <label>Precio<input name="amount" inputMode="decimal" placeholder="25000" /></label>
+          <label>Moneda<select name="currency"><option>ARS</option><option>USD</option></select></label>
+          <label><input type="checkbox" name="active" defaultChecked /> Activo</label>
+          <label><input type="checkbox" name="available" defaultChecked /> Disponible para venta</label>
+          <div className="modal-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button disabled={creating}>{creating ? 'Creando…' : 'Crear plan'}</button></div>
+        </form>}
+        {plans.length === 0 ? (
+          <div className="empty" role="status">
+            <h2>No hay planes comerciales configurados.</h2>
+            <p>El catálogo global todavía no tiene planes disponibles para configurar.</p>
+          </div>
+        ) : plans.map((plan) => {
           const definition =
             COMMERCIAL_PLAN_DEFINITIONS[plan.code as CommercialPlanCode];
           return (

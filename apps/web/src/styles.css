@@ -46,7 +46,7 @@ nav a.active { color: #f6f8fa; background: var(--surface-3); box-shadow: inset 2
 .new-client { margin-top: auto; }
 .content { min-width: 0; flex: 1; }
 header { position: sticky; top: 0; z-index: 4; display: flex; min-height: 68px; align-items: center; gap: 24px; padding: 10px 32px; border-bottom: 1px solid var(--border); background: rgba(11, 14, 18, .95); backdrop-filter: blur(12px); }
-.organization-context { display: grid; min-width: 0; max-width: 560px; flex: 1; grid-template-columns: max-content minmax(220px, 1fr); align-items: center; gap: 14px; }
+.organization-context { display: grid; min-width: 0; max-width: 560px; flex: 1; grid-template-columns: max-content minmax(220px, 1fr); align-items: center; gap: 14px; overflow: hidden; }
 .organization-context > span { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .organization-context select { width: 100%; min-width: 0; border-color: transparent; background: transparent; color: var(--text); font-weight: 600; }
 .organization-context select:hover { background: var(--surface-2); border-color: var(--border); }
@@ -216,8 +216,8 @@ fieldset label small { grid-column: 2; color: var(--text-secondary); font-size: 
 
 @media (max-width: 767px) {
   .shell { min-width: 0; }
-  .shell > aside { position: fixed; left: 0; z-index: 6; transform: translateX(-100%); transition: transform .2s ease; }
-  .shell > aside.open { transform: translateX(0); box-shadow: 20px 0 50px rgba(0,0,0,.45); }
+  .shell > aside { position: fixed; left: 0; z-index: 6; visibility: hidden; pointer-events: none; transform: translateX(-100%); transition: transform .2s ease, visibility 0s linear .2s; }
+  .shell > aside.open { visibility: visible; pointer-events: auto; transform: translateX(0); box-shadow: 20px 0 50px rgba(0,0,0,.45); transition-delay: 0s; }
   .button.menu-button { display: inline-flex; width: auto; flex: 0 0 auto; padding-inline: 10px; font-size: 12px; }
   button.nav-backdrop { position: fixed; inset: 0; z-index: 5; display: block; width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: rgba(0,0,0,.55); }
   button.nav-backdrop:hover { background: rgba(0,0,0,.55); }

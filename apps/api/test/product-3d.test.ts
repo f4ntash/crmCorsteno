@@ -33,6 +33,7 @@ function authDb(platformRole: string, role: string) {
             async first<T>() {
               if (sql.includes('auth_sessions')) return { session_id: 'session', id: 'user', email: 'user@example.com', name: 'User', platformRole, expires_at: Date.now() + 60000 } as T;
               if (sql.includes('SELECT id,name,slug,? role FROM organizations')) return { id: 'org-a', name: 'Org A', slug: 'org-a', role: 'global_admin' } as T;
+              if (sql.includes('FROM experiences') && sql.includes('type=?')) return { id: 'catalog-1' } as T;
               if (sql.includes('JOIN memberships m ON')) return { id: 'org-a', name: 'Org A', slug: 'org-a', role } as T;
               if (sql.includes('FROM products p')) return product as T;
               if (sql.includes('FROM product_3d_config c')) return null as T;

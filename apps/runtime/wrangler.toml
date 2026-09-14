@@ -1,4 +1,4 @@
-name = "corsteno-crm"
+name = "corsteno-runtime"
 compatibility_date = "2024-12-30"
 
 [assets]

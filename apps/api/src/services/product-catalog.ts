@@ -83,7 +83,7 @@ export function catalogProductIssues(product: Partial<CatalogProductInput>, path
     stock: { code: 'PRODUCT_STOCK_INVALID', message: 'El stock debe ser un entero no negativo.' },
     visible: { code: 'PRODUCT_VISIBILITY_INVALID', message: 'La visibilidad del producto no es válida.' },
     ctaLabel: { code: 'PRODUCT_CTA_LABEL_INVALID', message: `El texto del botón debe tener hasta ${CATALOG_PRODUCT_LIMITS.ctaLabel} caracteres.` },
-    ctaUrl: { code: 'PRODUCT_CTA_URL_INVALID', message: 'El enlace del producto no es válido.' },
+    ctaUrl: { code: 'PRODUCT_CTA_URL_INVALID', message: 'Ingresá un enlace http:// o https://, o un número de WhatsApp válido.' },
   };
   for (const field of Object.keys(fieldErrors)) {
     const meta = issueMeta[field];

@@ -11,6 +11,10 @@ import { COMMERCIAL_FEATURE_LABELS } from '@corsteno/types';
 function displayDate(value: string) {
   return new Date(value).toLocaleString('es-AR');
 }
+function localToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
 export function SubscriptionsPage({
   org,
   canManage,
@@ -31,7 +35,8 @@ export function SubscriptionsPage({
     [selected, setSelected] = useState<string[]>([]),
     [startsAt, setStartsAt] = useState(''),
     [error, setError] = useState(''),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [offlineSaving, setOfflineSaving] = useState<string | null>(null);
   async function load() {
     try {
       const [nextPlans, subscriptions, nextExperiences] = await Promise.all([
@@ -99,6 +104,7 @@ export function SubscriptionsPage({
     }
   }
   async function offline(item: Subscription) {
+    if (offlineSaving) return;
     const paymentMethod = window.prompt(
       'Método: cash, bank_transfer u other',
       'bank_transfer',
@@ -111,6 +117,7 @@ export function SubscriptionsPage({
     const note = window.prompt('Nota o comprobante');
     if (!note) return;
     setError('');
+    setOfflineSaving(item.id);
     try {
       await commercialApi.offlinePayment(
         item.id,
@@ -121,6 +128,8 @@ export function SubscriptionsPage({
       await load();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setOfflineSaving(null);
     }
   }
   async function grant(item: Subscription) {
@@ -152,6 +161,16 @@ export function SubscriptionsPage({
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+  if (!org) {
+    return (
+      <main className="page subscriptions-page">
+        <div className="empty">
+          <h2>Seleccioná un workspace cliente</h2>
+          <p>Las suscripciones pertenecen a una organización cliente. Elegí un workspace para consultarlas o administrarlas.</p>
+        </div>
+      </main>
+    );
   }
   return (
     <main className="page subscriptions-page">
@@ -224,8 +243,9 @@ export function SubscriptionsPage({
                         type="button"
                         className="secondary"
                         onClick={() => void offline(item)}
+                        disabled={offlineSaving === item.id}
                       >
-                        Registrar pago externo
+                        {offlineSaving === item.id ? 'Registrando…' : 'Registrar pago externo'}
                       </button>
                       <button
                         type="button"
@@ -305,12 +325,14 @@ export function SubscriptionsPage({
                 </select>
               </label>
               <label>
-                Inicio
+                Fecha de inicio
                 <input
-                  type="datetime-local"
+                  type="date"
+                  min={localToday()}
                   value={startsAt}
                   onChange={(e) => setStartsAt(e.target.value)}
                 />
+                <small className="field-help">Se interpreta según tu zona horaria local (Argentina).</small>
               </label>
               <fieldset>
                 <legend>Experiencias</legend>

@@ -26,22 +26,28 @@ import { SubscriptionsPage } from '../features/commercial/pages/SubscriptionsPag
 import { isPlatformCommercialAdmin } from '../features/commercial/permissions';
 import { ClientOnboardingPage } from '../features/onboarding/pages/ClientOnboardingPage';
 import { RedeemPage } from '../features/claims/pages/RedeemPage';
-import { TeamPage } from '../features/team/TeamPage';
-import { ActivityPage } from '../features/activity/ActivityPage';
-import { AttentionPage } from '../features/attention/AttentionPage';
-import { AssetLibraryPage } from '../features/assets/AssetLibraryPage';
 import { ReportsPage } from '../features/reports/ReportsPage';
 import { ChannelsPage } from '../features/channels/ChannelsPage';
 import { ChannelDetailPage } from '../features/channels/ChannelDetailPage';
 import { ProductsPage } from '../features/products/ProductsPage';
 import { LeadsPage } from '../features/leads/LeadsPage';
+import { buildNavigation, isExperienceAssignedToWorkspace, isWorkspaceProductAssigned, navigationHasKey } from './navigation';
+import type { Experience } from '../features/experiences/types';
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
 }
+function WorkspaceProductsLoading() {
+  return <main className="page access-state" aria-live="polite"><span className="loading-mark" />Cargando los productos asignados…</main>;
+}
 function Shell() {
   const [m, setM] = useState<Me>(),
+    [authLoading, setAuthLoading] = useState(true),
     [o, setO] = useState(''),
+    [workspaceMode, setWorkspaceMode] = useState(false),
+    [workspaceExperiences, setWorkspaceExperiences] = useState<Experience[]>([]),
+    [workspaceProductsLoading, setWorkspaceProductsLoading] = useState(false),
+    [workspaceProductsOrganizationId, setWorkspaceProductsOrganizationId] = useState(''),
     [navigationOpen, setNavigationOpen] = useState(false);
   const n = useNavigate();
   const location = useLocation();
@@ -54,13 +60,40 @@ function Shell() {
     get('/auth/me')
       .then((x: Me) => {
         setM(x);
-        setO(x.memberships[0]?.organizationId ?? '');
+        const isPlatformOperator = ['super_admin', 'corsteno_admin'].includes(x.user.platformRole);
+        setO(isPlatformOperator ? '' : x.memberships[0]?.organizationId ?? '');
+        setWorkspaceMode(!isPlatformOperator);
+        setAuthLoading(false);
       })
       .catch(() => {
         organizationInitializedRef.current = false;
         n('/login');
       });
   }, [n]);
+  useEffect(() => {
+    const platformOperator = ['super_admin', 'corsteno_admin'].includes(m?.user.platformRole ?? '');
+    const shouldLoadWorkspaceProducts = Boolean(m && o && (!platformOperator || workspaceMode));
+    setWorkspaceExperiences([]);
+    setWorkspaceProductsLoading(shouldLoadWorkspaceProducts);
+    setWorkspaceProductsOrganizationId('');
+    if (!shouldLoadWorkspaceProducts) return;
+
+    let active = true;
+    void get<Experience[]>('/experiences', o)
+      .then((experiences) => {
+        if (active) {
+          setWorkspaceExperiences(experiences);
+          setWorkspaceProductsOrganizationId(o);
+        }
+      })
+      .catch(() => {
+        if (active) setWorkspaceExperiences([]);
+      })
+      .finally(() => {
+        if (active) setWorkspaceProductsLoading(false);
+      });
+    return () => { active = false; };
+  }, [m, o, workspaceMode]);
   useEffect(() => setNavigationOpen(false), [location.pathname]);
   useEffect(() => {
     if (!navigationOpen) return;
@@ -80,15 +113,31 @@ function Shell() {
       document.body.style.overflow = previousOverflow;
     };
   }, [navigationOpen]);
-  if (!m) return <main className="app-loading" aria-live="polite"><span className="loading-mark" />Cargando espacio de trabajo…</main>;
+  if (!m || authLoading) return <main className="app-loading" aria-live="polite"><span className="loading-mark" />Cargando espacio de trabajo…</main>;
   const platformOperator = ['super_admin', 'corsteno_admin'].includes(m.user.platformRole);
   const currentOrganization = m.memberships.find((x) => x.organizationId === o);
-  const hasOrganizationAccess = m.memberships.length > 0;
-  const showOrganizationSelector = m.memberships.length > 1;
+  const adminMode = platformOperator && !workspaceMode;
+  const hasOrganizationAccess = adminMode || Boolean(currentOrganization);
+  const showOrganizationSelector = platformOperator ? m.memberships.length > 0 : m.memberships.length > 1;
   const currentPermissions = currentOrganization?.permissions ?? [];
   const canManage = currentPermissions.includes('crm.manage');
   const canRedeem = currentPermissions.includes('claims.redeem');
   const isRedemptionOperator = canRedeem && !canManage;
+  const workspaceProductTypes = new Set(workspaceExperiences.map((experience) => experience.type));
+  const workspaceProductsReady = !workspaceProductsLoading && (!o || workspaceProductsOrganizationId === o);
+  const visibleWorkspaceProductTypes = workspaceProductsReady ? workspaceProductTypes : new Set<string>();
+  const workspaceDataLoading = !adminMode && Boolean(o) && !workspaceProductsReady;
+  const navigationItems = buildNavigation({
+    mode: adminMode ? 'admin' : 'workspace',
+    platformRole: m.user.platformRole,
+    permissions: currentPermissions,
+    workspace: Boolean(currentOrganization),
+    productTypes: visibleWorkspaceProductTypes,
+  });
+  const canUseWorkspaceProduct = (type?: string) => workspaceProductsReady && isWorkspaceProductAssigned(workspaceProductTypes, type);
+  const currentExperienceId = location.pathname.match(/^\/app\/experiences\/([^/]+)$/)?.[1] ?? '';
+  const currentExperienceAssigned = isExperienceAssignedToWorkspace(workspaceExperiences, currentExperienceId);
+  const canAccess = (key: Parameters<typeof navigationHasKey>[1]) => navigationHasKey(navigationItems, key);
   const navClass = ({ isActive }: { isActive: boolean }) => isActive ? 'active' : undefined;
   const closeNavigation = () => {
     setNavigationOpen(false);
@@ -100,42 +149,22 @@ function Shell() {
       <aside ref={navigationRef} id="app-navigation" className={navigationOpen ? 'open' : undefined}>
         <div className="brand-lockup"><b>CORSTENO</b><small>Operations</small></div>
         <nav aria-label="Navegación principal">
-          <p>Espacio de trabajo</p>
-          <NavLink end className={navClass} to="/app" onClick={closeNavigation}>Resumen</NavLink>
-          {!isRedemptionOperator && <NavLink className={navClass} to="/app/experiences" onClick={closeNavigation}>Experiencias</NavLink>}
-          {!isRedemptionOperator && currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/products" onClick={closeNavigation}>Productos</NavLink>}
-          {!isRedemptionOperator && currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/leads" onClick={closeNavigation}>Leads</NavLink>}
-          {!isRedemptionOperator && <NavLink className={navClass} to="/app/analytics" onClick={closeNavigation}>Resultados</NavLink>}
-          {!isRedemptionOperator && currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/channels" onClick={closeNavigation}>Sitios y canales</NavLink>}
-          {currentPermissions.includes('analytics.read') && <NavLink className={navClass} to="/app/reports" onClick={closeNavigation}>Reportes</NavLink>}
-          {canRedeem && <NavLink className={navClass} to="/app/redeem" onClick={closeNavigation}>Canjear premio</NavLink>}
-          {currentPermissions.includes('activity.read') && <NavLink className={navClass} to="/app/activity" onClick={closeNavigation}>Actividad</NavLink>}
-          {currentPermissions.includes('crm.read') && <NavLink className={navClass} to="/app/attention" onClick={closeNavigation}>Atención</NavLink>}
-          {currentPermissions.includes('assets.read') && <NavLink className={navClass} to="/app/assets" onClick={closeNavigation}>Archivos</NavLink>}
-          {currentOrganization && !isRedemptionOperator && <NavLink className={navClass} to="/app/team" onClick={closeNavigation}>Equipo</NavLink>}
-          {platformOperator && <>
-            <p className="nav-section">Administración</p>
-            <NavLink className={navClass} to="/app/commercial" onClick={closeNavigation}>Catálogo comercial</NavLink>
-            <NavLink className={navClass} to="/app/subscriptions" onClick={closeNavigation}>Suscripciones</NavLink>
-          </>}
-          <div className="nav-upcoming" aria-label="Próximamente">
-            <p className="nav-section">Próximamente</p>
-            <NavLink className={navClass} to="/app/projects" onClick={closeNavigation}>Proyectos</NavLink>
-            <NavLink className={navClass} to="/app/crm" onClick={closeNavigation}>CRM</NavLink>
-            <NavLink className={navClass} to="/app/settings" onClick={closeNavigation}>Configuración</NavLink>
-          </div>
+          <p>{adminMode ? 'Administración Corsteno' : 'Espacio de trabajo'}</p>
+          {navigationItems.map((item) => <NavLink key={item.key} end={item.key === 'summary'} className={navClass} to={item.to} onClick={closeNavigation}>{item.label}</NavLink>)}
         </nav>
-        {platformOperator && <NavLink className="button button-secondary new-client" to="/app/onboarding" onClick={closeNavigation}>Nuevo cliente</NavLink>}
+        {platformOperator && !workspaceMode && <NavLink className="button button-secondary new-client" to="/app/onboarding" onClick={closeNavigation}>Nuevo cliente</NavLink>}
       </aside>
       <section className="content">
         <header>
           <button ref={navigationTriggerRef} className="button button-icon menu-button" type="button" aria-label="Abrir navegación principal" aria-expanded={navigationOpen} aria-controls="app-navigation" onClick={() => setNavigationOpen(true)}>Menú</button>
           <div className="organization-context">
-            <span>{platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
-            {showOrganizationSelector ? <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => setO(e.target.value)}>
+            <span>{adminMode ? 'Modo administración' : platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
+            {showOrganizationSelector ? <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => { setO(e.target.value); if (platformOperator) setWorkspaceMode(Boolean(e.target.value)); }}>
+              {adminMode && <option value="">Elegí un workspace cliente</option>}
               {m.memberships.map((x) => <option key={x.organizationId} value={x.organizationId}>{x.organizationName}</option>)}
-            </select> : <strong className="organization-name">{currentOrganization?.organizationName ?? 'Sin organización asignada'}</strong>}
+            </select> : <strong className="organization-name">{adminMode ? 'Sin workspace cliente seleccionado' : currentOrganization?.organizationName ?? 'Sin organización asignada'}</strong>}
           </div>
+          {platformOperator && (workspaceMode || m.memberships.length > 0) && <button className="button button-secondary context-toggle" type="button" onClick={() => { if (workspaceMode) { setO(''); setWorkspaceMode(false); } else if (m.memberships[0]) { setO(m.memberships[0].organizationId); setWorkspaceMode(true); } closeNavigation(); }}>{workspaceMode ? 'Volver a administración' : 'Ver workspace'}</button>}
           <div className="account-context">
             <span><strong>{m.user.name}</strong><small>{platformOperator ? 'Administrador de plataforma' : currentOrganization?.organizationName}</small></span>
             <button
@@ -150,33 +179,33 @@ function Shell() {
           </div>
         </header>
         {!hasOrganizationAccess ? <main className="page access-state">
-          <p className="eyebrow">ACCESO / ORGANIZACIÓN</p>
-          <h1>No tenés una organización asignada</h1>
-          <p className="page-description">Tu cuenta todavía no tiene acceso a un espacio de trabajo. Pedile a un administrador que te incorpore a una organización activa.</p>
-        </main> : <Routes key={o}>
-          <Route index element={<Home org={o} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator} />} />
-          <Route path="analytics" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <Analytics org={o} />} />
-          <Route path="reports" element={currentPermissions.includes('analytics.read') ? <ReportsPage org={o} /> : <Navigate to="/app" replace />} />
-          <Route path="experiences" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
-          <Route path="products" element={isRedemptionOperator || !currentPermissions.includes('crm.read') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} isPlatformOperator={platformOperator} />} />
-          <Route path="leads" element={isRedemptionOperator || !currentPermissions.includes('crm.read') ? <Navigate to="/app" replace /> : <LeadsPage org={o} canEdit={canManage} />} />
-          <Route path="experiences/:id" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : <ExperienceDetailPage org={o} permissions={m.memberships.find((x) => x.organizationId === o)?.permissions ?? []} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
-          <Route path="commercial" element={platformOperator ? <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
-          <Route path="subscriptions" element={platformOperator ? <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} /> : <Navigate to="/app" replace />} />
-          <Route path="onboarding" element={platformOperator ? <ClientOnboardingPage /> : <Navigate to="/app" replace />} />
-          <Route path="redeem" element={canRedeem ? <RedeemPage org={o} canRedeem /> : <Navigate to="/app" replace />} />
-          <Route path="activity" element={currentPermissions.includes('activity.read') ? <ActivityPage org={o} /> : <Navigate to="/app" replace />} />
-          <Route path="attention" element={currentPermissions.includes('crm.read') ? <AttentionPage org={o} /> : <Navigate to="/app" replace />} />
-          <Route path="assets" element={currentPermissions.includes('assets.read') ? <AssetLibraryPage org={o} canManage={currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
-          <Route path="channels" element={currentPermissions.includes('crm.read') ? <ChannelsPage org={o} canManage={canManage} /> : <Navigate to="/app" replace />} />
-          <Route path="channels/:id" element={currentPermissions.includes('crm.read') ? <ChannelDetailPage org={o} canManage={canManage} canAssignContentProfile={platformOperator} canManageAssets={platformOperator || currentPermissions.includes('assets.manage')} /> : <Navigate to="/app" replace />} />
-          <Route path="team" element={isRedemptionOperator ? <Navigate to="/app/redeem" replace /> : currentOrganization ? <TeamPage org={o} role={currentOrganization.role} canManage={platformOperator || ['owner', 'admin'].includes(currentOrganization.role)} canAssignAdmin={platformOperator || currentOrganization.role === 'owner'} /> : <Navigate to="/app" replace />} />
+           <p className="eyebrow">ACCESO / ORGANIZACIÓN</p>
+           <h1>No tenés una organización asignada</h1>
+           <p className="page-description">Tu cuenta todavía no tiene acceso a un espacio de trabajo. Pedile a un administrador que te incorpore a una organización activa.</p>
+        </main> : workspaceDataLoading ? <WorkspaceProductsLoading /> : <Routes key={o || 'admin'}>
+           <Route index element={<Home org={o} organizationName={currentOrganization?.organizationName} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator && (!platformOperator || workspaceMode)} />} />
+           <Route path="analytics" element={!canAccess('analytics') ? <Navigate to="/app" replace /> : <Analytics org={o} />} />
+           <Route path="reports" element={!canAccess('reports') ? <Navigate to="/app" replace /> : <ReportsPage org={o} />} />
+           <Route path="experiences" element={!canAccess('experiences') ? <Navigate to="/app" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
+           <Route path="products" element={!canAccess('products') || !canUseWorkspaceProduct('product-catalog') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} isPlatformOperator={platformOperator} />} />
+            <Route path="leads" element={!adminMode || !canAccess('leads') ? <Navigate to="/app" replace /> : <LeadsPage org={o} canEdit={adminMode || canManage} internal />} />
+            <Route path="experiences/:id" element={!workspaceProductsReady ? <WorkspaceProductsLoading /> : !canAccess('experiences') || !currentExperienceAssigned ? <Navigate to="/app" replace /> : <ExperienceDetailPage org={o} permissions={currentPermissions} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+            <Route path="commercial" element={!adminMode || !canAccess('commercial') ? <Navigate to="/app" replace /> : <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+            <Route path="subscriptions" element={!adminMode || !canAccess('subscriptions') ? <Navigate to="/app" replace /> : <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+            <Route path="onboarding" element={!adminMode ? <Navigate to="/app" replace /> : <ClientOnboardingPage />} />
+            <Route path="redeem" element={!canAccess('redeem') ? <Navigate to="/app" replace /> : <RedeemPage org={o} canRedeem />} />
+            <Route path="activity" element={<Navigate to="/app" replace />} />
+            <Route path="attention" element={<Navigate to="/app" replace />} />
+            <Route path="assets" element={<Navigate to="/app" replace />} />
+            <Route path="channels" element={!canAccess('channels') ? <Navigate to="/app" replace /> : <ChannelsPage org={o} canManage={canManage} />} />
+            <Route path="channels/:id" element={!canAccess('channels') ? <Navigate to="/app" replace /> : <ChannelDetailPage org={o} canManage={canManage} canAssignContentProfile={platformOperator} canManageAssets={platformOperator || currentPermissions.includes('assets.manage')} hasProductCatalog={workspaceProductTypes.has('product-catalog')} />} />
+           <Route path="team" element={<Navigate to="/app" replace />} />
           <Route
             path="*"
             element={
               <main className="page">
-                <h1>Próximamente</h1>
-                <p>Esta sección estará disponible en una próxima etapa.</p>
+                <h1>Página no encontrada</h1>
+                <p>La ruta que buscás no existe.</p>
               </main>
             }
           />

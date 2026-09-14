@@ -8,6 +8,7 @@ export type Payment = { id: string; paymentSource: string; paymentMethod: string
 export const commercialApi = {
   plans: (organizationId: string) => apiRequest<Plan[]>('/plans', organizationId),
   catalog: (organizationId: string) => apiRequest<Plan[]>('/plans/catalog', organizationId),
+  createPlan: (organizationId: string, body: unknown) => apiRequest<Plan>('/plans', organizationId, { method: 'POST', body: JSON.stringify(body) }),
   updatePlan: (id: string, organizationId: string, body: unknown) => apiRequest<Plan>(`/plans/${id}`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   offlinePayment: (id: string, organizationId: string, body: unknown, idempotencyKey: string) => apiRequest<Subscription>(`/subscriptions/${id}/offline-payments`, organizationId, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   grant: (id: string, organizationId: string, body: unknown) => apiRequest<{ id: string }>(`/subscriptions/${id}/grants`, organizationId, { method: 'POST', body: JSON.stringify(body) }),

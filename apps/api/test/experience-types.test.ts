@@ -3,6 +3,8 @@ import {
   experienceTypeRegistry,
   resolveExperienceType,
   rouletteExperienceType,
+  websiteExperienceType,
+  arExperienceType,
   validateExperienceDraft,
   validateExperiencePublishReadiness,
   type ExperienceTypeDefinition,
@@ -34,6 +36,13 @@ describe('experience type registry', () => {
     expect(validateExperiencePublishReadiness(secondType.type, draft.value, registry)).toMatchObject({ definition: secondType, issues: [] });
     expect(validateExperienceDraft('missing-type', {}, registry)).toMatchObject({ definition: null, valid: false });
     expect(validateExperiencePublishReadiness('missing-type', {}, registry)).toEqual({ definition: null, issues: [{ code: 'UNSUPPORTED_EXPERIENCE_TYPE', path: 'type', message: 'El tipo de experiencia no está soportado.' }] });
+  });
+
+  it('registers Web and AR as explicit CRM product records without exposing a Roulette editor', () => {
+    expect(resolveExperienceType('website')).toBe(websiteExperienceType);
+    expect(resolveExperienceType('ar')).toBe(arExperienceType);
+    expect(websiteExperienceType.createDraftConfig()).toEqual({ schemaVersion: 1 });
+    expect(arExperienceType.validatePublishReadiness({ schemaVersion: 1 })).toEqual([]);
   });
 });
 

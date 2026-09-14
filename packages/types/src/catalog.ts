@@ -17,6 +17,7 @@ export type CatalogProductField =
   | 'visible'
   | 'ctaLabel'
   | 'ctaUrl';
+export type CatalogCtaType = 'url' | 'whatsapp';
 
 export function isSafeCatalogExternalUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > CATALOG_PRODUCT_LIMITS.ctaUrl)
@@ -33,8 +34,34 @@ export function isSafeCatalogExternalUrl(value: unknown): value is string {
   }
 }
 
+function catalogPhoneDigits(value: string) {
+  if (!/^[+\d\s().-]+$/.test(value.trim())) return null;
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 8 && digits.length <= 15 ? digits : null;
+}
+
+export function catalogPhoneFromCtaUrl(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^https:\/\/wa\.me\/(\d{8,15})$/i);
+  return match?.[1] ?? null;
+}
+
+export function isCatalogWhatsAppPhone(value: unknown) {
+  return typeof value === 'string' && Boolean(catalogPhoneDigits(value));
+}
+
+export function normalizeCatalogCtaUrl(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (isSafeCatalogExternalUrl(trimmed)) return trimmed;
+  const digits = catalogPhoneDigits(trimmed);
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 export function catalogProductFieldErrors(
   product: Record<string, unknown>,
+  ctaType: CatalogCtaType = 'url',
 ): Partial<Record<CatalogProductField, string>> {
   const errors: Partial<Record<CatalogProductField, string>> = {};
   const name = product.name;
@@ -90,11 +117,13 @@ export function catalogProductFieldErrors(
   }
 
   const ctaUrl = product.ctaUrl;
-  if (
-    ctaUrl !== null &&
-    ctaUrl !== undefined &&
-    !isSafeCatalogExternalUrl(ctaUrl)
-  )
-    errors.ctaUrl = 'Usá un enlace http:// o https:// válido.';
+  if (ctaUrl !== null && ctaUrl !== undefined) {
+    const valid = ctaType === 'whatsapp'
+      ? isCatalogWhatsAppPhone(ctaUrl) || Boolean(catalogPhoneFromCtaUrl(ctaUrl))
+      : isSafeCatalogExternalUrl(ctaUrl);
+    if (!valid) errors.ctaUrl = ctaType === 'whatsapp'
+      ? 'Ingresá el número con código de país y área.'
+      : 'Usá un enlace http:// o https:// válido.';
+  }
   return errors;
 }

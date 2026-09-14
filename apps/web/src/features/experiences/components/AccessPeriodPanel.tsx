@@ -118,7 +118,7 @@ export function AccessPeriodPanel({
     <section className="card access-period-panel">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">ENTITLEMENT</p>
+          <p className="eyebrow">ACCESO COMERCIAL</p>
           <h2>Vigencia comercial</h2>
         </div>
         <span className={`status status-${status}`}>{labels[status]}</span>

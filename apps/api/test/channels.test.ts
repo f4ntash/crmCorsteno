@@ -73,6 +73,12 @@ function request(path: string, env: any, init: RequestInit = {}) {
 }
 
 describe('organization sites and channels', () => {
+  it('blocks product management routes when the workspace is not Product Catalog', async () => {
+    const env = fixture();
+    expect((await request('/channels/channel-a/products', env)).status).toBe(403);
+    expect((await request('/channels/channel-a/products', env, { method: 'POST', body: JSON.stringify({ productId: 'product-a' }) })).status).toBe(403);
+  });
+
   it('lists only the current organization channels and keeps platform access', async () => {
     const env = fixture({ platformRole: 'corsteno_admin' });
     env.channels.push({ id: 'channel-b', organizationId: 'org-b', name: 'Other', type: 'external_site', status: 'active', url: 'https://other.example', createdAt: 1, updatedAt: 1 });

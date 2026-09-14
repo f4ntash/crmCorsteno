@@ -80,6 +80,23 @@ describe('development CORS', () => {
     );
   });
 
+  it('allows idempotent offline payment requests', async () => {
+    const response = await app.request(
+      '/subscriptions/sub-a/offline-payments',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://crm.corsteno.com',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type,idempotency-key,x-organization-id',
+        },
+      },
+      { ENVIRONMENT: 'production', APP_VERSION: 'test', WEB_ORIGIN: 'https://crm.corsteno.com' },
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Idempotency-Key');
+  });
+
   it('does not allow arbitrary origins with credentials', async () => {
     const response = await app.request(
       '/v1/events/batch',

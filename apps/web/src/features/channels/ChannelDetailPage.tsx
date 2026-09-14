@@ -10,6 +10,8 @@ import { SiteContentEditor } from './SiteContentEditor';
 
 const experienceTypeLabels: Record<string, string> = {
   roulette: 'Roulette',
+  website: 'Web',
+  ar: 'AR',
   'product-catalog': 'Catálogo de productos',
 };
 
@@ -17,7 +19,7 @@ function experienceLabel(experience: Pick<Experience, 'type'>) {
   return experienceTypeLabels[experience.type] ?? experience.type;
 }
 
-export function ChannelDetailPage({ org, canManage, canAssignContentProfile = false, canManageAssets = false }: { org: string; canManage: boolean; canAssignContentProfile?: boolean; canManageAssets?: boolean }) {
+export function ChannelDetailPage({ org, canManage, canAssignContentProfile = false, canManageAssets = false, hasProductCatalog = false }: { org: string; canManage: boolean; canAssignContentProfile?: boolean; canManageAssets?: boolean; hasProductCatalog?: boolean }) {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [channel, setChannel] = useState<Channel>();
@@ -157,7 +159,7 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
   }
 
   async function openProductConnect() {
-    if (!channel || !canManage) return;
+    if (!channel || !canManage || !hasProductCatalog) return;
     setProductError(''); setSelectedProduct(''); setLoadingProducts(true);
     try {
       const result = await productsApi.list(org, false);
@@ -170,7 +172,7 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
 
   async function connectProduct(event: React.FormEvent) {
     event.preventDefault();
-    if (!channel || !selectedProduct || loadingProducts) return;
+    if (!channel || !hasProductCatalog || !selectedProduct || loadingProducts) return;
     setLoadingProducts(true); setProductError('');
     try { setChannel(await channelsApi.addProduct(channel.id, org, selectedProduct)); setProductDialogOpen(false); }
     catch (cause) { setProductError(cause instanceof ApiError ? cause.message : 'No se pudo conectar el producto.'); }
@@ -178,19 +180,19 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
   }
 
   async function unlinkProduct(product: NonNullable<Channel['products']>['draft'][number]) {
-    if (!channel || !canManage || !window.confirm(`¿Desconectar ${product.name} de este sitio?`)) return;
+    if (!channel || !hasProductCatalog || !canManage || !window.confirm(`¿Desconectar ${product.name} de este sitio?`)) return;
     try { setChannel(await channelsApi.removeProduct(channel.id, org, product.id)); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'No se pudo desconectar el producto.'); }
   }
 
   async function setProductVisibility(product: NonNullable<Channel['products']>['draft'][number]) {
-    if (!channel || !canManage) return;
+    if (!channel || !hasProductCatalog || !canManage) return;
     try { setChannel(await channelsApi.updateProduct(channel.id, org, product.id, !product.visible)); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'No se pudo actualizar la visibilidad.'); }
   }
 
   async function moveProduct(product: NonNullable<Channel['products']>['draft'][number], direction: -1 | 1) {
-    if (!channel || !canManage) return;
+    if (!channel || !hasProductCatalog || !canManage) return;
     const current = channel.products?.draft ?? [];
     const index = current.findIndex((item) => item.id === product.id);
     const target = index + direction;
@@ -233,7 +235,7 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
         <section className="card channel-edit-card">
           <div className="channel-detail-heading"><div><p className="eyebrow">DESTINO</p><h2>Datos del canal</h2></div><span className={`status status-${channel.status}`}>{channel.status === 'active' ? 'Activo' : 'Inactivo'}</span></div>
           <p className="channel-detail-type">{channelTypeLabels[channel.type]}</p>
-          {channel.type === 'hosted_runtime' ? <p className="field-help">Este registro representa el enlace público alojado por Corsteno. La URL pública sigue siendo la de la experiencia.</p> : <p className="field-help">{channel.type === 'external_site' ? 'Sitio registrado. Puede consultar el contenido y los productos publicados mediante la API pública.' : 'Sitio registrado para una futura construcción de Corsteno. La API pública ya puede consultar su contenido publicado.'}</p>}
+          {channel.type === 'hosted_runtime' ? <p className="field-help">Este registro representa el enlace público alojado por Corsteno. La URL pública sigue siendo la de la experiencia.</p> : <p className="field-help">{channel.type === 'external_site' ? `Sitio registrado. Puede consultar el contenido${hasProductCatalog ? ' y los productos' : ''} publicados mediante la API pública.` : 'Sitio registrado para una futura construcción de Corsteno. La API pública ya puede consultar su contenido publicado.'}</p>}
           {canManage ? <form onSubmit={save} className="channel-edit-form">
             <label>Nombre<input value={form.name} maxLength={120} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
             {channel.type !== 'hosted_runtime' && <label>{channel.type === 'external_site' ? 'URL del sitio' : 'Dominio previsto (opcional)'}<input type="url" value={form.url} maxLength={2048} onChange={(event) => setForm({ ...form, url: event.target.value })} /><small className="field-help">Solo http:// o https://. No verificamos que el sitio esté online.</small></label>}
@@ -249,10 +251,10 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
       </div>
       {channel.type !== 'hosted_runtime' && <section className="card channel-integration-card">
         <div className="channel-detail-heading"><div><p className="eyebrow">INTEGRACIÓN</p><h2>API disponible</h2></div><span className="content-profile-label">Pública</span></div>
-        <p>Este identificador permite que tu sitio consulte el contenido y los productos publicados en Corsteno. No es un secreto.</p>
+        <p>Este identificador permite que tu sitio consulte el contenido{hasProductCatalog ? ' y los productos' : ''} publicados en Corsteno. No es un secreto.</p>
         <div className="channel-key-row"><code>{channel.publicKey ?? 'Identificador no disponible'}</code>{channel.publicKey && <button type="button" className="button button-secondary" onClick={() => void copySiteKey()}>{keyCopied ? 'Copiado' : 'Copiar identificador'}</button>}</div>
       </section>}
-      {channel.type !== 'hosted_runtime' && <section className="card channel-products-card">
+      {channel.type !== 'hosted_runtime' && hasProductCatalog && <section className="card channel-products-card">
         <div className="channel-detail-heading"><div><p className="eyebrow">PRODUCTOS DEL SITIO</p><h2>Productos conectados</h2><p className="field-help">La web solo puede consultar productos activos y publicados cuando aparecen en la estructura publicada.</p></div>{canManage && <button type="button" className="button button-secondary" onClick={() => void openProductConnect()} disabled={loadingProducts}>{loadingProducts ? 'Cargando…' : 'Agregar producto'}</button>}</div>
         {(channel.products?.draft ?? []).length ? <div className="channel-product-list">{channel.products?.draft.map((product, index, products) => <div className={`channel-product-row ${product.visible ? '' : 'is-hidden'}`} key={product.id}><div><strong>{product.name}</strong><small>{product.published ? 'Producto publicado' : 'Producto sin publicar'} · {product.visible ? 'Visible' : 'Oculto'}{channel.products?.published.some((published) => published.id === product.id && published.visible) ? ' · En sitio publicado' : ''}</small></div>{canManage && <div className="channel-product-actions"><button type="button" className="button button-quiet" disabled={index === 0} onClick={() => void moveProduct(product, -1)} aria-label={`Subir ${product.name}`}>↑</button><button type="button" className="button button-quiet" disabled={index === products.length - 1} onClick={() => void moveProduct(product, 1)} aria-label={`Bajar ${product.name}`}>↓</button><button type="button" className="button button-quiet" onClick={() => void setProductVisibility(product)}>{product.visible ? 'Ocultar' : 'Mostrar'}</button><button type="button" className="button button-quiet product-danger" onClick={() => void unlinkProduct(product)}>Desconectar</button></div>}</div>)}</div> : <div className="empty channel-empty"><h3>No hay productos conectados.</h3><p>Agregá productos existentes para definir qué puede consumir este sitio.</p></div>}
         {channel.products?.hasUnpublishedChanges && <p className="channel-products-publish-note">Hay cambios de estructura sin publicar. Se publican junto con el contenido del sitio.</p>}
@@ -268,13 +270,13 @@ export function ChannelDetailPage({ org, canManage, canAssignContentProfile = fa
           <div className="dialog-actions"><button type="button" className="button button-secondary" onClick={() => setConnectOpen(false)}>Cancelar</button><button type="submit" disabled={loadingExperiences || !selectedExperience || !availableExperiences.length}>{loadingExperiences ? 'Guardando…' : 'Conectar'}</button></div>
         </form>
       </Dialog>
-      <Dialog open={productDialogOpen} title="Agregar producto" description="Solo podés elegir productos activos de la organización actual." onClose={() => !loadingProducts && setProductDialogOpen(false)}>
+      {hasProductCatalog && <Dialog open={productDialogOpen} title="Agregar producto" description="Solo podés elegir productos activos de la organización actual." onClose={() => !loadingProducts && setProductDialogOpen(false)}>
         <form onSubmit={connectProduct}>
           {availableProducts.length ? <label>Producto<select autoFocus value={selectedProduct} onChange={(event) => setSelectedProduct(event.target.value)}><option value="">Elegí un producto</option>{availableProducts.map((product) => <option value={product.id} key={product.id}>{product.name}{product.published ? '' : ' · Borrador comercial'}</option>)}</select></label> : <p className="field-help">No hay productos activos disponibles para conectar.</p>}
           {productError && <p className="error" role="alert">{productError}</p>}
           <div className="dialog-actions"><button type="button" className="button button-secondary" onClick={() => setProductDialogOpen(false)}>Cancelar</button><button type="submit" disabled={loadingProducts || !selectedProduct || !availableProducts.length}>{loadingProducts ? 'Guardando…' : 'Conectar'}</button></div>
         </form>
-      </Dialog>
+      </Dialog>}
     </main>
   );
 }

@@ -7,6 +7,7 @@ import { recordActivityBestEffort } from '../services/activity';
 import { catalogAssetIdFromUrl, catalogImageFromRow, catalogImageSelect, catalogProductFromRow, catalogProductIssues, catalogProductSelect, MAX_CATALOG_PRODUCT_IMAGES, PRODUCT_CATALOG_TYPE, type CatalogProductInput } from '../services/product-catalog';
 import { validAssetUrl } from '../services/roulette-config';
 import { SUPPORTED_IMAGE_TYPES } from '../services/assets';
+import { normalizeCatalogCtaUrl } from '@corsteno/types';
 import {
   catalogAssociationProduct,
   catalogAssociationsChanged,
@@ -127,7 +128,7 @@ function productFromBody(body: Record<string, unknown>, partial = false): Record
   }
   if (!partial || 'ctaUrl' in body || 'cta_url' in body) {
     const raw = 'ctaUrl' in body ? body.ctaUrl : body.cta_url;
-    result.ctaUrl = raw === null || raw === undefined || raw === '' ? null : typeof raw === 'string' ? raw.trim() : raw;
+    result.ctaUrl = normalizeCatalogCtaUrl(raw) ?? (raw === null || raw === undefined || raw === '' ? null : raw);
   }
   return result;
 }
@@ -136,7 +137,7 @@ function completeProduct(value: Record<string, unknown>): CatalogProductInput {
   return {
     name: (value.name ?? '') as string, description: (value.description ?? '') as string, priceMinorUnits: (value.priceMinorUnits ?? 0) as number,
     currency: (value.currency ?? 'ARS') as string, stock: (value.stock ?? 0) as number, visible: (value.visible ?? true) as boolean,
-    mainAssetUrl: (value.mainAssetUrl ?? null) as string | null, ctaLabel: (value.ctaLabel ?? null) as string | null, ctaUrl: (value.ctaUrl ?? null) as string | null,
+    mainAssetUrl: (value.mainAssetUrl ?? null) as string | null, ctaLabel: (value.ctaLabel ?? null) as string | null, ctaUrl: normalizeCatalogCtaUrl(value.ctaUrl) ?? (value.ctaUrl ?? null) as string | null,
   };
 }
 

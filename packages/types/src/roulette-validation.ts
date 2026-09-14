@@ -108,8 +108,12 @@ export function rouletteDraftFieldErrors(value: unknown): RouletteFieldErrorMap 
     if (!isRecord(cta)) errors.resultCta = 'La configuración del botón final no es válida.';
     else {
       if (cta.enabled !== undefined && typeof cta.enabled !== 'boolean') errors['resultCta.enabled'] = 'Indicá si se muestra el botón final.';
-      if (cta.label !== undefined && (typeof cta.label !== 'string' || cta.label.length > ROULETTE_LIMITS.ctaLabel)) errors['resultCta.label'] = `Usá hasta ${ROULETTE_LIMITS.ctaLabel} caracteres.`;
-      if (cta.url !== undefined && !isSafeRouletteExternalUrl(cta.url)) errors['resultCta.url'] = 'Usá un enlace http:// o https:// válido.';
+      // CTA fields are conditional: a disabled button must not invalidate an
+      // otherwise publishable roulette using its stale draft values.
+      if (cta.enabled === true) {
+        if (typeof cta.label !== 'string' || !cta.label.trim() || cta.label.length > ROULETTE_LIMITS.ctaLabel) errors['resultCta.label'] = 'Ingresá un texto de botón válido.';
+        if (!isSafeRouletteExternalUrl(cta.url)) errors['resultCta.url'] = 'Usá un enlace http:// o https:// válido.';
+      }
     }
   }
 

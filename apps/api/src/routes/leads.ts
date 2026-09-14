@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { createMiddleware } from 'hono/factory';
-import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
+import { requireAuth, requireInternalOrOrganization, requireOrganizationPermission, requirePlatformOperator } from '../auth/middleware';
 import type { Env } from '../index';
 import { LEAD_JOB_LIMITS, LEAD_JOB_TYPES } from '../services/lead-jobs';
 import type { LeadJobMessage } from '../services/lead-queue';
@@ -10,7 +10,7 @@ import { FINDER_DRY_RUN_LIMITS, FINDER_EXTERNAL_MODE, FINDER_PERSIST_LIMITS, FIN
 type Variables = { user: { id: string; platformRole: string }; organization: { id: string; role: string } };
 type LeadContext = { Bindings: Env; Variables: Variables };
 export const leadRoutes = new Hono<LeadContext>();
-leadRoutes.use('*', requireAuth, requireOrganization);
+leadRoutes.use('*', requireAuth, requireInternalOrOrganization, requirePlatformOperator);
 const read = requireOrganizationPermission('crm.read') as unknown as ReturnType<typeof createMiddleware<LeadContext>>;
 const manage = requireOrganizationPermission('crm.manage') as unknown as ReturnType<typeof createMiddleware<LeadContext>>;
 

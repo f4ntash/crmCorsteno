@@ -11,11 +11,16 @@ export async function apiRequest<T>(path: string, organizationId?: string, init?
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (organizationId) headers.set('X-Organization-Id', organizationId);
-  const response = await fetch(apiBaseUrl + path, {
-    ...init,
-    credentials: 'include',
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiBaseUrl + path, {
+      ...init,
+      credentials: 'include',
+      headers,
+    });
+  } catch {
+    throw new ApiError('No se pudo conectar con el servidor. Intentá nuevamente.');
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: { message?: string; issues?: unknown; code?: string } } | null;
     throw new ApiError(payload?.error?.message ?? 'No se pudo cargar la información', payload?.error?.issues, payload?.error?.code);

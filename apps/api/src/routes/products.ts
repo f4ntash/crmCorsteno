@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
+import { requireAuth, requireOrganization, requireOrganizationExperienceType, requireOrganizationPermission } from '../auth/middleware';
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../index';
 import { recordActivityBestEffort } from '../services/activity';
 import { catalogAssetIdFromUrl, MAX_CATALOG_PRODUCT_IMAGES } from '../services/product-catalog';
 import { SUPPORTED_IMAGE_TYPES } from '../services/assets';
 import { product3DConfigIssues, type Product3DConfig } from '@corsteno/types';
+import { normalizeCatalogCtaUrl } from '@corsteno/types';
 import { getProduct3D, getProduct3DModelAssets, publishProduct3D, updateProduct3DDraft, uploadProduct3DModel } from '../services/product-3d';
 import {
   adjustOrganizationProductStock,
@@ -33,6 +34,7 @@ type ProductContext = Context<{ Bindings: Env; Variables: Variables }>;
 
 export const productRoutes = new Hono<{ Bindings: Env; Variables: Variables }>();
 productRoutes.use('*', requireAuth, requireOrganization);
+productRoutes.use('*', requireOrganizationExperienceType('product-catalog') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>);
 const read = requireOrganizationPermission('crm.read') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 const manage = requireOrganizationPermission('crm.manage') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 const platformOnly = createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
@@ -69,7 +71,7 @@ function input(value: Record<string, unknown>, partial = false): Record<string, 
     ['stock', (item) => item],
     ['mainAssetUrl', (item) => item === null || item === undefined || item === '' ? null : typeof item === 'string' ? item.trim() : item],
     ['ctaLabel', (item) => optionalString(item)],
-    ['ctaUrl', (item) => item === null || item === undefined || item === '' ? null : typeof item === 'string' ? item.trim() : item],
+    ['ctaUrl', (item) => normalizeCatalogCtaUrl(item) ?? (item === null || item === undefined || item === '' ? null : item)],
   ];
   for (const [key, transform] of fields) {
     const actual = read(key, key === 'priceMinorUnits' ? 'price_minor_units' : key === 'mainAssetUrl' ? 'main_asset_url' : key === 'ctaLabel' ? 'cta_label' : key === 'ctaUrl' ? 'cta_url' : '');

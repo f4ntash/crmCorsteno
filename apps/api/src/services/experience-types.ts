@@ -5,6 +5,7 @@ import {
 } from './roulette-config';
 import { PRODUCT_CATALOG_TYPE, createDefaultProductCatalogConfig, productCatalogDraftIssues, validateProductCatalogDraft, validateProductCatalogPublishReadiness } from './product-catalog';
 import type { D1Database } from '@cloudflare/workers-types';
+import type { CrmProductType } from '@corsteno/types';
 
 export type ExperienceTypeDefinition = {
   type: string;
@@ -41,11 +42,28 @@ export const productCatalogExperienceType: ExperienceTypeDefinition = {
   validatePublishReadinessWithContext: (value, context) => validateProductCatalogPublishReadiness(context.db, context.experienceId, context.organizationId, value),
 };
 
+function registryOnlyExperienceType(type: Exclude<CrmProductType, 'roulette' | 'product-catalog'>, label: string): ExperienceTypeDefinition {
+  return {
+    type,
+    label,
+    createDraftConfig: () => ({ schemaVersion: 1 }),
+    validateDraft: (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value)),
+    validatePublishReadiness: () => [],
+  };
+}
+
+/** Website and AR are canonical CRM assignments, not editors. Their records
+ * can be listed and identified without pretending the CRM owns their runtime. */
+export const websiteExperienceType = registryOnlyExperienceType('website', 'Web');
+export const arExperienceType = registryOnlyExperienceType('ar', 'AR');
+
 export const defaultExperienceType = rouletteExperienceType.type;
 
 export const experienceTypeRegistry: ExperienceTypeRegistry = new Map<string, ExperienceTypeDefinition>([
   [rouletteExperienceType.type, rouletteExperienceType],
   [productCatalogExperienceType.type, productCatalogExperienceType],
+  [websiteExperienceType.type, websiteExperienceType],
+  [arExperienceType.type, arExperienceType],
 ]);
 
 export function resolveExperienceType(type: unknown, registry: ExperienceTypeRegistry = experienceTypeRegistry) {

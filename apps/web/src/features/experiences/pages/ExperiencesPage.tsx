@@ -1,4 +1,5 @@
 import type React from 'react';
+import { CRM_PRODUCT_LABELS, CRM_PRODUCT_TYPES, isCrmProductType, type CrmProductType } from '@corsteno/types';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
@@ -20,9 +21,11 @@ const experienceStatuses: Record<string, string> = {
   paused: 'Pausada',
   expired: 'Vencida',
 };
-const experienceTypes: Record<string, { label: string; description: string }> = {
-  roulette: { label: 'Roulette', description: 'Una experiencia de premios con giros.' },
-  'product-catalog': { label: 'Catálogo de productos', description: 'Mostrá productos, precios y disponibilidad.' },
+const experienceTypes: Record<CrmProductType, { label: string; description: string }> = {
+  roulette: { label: CRM_PRODUCT_LABELS.roulette, description: 'Una experiencia de premios con giros.' },
+  website: { label: CRM_PRODUCT_LABELS.website, description: 'Una experiencia web registrada para este workspace.' },
+  ar: { label: CRM_PRODUCT_LABELS.ar, description: 'Una experiencia AR registrada para este workspace.' },
+  'product-catalog': { label: CRM_PRODUCT_LABELS['product-catalog'], description: 'Mostrá productos, precios y disponibilidad.' },
 };
 const accessStatuses: Record<string, string> = { legacy_unrestricted: 'Sin restricciones', scheduled: 'Vigencia programada', active: 'Vigencia activa', expired: 'Vigencia vencida', no_access: 'Sin acceso' };
 function experienceDate(value: string | null, empty: string) {
@@ -50,7 +53,7 @@ export function ExperiencesPage({
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState(''),
     [templateId, setTemplateId] = useState<string | null>(null),
-    [type, setType] = useState<'roulette' | 'product-catalog'>('roulette'),
+    [type, setType] = useState<CrmProductType>('roulette'),
     [delivery, setDelivery] = useState<'none' | 'hosted'>('none');
   const load = () => {
     if (!org) return;
@@ -129,7 +132,7 @@ export function ExperiencesPage({
             <article className="experience-card" key={item.id}>
               <div>
                 <h2>{item.name}</h2>
-                <p>{experienceTypes[item.type]?.label ?? item.type}</p>
+                <p>{isCrmProductType(item.type) ? experienceTypes[item.type].label : item.type}</p>
               </div>
               <span className={`status status-${item.effective_status}`}>
                 {experienceStatuses[item.effective_status] ??
@@ -177,7 +180,7 @@ export function ExperiencesPage({
               <fieldset>
                 <legend>Tipo de experiencia</legend>
                 <div className="template-options template-type-options">
-                  {Object.entries(experienceTypes).map(([value, option]) => <label className="template-option" key={value}><input type="radio" name="experience-type" checked={type === value} onChange={() => { setType(value as 'roulette' | 'product-catalog'); setTemplateId(null); }} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}
+                  {CRM_PRODUCT_TYPES.map((value) => { const option = experienceTypes[value]; return <label className="template-option" key={value}><input type="radio" name="experience-type" checked={type === value} onChange={() => { setType(value); setTemplateId(null); setDelivery(value === 'roulette' || value === 'product-catalog' ? delivery : 'none'); }} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>; })}
                 </div>
               </fieldset>
               <fieldset>
@@ -187,13 +190,13 @@ export function ExperiencesPage({
                   {templates.filter((template) => template.type === type).map((template) => <label className="template-option" key={template.id}><input type="radio" name="template" checked={templateId === template.id} onChange={() => setTemplateId(template.id)} /><span><strong>{template.name}</strong><small>{template.description}</small></span></label>)}
                 </div> : <p className="template-empty">No pudimos cargar las opciones iniciales. Podés empezar desde cero.</p>}
                </fieldset>
-               <fieldset>
+               {(type === 'roulette' || type === 'product-catalog') && <fieldset>
                  <legend>Canal de publicación</legend>
                  <div className="template-options">
                    <label className="template-option"><input type="radio" name="experience-delivery" checked={delivery === 'none'} onChange={() => setDelivery('none')} /><span><strong>Sin canal por ahora</strong><small>Prepará la experiencia y conectala más adelante.</small></span></label>
                    <label className="template-option"><input type="radio" name="experience-delivery" checked={delivery === 'hosted'} onChange={() => setDelivery('hosted')} /><span><strong>Alojada por Corsteno</strong><small>Usá el enlace público administrado por Corsteno. La experiencia seguirá como borrador.</small></span></label>
                  </div>
-               </fieldset>
+               </fieldset>}
                {saveError && <p className="error">{saveError}</p>}
               <div className="dialog-actions">
                 <button

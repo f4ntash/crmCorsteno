@@ -12,6 +12,8 @@ import {
   catalogProductFieldErrors,
   formatMoneyFromMinor,
   parseMoneyToMinor,
+  catalogPhoneFromCtaUrl,
+  type CatalogCtaType,
   type CatalogProductField,
 } from '@corsteno/types';
 import { AssetPicker } from '../assets/AssetPicker';
@@ -146,6 +148,7 @@ export function ProductCatalogEditor({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyProduct);
+  const [ctaType, setCtaType] = useState<CatalogCtaType>('url');
   const [priceInput, setPriceInput] = useState('0');
   const [stockInput, setStockInput] = useState('0');
   const [productSaving, setProductSaving] = useState(false);
@@ -241,8 +244,9 @@ export function ProductCatalogEditor({
       visible: product.visible,
       mainAssetUrl: product.mainAssetUrl,
       ctaLabel: product.ctaLabel,
-      ctaUrl: product.ctaUrl,
+      ctaUrl: catalogPhoneFromCtaUrl(product.ctaUrl) ?? product.ctaUrl,
     });
+    setCtaType(catalogPhoneFromCtaUrl(product.ctaUrl) ? 'whatsapp' : 'url');
     setPriceInput(priceValue(product));
     setStockInput(String(product.stock));
     resetProductFeedback();
@@ -250,6 +254,7 @@ export function ProductCatalogEditor({
   function newProduct() {
     setEditing('new');
     setForm({ ...emptyProduct });
+    setCtaType('url');
     setPriceInput('0');
     setStockInput('0');
     resetProductFeedback();
@@ -261,7 +266,16 @@ export function ProductCatalogEditor({
   ) {
     return catalogProductFieldErrors(
       validationValues(nextForm, nextPrice, nextStock),
+      ctaType,
     );
+  }
+  function changeCtaType(nextType: CatalogCtaType) {
+    setCtaType(nextType);
+    setProductErrors((current) => ({ ...current, ctaUrl: undefined }));
+    if (submitted || touched.ctaUrl) {
+      const nextErrors = catalogProductFieldErrors(validationValues(form, priceInput, stockInput), nextType);
+      setProductErrors(nextErrors);
+    }
   }
   function focusFirstError(errors: ProductErrors) {
     const firstField = Object.keys(fieldIds).find(
@@ -774,6 +788,13 @@ export function ProductCatalogEditor({
             </div>
             <div className="catalog-form-grid">
               <div className="catalog-form-field">
+                <label htmlFor="catalog-product-cta-type">Tipo de acción</label>
+                <select id="catalog-product-cta-type" value={ctaType} onChange={(event) => changeCtaType(event.target.value as CatalogCtaType)}>
+                  <option value="url">Enlace</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </div>
+              <div className="catalog-form-field">
                 <label htmlFor={fieldIds.priceMinorUnits}>
                   Precio <span className="catalog-required">Requerido</span>
                 </label>
@@ -1027,20 +1048,20 @@ export function ProductCatalogEditor({
               </div>
               <div className="catalog-form-field">
                 <label htmlFor={fieldIds.ctaUrl}>
-                  Enlace o WhatsApp{' '}
+                  {ctaType === 'whatsapp' ? 'Número de WhatsApp' : 'Enlace'}{' '}
                   <span className="catalog-optional">Opcional</span>
                 </label>
                 <input
                   id={fieldIds.ctaUrl}
                   type="text"
-                  inputMode="url"
+                  inputMode={ctaType === 'whatsapp' ? 'tel' : 'url'}
                   maxLength={CATALOG_PRODUCT_LIMITS.ctaUrl}
                   value={form.ctaUrl ?? ''}
                   onChange={(event) =>
                     setField('ctaUrl', event.target.value || null)
                   }
                   onBlur={() => touchField('ctaUrl')}
-                  placeholder="https://wa.me/…"
+                  placeholder={ctaType === 'whatsapp' ? '+54 9 3541 123456' : 'https://ejemplo.com'}
                   aria-invalid={Boolean(displayedError('ctaUrl'))}
                   aria-describedby={
                     displayedError('ctaUrl')
@@ -1049,8 +1070,7 @@ export function ProductCatalogEditor({
                   }
                 />
                 <small id="catalog-product-cta-help">
-                  Usá un enlace http:// o https://. Si completás ambos campos,
-                  se muestra el botón.
+                  {ctaType === 'whatsapp' ? 'Ingresá el número con código de país y área.' : 'Usá un enlace http:// o https://. Si completás ambos campos, se muestra el botón.'}
                 </small>
                 {displayedError('ctaUrl') && (
                   <p
