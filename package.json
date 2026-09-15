@@ -22,6 +22,7 @@
     "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
     "auth:reset-production-admin": "tsx scripts/reset-production-admin.ts",
     "data:reset-production": "tsx scripts/reset-production-data.ts",
+    "data:canonical-production": "tsx scripts/seed-canonical-production.ts",
     "credentials:create-production": "tsx scripts/create-production-credential.ts",
     "create:site": "tsx packages/site-generator/src/cli.ts"
   },

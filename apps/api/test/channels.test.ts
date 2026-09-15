@@ -122,6 +122,18 @@ describe('organization sites and channels', () => {
     expect(env.links).toHaveLength(0);
   });
 
+  it('exposes the canonical active external AR site on its linked experience', async () => {
+    const env = fixture();
+    env.experiences.push({ id: 'cosquin-ar', organizationId: 'org-a', name: 'Cosquín Rock AR', slug: 'cosquin-rock-ar', type: 'ar', status: 'published', startsAt: null, endsAt: null });
+    env.channels.push({ id: 'cosquin-site', organizationId: 'org-a', name: 'Cosquín Rock AR', type: 'external_site', status: 'active', url: 'https://cosquinrock.corsteno.com/', createdAt: 1, updatedAt: 1 });
+
+    const linked = await request('/channels/cosquin-site/experiences', env, { method: 'POST', body: JSON.stringify({ experienceId: 'cosquin-ar' }) });
+    expect(linked.status).toBe(200);
+    const response = await request('/experiences/cosquin-ar/channels', env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [expect.objectContaining({ id: 'cosquin-site', name: 'Cosquín Rock AR', type: 'external_site', status: 'active', url: 'https://cosquinrock.corsteno.com/' })] });
+  });
+
   it('allows authorized status updates, preserves linked experiences, and denies non-managers', async () => {
     const env = fixture();
     await request('/channels/channel-a/experiences', env, { method: 'POST', body: JSON.stringify({ experienceId: 'experience-a' }) });

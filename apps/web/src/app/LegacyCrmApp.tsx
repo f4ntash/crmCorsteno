@@ -161,7 +161,7 @@ function Shell() {
             <span>{adminMode ? 'Modo administración' : platformOperator ? 'Workspace del cliente' : 'Organización actual'}</span>
             {showOrganizationSelector ? <select aria-label="Organización actual" title={currentOrganization?.organizationName} value={o} onChange={(e) => { setO(e.target.value); if (platformOperator) setWorkspaceMode(Boolean(e.target.value)); }}>
               {adminMode && <option value="">Elegí un workspace cliente</option>}
-              {m.memberships.map((x) => <option key={x.organizationId} value={x.organizationId}>{x.organizationName}</option>)}
+              {m.memberships.map((x) => <option key={x.organizationId} value={x.organizationId}>{x.organizationName}{x.ownerEmail ? ` · ${x.ownerEmail}` : ''}</option>)}
             </select> : <strong className="organization-name">{adminMode ? 'Sin workspace cliente seleccionado' : currentOrganization?.organizationName ?? 'Sin organización asignada'}</strong>}
           </div>
           {platformOperator && (workspaceMode || m.memberships.length > 0) && <button className="button button-secondary context-toggle" type="button" onClick={() => { if (workspaceMode) { setO(''); setWorkspaceMode(false); } else if (m.memberships[0]) { setO(m.memberships[0].organizationId); setWorkspaceMode(true); } closeNavigation(); }}>{workspaceMode ? 'Volver a administración' : 'Ver workspace'}</button>}

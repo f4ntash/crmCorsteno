@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { apiDownload, apiRequest } from '../../shared/api/client';
 import { downloadCsv } from '../reports/download';
+import { formatAnalyticsBucket, formatAnalyticsClock, formatAnalyticsTooltip, formatRecentEventTime } from './analytics-format';
+import { readableEventLabel } from './event-labels';
 export { OperationsHome as Home } from './OperationsHome';
 
 type Project = { id: string; name: string };
@@ -21,6 +23,7 @@ type Summary = {
 };
 type Point = { timestamp: number; value: number };
 type Item = { name: string; value: number };
+type RecentEvent = { occurredAt: number; event: string; applicationName: string };
 type RoulettePrizePerformance = Item & { prizeId?: string; wins?: number; shareOfWins?: number | null; claimsGenerated?: number; pending?: number; redeemed?: number; redemptionRate?: number | null; claimsApplicable?: boolean };
 function formatMetricValue(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -35,7 +38,7 @@ function formatDateTime(value: number | string | null | undefined): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? 'Sin actividad'
-    : date.toLocaleString('es-AR');
+    : formatRecentEventTime(date.getTime());
 }
 function formatPercentage(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value))
@@ -51,12 +54,7 @@ const metricLabels: Record<string, string> = {
   navigationsStarted: 'Navegaciones iniciadas', schedulesViewed: 'Agenda consultada', cameraPermissionsGranted: 'Permisos de cámara concedidos', cameraPermissionsDenied: 'Permisos de cámara denegados',
   gamesStarted: 'Juegos iniciados', gamesFinished: 'Juegos completados', prizesWon: 'Premios otorgados', prizesClaimed: 'Premios reclamados',
 };
-const displayLabels: Record<string, string> = {
-  experience_view: 'Vista de experiencia', roulette_spin_click: 'Clic en girar', roulette_spin_started: 'Giro iniciado', roulette_spin_completed: 'Giro completado', roulette_spin_blocked: 'Giro bloqueado', roulette_prize_won: 'Premio otorgado',
-  roulette_result_cta_click: 'Clic en CTA del resultado', roulette_ar_open_click: 'AR abierto', roulette_ar_session_started: 'Sesión AR iniciada', roulette_ar_placed: 'Ruleta colocada', roulette_ar_session_ended: 'Sesión AR finalizada',
-  cooldown: 'En período de espera', device_limit: 'Límite por dispositivo', session_limit: 'Límite por sesión', already_participated: 'Ya participó', identity_required: 'Identidad requerida',
-};
-function readableLabel(value: string) { const key = value.trim().toLowerCase().replaceAll(' ', '_'); return displayLabels[value] ?? displayLabels[key] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+const readableLabel = readableEventLabel;
 function typeLabel(type?: string) { return type === 'webar' ? 'WebAR' : type === 'game' ? 'Juego' : type === 'roulette' ? 'Ruleta' : type === 'product-catalog' ? 'Catálogo de productos' : 'General'; }
 function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { return <div className="analytics-kpi"><small>{label}</small><b>{formatMetricValue(value)}</b></div>; }
 function SectionHeading({ eyebrow, title, detail }: { eyebrow?: string; title: string; detail?: string }) { return <div className="analytics-section-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2>{detail && <p>{detail}</p>}</div></div>; }
@@ -65,11 +63,11 @@ function Funnel({ insight }: { insight: NonNullable<Summary['rouletteInsights']>
   const steps = [{ label: 'Participaron', value: insight.participants }, { label: 'Giro completado', value: insight.completedSpins }, { label: 'Premio ganado', value: insight.prizesWon }, ...(insight.claimsApplicable ? [{ label: 'Claim generado', value: insight.claimsGenerated }, { label: 'Canjeado', value: insight.claimsRedeemed }] : [])];
   return <div className="roulette-funnel">{steps.map((step, index) => <div className="roulette-funnel-step" key={step.label}><strong>{formatMetricValue(step.value)}</strong><span>{step.label}</span>{index > 0 && <small>{steps[index - 1]!.value ? formatPercentage(step.value / steps[index - 1]!.value) : '—'} desde anterior</small>}</div>)}</div>;
 }
-function RouletteCampaignInsights({ summary, prizes, blocked, events, ar }: { summary: NonNullable<Summary['rouletteInsights']>; prizes: RoulettePrizePerformance[]; blocked: Item[]; events: Point[]; ar: { open: number; sessions: number; placed: number } }) {
+function RouletteCampaignInsights({ summary, prizes, blocked, events, ar, hourly }: { summary: NonNullable<Summary['rouletteInsights']>; prizes: RoulettePrizePerformance[]; blocked: Item[]; events: Point[]; ar: { open: number; sessions: number; placed: number }; hourly: boolean }) {
   return <>
     <section className="analytics-section"><SectionHeading eyebrow="CAMPAÑA" title="Resultados de la ruleta" detail="Qué ocurrió en el período seleccionado." /><div className="grid analytics-kpi-grid roulette-kpis"><MetricCard label="Participantes / usuarios únicos" value={summary.participants} /><MetricCard label="Giros completados" value={summary.completedSpins} /><MetricCard label="Tasa de premios" value={formatPercentage(summary.winRate)} /><MetricCard label="Premios ganados" value={summary.prizesWon} /><MetricCard label="Claims generados" value={summary.claimsApplicable ? summary.claimsGenerated : null} /><MetricCard label="Claims canjeados" value={summary.claimsApplicable ? summary.claimsRedeemed : null} /><MetricCard label="Tasa de canje" value={summary.claimsApplicable ? formatPercentage(summary.redemptionRate) : null} /><MetricCard label="Participaciones bloqueadas" value={summary.blockedParticipation} /></div><Funnel insight={summary} /></section>
     <section className="analytics-section"><SectionHeading eyebrow="PREMIOS" title="Rendimiento por premio" detail="Resultados reales del período; no son probabilidades configuradas." />{prizes.length ? <div className="roulette-prize-table" role="table"><div className="roulette-prize-row roulette-prize-head" role="row"><span>Premio</span><span>Ganados</span><span>Parte de premios</span><span>Claims / canjes</span></div>{prizes.map((prize) => <div className="roulette-prize-row" role="row" key={prize.prizeId ?? prize.name}><span>{prize.name}</span><strong>{prize.wins ?? prize.value}</strong><span>{formatPercentage(prize.shareOfWins)}</span><span>{prize.claimsApplicable ? `${prize.claimsGenerated ?? 0} · ${prize.pending ?? 0} pendientes · ${prize.redeemed ?? 0} canjeados` : 'Sin datos de claims'}</span></div>)}</div> : <StatusPanel kind="empty">Todavía no hay premios ganados en este período.</StatusPanel>}</section>
-    <section className="analytics-section"><SectionHeading eyebrow="ACTIVIDAD" title="Actividad de la campaña" detail="Actividad por hora o día según el período seleccionado." /><div className="chart-grid"><ChartBox title="Eventos de la ruleta" data={events} /><Rank title="Participaciones bloqueadas" items={blocked} /></div>{(ar.open || ar.sessions || ar.placed) > 0 && <div className="chart-grid"><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: ar.open }, { name: 'Sesiones AR', value: ar.sessions }, { name: 'Ruleta colocada', value: ar.placed }]} /></div>}</section>
+    <section className="analytics-section"><SectionHeading eyebrow="ACTIVIDAD" title="Actividad de la campaña" detail="Actividad por hora o día según el período seleccionado." /><div className="chart-grid"><ChartBox title="Eventos de la ruleta" data={events} hourly={hourly} /><Rank title="Participaciones bloqueadas" items={blocked} /></div>{(ar.open || ar.sessions || ar.placed) > 0 && <div className="chart-grid"><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: ar.open }, { name: 'Sesiones AR', value: ar.sessions }, { name: 'Ruleta colocada', value: ar.placed }]} /></div>}</section>
   </>;
 }
 
@@ -77,10 +75,14 @@ export function ChartBox({
   title,
   data,
   color = '#79a7d3',
+  hourly = false,
+  valueLabel,
 }: {
   title: string;
   data: Point[];
   color?: string;
+  hourly?: boolean;
+  valueLabel?: string;
 }) {
   return (
     <section className="card chart">
@@ -91,10 +93,14 @@ export function ChartBox({
             <CartesianGrid stroke="#263341" />
             <XAxis
               dataKey="timestamp"
-              tickFormatter={(v) => new Date(v).toLocaleDateString('es-AR')}
+              tickFormatter={(v) => formatAnalyticsBucket(Number(v), hourly)}
             />
             <YAxis />
-            <Tooltip />
+            <Tooltip content={({ active, payload, label }) => {
+              const value = payload?.[0]?.value;
+              if (!active || value === undefined || value === null) return null;
+              return <div className="analytics-chart-tooltip"><strong>{formatAnalyticsTooltip(Number(label), hourly)}</strong><span>{valueLabel ?? (title === 'Usuarios en el tiempo' ? 'Usuarios' : 'Eventos')}: {formatMetricValue(Number(value))}</span></div>;
+            }} />
             <Line
               type="monotone"
               dataKey="value"
@@ -118,6 +124,7 @@ export function Analytics({ org }: { org: string }) {
     [s, setS] = useState<Summary>(),
     [users, setUsers] = useState<Point[]>([]),
     [events, setEvents] = useState<Point[]>([]),
+    [recent, setRecent] = useState<RecentEvent[]>([]),
     [rec, setRec] = useState<Record<string, number>>({}),
     [games, setGames] = useState<Item[]>([]),
     [prizes, setPrizes] = useState<Item[]>([]),
@@ -154,6 +161,7 @@ export function Analytics({ org }: { org: string }) {
       get(`/analytics/summary?${q}`, org),
       get(`/analytics/timeseries?${q}&metric=users`, org),
       get(`/analytics/timeseries?${q}&metric=events`, org),
+      get<RecentEvent[]>(`/analytics/activity?${q}&limit=20`, org),
       get(`/analytics/recurrence?${q}`, org),
       get(`/analytics/breakdown?${q}&dimension=game`, org),
       get(`/analytics/breakdown?${q}&dimension=prize`, org),
@@ -161,10 +169,11 @@ export function Analytics({ org }: { org: string }) {
       get(`/analytics/breakdown?${q}&dimension=event`, org),
       get(`/analytics/breakdown?${q}&dimension=reason`, org),
     ])
-      .then(([a, b, c, d, e, f, g, h, i]) => {
+      .then(([a, b, c, recentEvents, d, e, f, g, h, i]) => {
         setS(a);
         setUsers(b.points);
         setEvents(c.points);
+        setRecent(recentEvents);
         setRec(d);
         setGames(e.items);
         setPrizes(f.items);
@@ -294,15 +303,17 @@ export function Analytics({ org }: { org: string }) {
               <MetricCard label="Conversión" value={formatPercentage(s.rates.prizeConversion)} />
             )}
           </div></section>
-          {scopeType === 'roulette' && s.rouletteInsights && <RouletteCampaignInsights summary={s.rouletteInsights} prizes={prizes as RoulettePrizePerformance[]} blocked={blocked} events={events} ar={{ open: s.totals.rouletteArOpen, sessions: s.totals.rouletteArSessions, placed: s.totals.rouletteArPlaced }} />}
+          {scopeType === 'roulette' && s.rouletteInsights && <RouletteCampaignInsights summary={s.rouletteInsights} prizes={prizes as RoulettePrizePerformance[]} blocked={blocked} events={events} ar={{ open: s.totals.rouletteArOpen, sessions: s.totals.rouletteArSessions, placed: s.totals.rouletteArPlaced }} hourly={range === '24h'} />}
           <section className="analytics-section"><SectionHeading eyebrow="TENDENCIA" title="Actividad en el tiempo" detail="Usuarios y eventos del mismo alcance y período." /><div className="chart-grid">
-            <ChartBox title="Usuarios en el tiempo" data={users} />
+            <ChartBox title="Usuarios en el tiempo" data={users} hourly={range === '24h'} />
             <ChartBox
               title="Eventos en el tiempo"
               data={events}
               color="#9bc47d"
+              hourly={range === '24h'}
             />
           </div></section>
+          <section className="analytics-section"><SectionHeading eyebrow="ACTIVIDAD" title="Actividad reciente" detail="Los eventos más recientes dentro del alcance y período seleccionados." />{recent.length ? <ol className="analytics-recent-list">{recent.map((item, index) => <li key={`${item.occurredAt}-${item.event}-${index}`}><time dateTime={new Date(item.occurredAt).toISOString()}><span className="analytics-recent-time-short">{formatAnalyticsClock(item.occurredAt)}</span><span className="analytics-recent-time-full">{formatRecentEventTime(item.occurredAt)}</span></time><strong>{readableLabel(item.event)}</strong><span className="analytics-recent-application">{item.applicationName}</span></li>)}</ol> : <StatusPanel kind="empty">Todavía no hay eventos en este período.</StatusPanel>}</section>
           {(apps.find((a) => a.id === application)?.applicationType ??
             'generic') === 'game' && (
             <div className="chart-grid">
@@ -506,7 +517,7 @@ export function LegacyHome({ org }: { org: string }) {
             </div>
             <div className="card mini-chart">
               <h3>Actividad</h3>
-              <ChartBox title="" data={points} />
+              <ChartBox title="" data={points} hourly valueLabel="Usuarios" />
             </div>
             <div className="quick-row">
               <div className="card">

@@ -38,6 +38,13 @@ const validEvent = { event: 'game_finished', userId: 'user-a', sessionId: 'sessi
 const webArEvent = { userId: '4745b141-f137-459c-a87b-311d315f2899', sessionId: '4745b141-f137-459c-a87b-311d315f2899', occurredAt: 1700000000000, properties: { surface: 'web', experience: 'cosquin_ar', target_id: 'cosquin-rock' } };
 
 describe('Event API credentials and ingestion', () => {
+  it('preserves the supplied millisecond occurredAt timestamp', async () => {
+    const state = fixture();
+    const occurredAt = Date.parse('2026-09-15T12:37:14.987Z');
+    const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: JSON.stringify({ ...validEvent, occurredAt }) }, environment(state));
+    expect(response.status).toBe(201);
+    expect(state.inserted[0]?.occurredAt).toBe(occurredAt);
+  });
   it('accepts a valid key and derives organization, project and application', async () => {
     const state = fixture();
     const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: JSON.stringify(validEvent) }, environment(state));

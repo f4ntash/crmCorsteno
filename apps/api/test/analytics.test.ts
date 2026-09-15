@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../src';
+import { analyticsBucketTimestamp } from '@corsteno/types';
 
 const NOW = 1_700_000_000_000;
 type Event = {
@@ -274,6 +275,7 @@ function database(state: TestState): D1Database {
                     .map((item) => ({
                       occurredAt: item.occurredAt,
                       event: item.event,
+                      applicationName: `Application ${Math.max(0, scopes.findIndex((scope) => scope.applicationId === item.applicationId))}`,
                       userId: item.userId,
                       anonymousUserId: item.userId,
                       properties: item.properties
@@ -472,6 +474,19 @@ describe('Analytics ranges and timeseries', () => {
       );
     },
   );
+  it.each([
+    ['24h', 'hour'],
+    ['7d', 'day'],
+    ['30d', 'day'],
+  ] as const)('uses %s %s buckets in the platform timezone', async (range, interval) => {
+    const result = await request<{ interval: string; points: Array<{ timestamp: number }> }>(
+      `/analytics/timeseries?metric=events&range=${range}`,
+      state([event(a1, { event: 'app_opened', userId: 'u1', sessionId: 's1', occurredAt: NOW - 1234 })]),
+    );
+    expect(result.body.interval).toBe(interval);
+    const bucket = interval === 'hour' ? 'hour' : 'day';
+    expect(result.body.points[0]?.timestamp).toBe(analyticsBucketTimestamp(NOW - 1234, bucket));
+  });
   it('combines range, project and application filters', async () => {
     const project = await request<{ totals: { gamesStarted: number } }>(
       '/analytics/summary?range=7d&projectId=a1',
@@ -575,7 +590,7 @@ describe('Analytics recurrence, breakdown and activity', () => {
     },
   );
   it('returns activity newest first and honors limit', async () => {
-    const result = await request<Array<{ occurredAt: number }>>(
+    const result = await request<Array<Record<string, unknown> & { occurredAt: number; applicationName: string }>>(
       '/analytics/activity?range=all&projectId=a1&limit=2',
       state(),
     );
@@ -583,6 +598,25 @@ describe('Analytics recurrence, breakdown and activity', () => {
     if (!newest || !next) throw new Error('expected two activity rows');
     expect(result.body).toHaveLength(2);
     expect(newest.occurredAt).toBeGreaterThan(next.occurredAt);
+    expect(newest.applicationName).toBeTruthy();
+    for (const field of ['properties', 'anonymousUserId', 'userId', 'sessionId', 'applicationId', 'projectId'])
+      expect(newest).not.toHaveProperty(field);
+  });
+  it('caps recent activity at 20 and applies the application filter', async () => {
+    const many = Array.from({ length: 26 }, (_, index) => event(index % 2 ? a1 : a1a2, {
+      event: 'app_opened', userId: `u-${index}`, sessionId: `s-${index}`, occurredAt: NOW - index,
+    }));
+    const result = await request<Array<{ occurredAt: number; applicationName: string }>>(
+      '/analytics/activity?range=all&applicationId=a1-app&limit=50', state(many),
+    );
+    expect(result.body).toHaveLength(13);
+    expect(result.body.every((item) => item.applicationName === 'Application 0')).toBe(true);
+    const capped = await request<Array<{ occurredAt: number }>>(
+      '/analytics/activity?range=all&limit=50', state(Array.from({ length: 26 }, (_, index) => event(a1, {
+        event: 'app_opened', userId: `cap-${index}`, sessionId: `cap-${index}`, occurredAt: NOW - index,
+      }))),
+    );
+    expect(capped.body).toHaveLength(20);
   });
 });
 

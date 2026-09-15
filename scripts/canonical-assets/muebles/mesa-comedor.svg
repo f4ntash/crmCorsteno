@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mesa de comedor</title><desc id="desc">Ilustración de una mesa de comedor de madera.</desc>
+  <rect width="1200" height="900" fill="#f1ece3"/><rect y="650" width="1200" height="250" fill="#d8c4a7"/>
+  <ellipse cx="600" cy="390" rx="390" ry="88" fill="#9a633c"/><rect x="210" y="390" width="780" height="90" fill="#7d4d30"/>
+  <path d="M280 480 220 735h72l95-255zM920 480l60 255h-72l-95-255z" fill="#70452e"/>
+  <path d="M385 520v188M815 520v188" stroke="#b77a49" stroke-width="12" opacity=".5"/>
+  <circle cx="480" cy="375" r="13" fill="#c58b59"/><circle cx="690" cy="405" r="13" fill="#c58b59"/><path d="M430 290c30-55 110-55 140 0v30H430z" fill="#d7a66e"/>
+</svg>

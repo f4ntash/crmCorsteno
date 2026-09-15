@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import { exportRouletteResults } from '../services/roulette-report';
+import { analyticsBucketTimestamp } from '@corsteno/types';
 export { rouletteResultsCsv } from '../services/roulette-report';
 import { reportRangeOf, reportSinceIsoOf, reportSinceOf } from '../services/report-filters';
 import type { Env } from '../index';
@@ -189,16 +190,18 @@ analyticsRoutes.get('/summary', async (c) => {
 });
 analyticsRoutes.get('/activity', async (c) => {
   const s = await scope(c);
-  const limit = Math.min(Number(s.q.limit) || 20, 50);
-  return c.json(
-    (
-      await run(
-        c,
-        `SELECT occurred_at occurredAt,event_name event,anonymous_user_id anonymousUserId,properties FROM events WHERE ${s.where} ORDER BY occurred_at DESC LIMIT ?`,
-        [...s.values, limit],
-      )
-    ).results,
-  );
+  const requestedLimit = Number(s.q.limit) || 20;
+  const limit = Math.max(1, Math.min(requestedLimit, 20));
+  const rows = await c.env.DB.prepare(
+    `SELECT e.id,e.occurredAt,e.event,a.name applicationName FROM (
+      SELECT id,organization_id organizationId,application_id applicationId,occurred_at occurredAt,event_name event
+      FROM events WHERE ${s.where} ORDER BY occurred_at DESC,id DESC LIMIT ?
+    ) e JOIN applications a ON a.id=e.applicationId AND a.organization_id=e.organizationId
+    ORDER BY e.occurredAt DESC,e.id DESC LIMIT ?`,
+  )
+    .bind(...s.values, limit, limit)
+    .all<{ id: string; occurredAt: number; event: string; applicationName: string }>();
+  return c.json(rows.results.map(({ occurredAt, event, applicationName }) => ({ occurredAt, event, applicationName })));
 });
 analyticsRoutes.get('/breakdown', async (c) => {
   const s = await scope(c);
@@ -304,7 +307,7 @@ analyticsRoutes.get('/timeseries', async (c) => {
     .all<{ occurredAt: number; event: string; userId: string | null }>();
   const p = new Map<number, Set<string> | number>();
   for (const row of rows.results) {
-    const b = Math.floor(row.occurredAt / size) * size;
+    const b = analyticsBucketTimestamp(row.occurredAt, s.range === '24h' ? 'hour' : 'day');
     const old = p.get(b);
     if (metric === 'users') {
       if (old instanceof Set) old.add(row.userId ?? '');

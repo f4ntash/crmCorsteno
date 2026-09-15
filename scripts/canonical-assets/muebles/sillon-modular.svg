@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Sillón modular</title><desc id="desc">Ilustración de un sillón modular verde oliva.</desc>
+  <rect width="1200" height="900" fill="#eee9df"/><circle cx="920" cy="170" r="120" fill="#d7c9b5" opacity=".55"/>
+  <path d="M230 535c0-100 74-180 174-180h390c100 0 176 80 176 180v112H230z" fill="#657267"/>
+  <rect x="270" y="485" width="660" height="180" rx="42" fill="#7d8a7b"/>
+  <rect x="335" y="395" width="245" height="180" rx="38" fill="#879487"/><rect x="620" y="395" width="245" height="180" rx="38" fill="#879487"/>
+  <path d="M280 655h640l-28 92H308z" fill="#3f4a43"/><path d="M330 735v55M870 735v55" stroke="#303832" stroke-width="22" stroke-linecap="round"/>
+</svg>

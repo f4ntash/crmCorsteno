@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import app from '../src';
 
-type Membership = { organizationId: string; organizationName: string; organizationSlug: string; role: string };
+type Membership = { organizationId: string; organizationName: string; organizationSlug: string; ownerEmail?: string; role: string };
 
 function fixture(options: { platformRole?: string; memberships?: Membership[]; organizations?: Membership[] } = {}) {
   const platformRole = options.platformRole ?? 'user';
@@ -65,5 +65,13 @@ describe('customer authentication organization context', () => {
     const body = await response.json() as { memberships: Array<{ organizationId: string; role: string; permissions: string[] }> };
     expect(body.memberships.map((item) => item.organizationId)).toEqual(['org-a', 'org-b']);
     expect(body.memberships[0]?.permissions).toHaveLength(7);
+  });
+
+  it('includes owner email for platform workspace labels while keeping organization as the selector value', async () => {
+    const response = await request(fixture({ platformRole: 'super_admin', organizations: [
+      { organizationId: 'org-a', organizationName: 'Muebles Demo', organizationSlug: 'muebles-demo', ownerEmail: 'owner@example.com', role: 'global_admin' },
+    ] }));
+    const body = await response.json() as { memberships: Array<{ organizationId: string; organizationName: string; ownerEmail?: string }> };
+    expect(body.memberships).toEqual([expect.objectContaining({ organizationId: 'org-a', organizationName: 'Muebles Demo', ownerEmail: 'owner@example.com' })]);
   });
 });

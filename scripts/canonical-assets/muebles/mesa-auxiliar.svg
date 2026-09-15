@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mesa auxiliar</title><desc id="desc">Ilustración de una mesa auxiliar redonda.</desc>
+  <rect width="1200" height="900" fill="#f0ebe2"/><ellipse cx="600" cy="720" rx="330" ry="58" fill="#d4c2a8" opacity=".7"/>
+  <ellipse cx="600" cy="330" rx="220" ry="58" fill="#b77948"/><path d="M380 330v45c0 32 98 58 220 58s220-26 220-58v-45c0 32-98 58-220 58s-220-26-220-58z" fill="#8b5939"/>
+  <path d="M500 385 460 700h55l85-315zM700 385l40 315h-55l-85-315z" fill="#73472f"/><path d="M505 700h-85M695 700h85" stroke="#633e2b" stroke-width="20" stroke-linecap="round"/>
+  <path d="M535 295c35-48 95-48 130 0" fill="none" stroke="#d29a62" stroke-width="18" stroke-linecap="round"/>
+</svg>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../shared/api/client';
 import { commercialApi, type Plan } from '../../commercial/api';
@@ -16,6 +16,7 @@ type Created = {
 
 export function ClientOnboardingPage() {
   const navigate = useNavigate();
+  const submissionLock = useRef(false);
   const [step, setStep] = useState(1),
     [organizationName, setOrganizationName] = useState(''),
     [customerEmail, setCustomerEmail] = useState(''),
@@ -33,6 +34,8 @@ export function ClientOnboardingPage() {
     [created, setCreated] = useState<Created>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  const normalizedEmail = customerEmail.trim().toLowerCase();
+  const validStepOne = organizationName.trim().length >= 2 && organizationName.trim().length <= 120 && /^\S+@\S+\.\S+$/.test(normalizedEmail) && customerName.trim().length >= 2 && customerName.trim().length <= 120 && customerPassword.length >= 8 && customerPassword.length <= 200;
   async function loadTemplates(id: string) {
     try {
       const available = await experiencesApi.templates(id);
@@ -43,52 +46,52 @@ export function ClientOnboardingPage() {
       setTemplateId('');
     }
   }
-  async function createOrganization() {
+  async function continueToPlan() {
     if (
-      !organizationName.trim() ||
-      !customerEmail.trim() ||
-      !customerName.trim() ||
-      customerPassword.length < 8 ||
-      busy
+      !validStepOne ||
+      busy || submissionLock.current
     )
       return;
+    submissionLock.current = true;
     setBusy(true);
     setError('');
     try {
-      const result = await apiRequest<{ id: string; name: string }>(
-        '/admin/organizations',
-        undefined,
-        {
-          method: 'POST',
-          body: JSON.stringify({ name: organizationName.trim() }),
-        },
-      );
-      await apiRequest('/admin/users', undefined, {
-        method: 'POST',
-        body: JSON.stringify({
-          organizationId: result.id,
-          email: customerEmail.trim(),
-          name: customerName.trim(),
-          password: customerPassword,
-          role: 'admin',
-        }),
-      });
-      setOrg(result);
-      setCustomerPassword('');
-      await loadPlans(result.id);
-      await loadTemplates(result.id);
+      const [, availablePlans] = await Promise.all([
+        apiRequest<{ available: true }>('/admin/onboarding/email-check', undefined, { method: 'POST', body: JSON.stringify({ email: normalizedEmail }) }),
+        apiRequest<Plan[]>('/plans'),
+      ]);
+      setPlans(availablePlans);
       setStep(2);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   }
-  async function loadPlans(id: string) {
+  async function provisionOrganization() {
+    if (!validStepOne || busy || submissionLock.current) return;
+    submissionLock.current = true;
+    setBusy(true);
+    setError('');
     try {
-      setPlans(await apiRequest<Plan[]>('/plans', id));
+      const result = await apiRequest<{ id: string; name: string }>(
+        '/admin/onboarding',
+        undefined,
+        {
+          method: 'POST',
+          body: JSON.stringify({ organizationName: organizationName.trim(), email: normalizedEmail, name: customerName.trim(), password: customerPassword }),
+        },
+      );
+      setOrg(result);
+      setCustomerPassword('');
+      await loadTemplates(result.id);
+      setStep(3);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      submissionLock.current = false;
+      setBusy(false);
     }
   }
   async function createExperience() {
@@ -174,9 +177,7 @@ export function ClientOnboardingPage() {
             <header className="onboarding-card-heading">
               <h2>1. Nuevo cliente</h2>
               <p>
-                Se crea una cuenta administradora para la organización. La
-                contraseña se usa para generar el hash y no se guarda en
-                texto plano.
+                Los datos se conservan en este formulario mientras elegís el plan. La cuenta se crea al confirmar el Paso 2; la contraseña se usa para generar el hash y no se guarda en texto plano.
               </p>
             </header>
             <div className="onboarding-fields onboarding-fields-two">
@@ -222,14 +223,11 @@ export function ClientOnboardingPage() {
               <button
                 disabled={
                   busy ||
-                  organizationName.trim().length < 2 ||
-                  !customerEmail.trim() ||
-                  !customerName.trim() ||
-                  customerPassword.length < 8
+                  !validStepOne
                 }
-                onClick={() => void createOrganization()}
+                  onClick={() => void continueToPlan()}
               >
-                {busy ? 'Creando…' : 'Continuar'}
+                {busy ? 'Validando…' : 'Continuar'}
               </button>
             </div>
           </>
@@ -238,9 +236,13 @@ export function ClientOnboardingPage() {
           <>
             <header className="onboarding-card-heading">
               <h2>2. Plan y modalidad</h2>
-              <p>Cuenta administradora creada para {customerEmail}.</p>
+              <p>Cliente</p>
+              <strong>{organizationName.trim()}</strong>
+              <p>Responsable</p>
+              <strong>{customerName}</strong>
+              <p>{customerEmail.trim().toLowerCase()}</p>
             </header>
-            <p className="onboarding-support">La contraseña inicial no vuelve a mostrarse y no se envió por email automáticamente.</p>
+            <p className="onboarding-support">Al confirmar, la contraseña se guardará sólo como hash. No se envía email automáticamente.</p>
             <div className="onboarding-fields onboarding-fields-two">
               <label>
                 Plan
@@ -280,11 +282,12 @@ export function ClientOnboardingPage() {
               </p>
             )}
             <div className="onboarding-actions">
+              <button className="secondary" disabled={busy} onClick={() => setStep(1)}>Volver a datos del cliente</button>
               <button
-                disabled={!planId && mode !== 'configure'}
-                onClick={() => setStep(3)}
+                disabled={busy || (!planId && mode !== 'configure')}
+                onClick={() => void provisionOrganization()}
               >
-                Continuar
+                {busy ? 'Creando cliente…' : 'Confirmar cliente y continuar'}
               </button>
             </div>
           </>
