@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { experiencesApi, type ExperienceSpin } from '../api';
+import { formatStoredUtcDateTime } from '../../dashboard/analytics-format';
 
 type Props = { experienceId: string; organizationId: string; prizes: Array<{ id: string; name: string }> };
 function shortId(id: string) { return `${id.slice(0, 8)}…`; }
-function dateLabel(value: string) { return new Date(value).toLocaleString('es-AR'); }
+function dateLabel(value: string) { return formatStoredUtcDateTime(value); }
 
 export function SpinHistory({ experienceId, organizationId, prizes }: Props) {
   const [items, setItems] = useState<ExperienceSpin[]>([]); const [outcome, setOutcome] = useState(''); const [prizeId, setPrizeId] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [offset, setOffset] = useState(0); const [nextOffset, setNextOffset] = useState<number | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(false);

@@ -72,6 +72,16 @@ function presentClaim(row: Record<string, unknown>) {
   return { id: row.id, code: row.code, prizeId: row.prizeId, prizeName: row.prizeName, status: row.status, createdAt: row.createdAt, redeemedAt: row.redeemedAt ?? null };
 }
 
+function trackPrizeRedeemed(ctx: { waitUntil(promise: Promise<unknown>): void }, db: D1Database, organizationId: string, experienceId: string, claimId: string) {
+  ctx.waitUntil((async () => {
+    const context = await db.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
+    if (!context?.applicationId) return;
+    const application = await db.prepare('SELECT project_id projectId FROM applications WHERE id=? AND organization_id=?').bind(context.applicationId, organizationId).first<{ projectId: string }>();
+    if (!application) return;
+    await db.prepare('INSERT INTO events (id,organization_id,project_id,application_id,event_name,properties,occurred_at,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, application.projectId, context.applicationId, 'roulette_prize_redeemed', JSON.stringify({ experienceId, claimId }), Date.now(), Date.now()).run();
+  })().catch(() => undefined));
+}
+
 experienceRoutes.post('/claims/redeem', async (c) => {
   const organizationId = c.get('organization').id;
   const userId = c.get('user').id;
@@ -84,6 +94,7 @@ experienceRoutes.post('/claims/redeem', async (c) => {
   if (claim.status !== 'active') return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
   const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND organization_id=? AND status='active'").bind(userId, claim.id, organizationId).run();
   if (!update.meta?.changes) return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
+  trackPrizeRedeemed(c.executionCtx, c.env.DB, organizationId, String(claim.experienceId), String(claim.id));
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: userId }, {
     action: 'claim.redeemed',
     resourceType: 'claim',
@@ -134,13 +145,7 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
     if (claim?.status === 'redeemed') return c.json({ error: { code: 'CONFLICT', message: 'Claim already redeemed' } }, 409);
     return c.json({ error: { code: 'NOT_FOUND', message: 'Claim not found' } }, 404);
   }
-  void (async () => {
-    const context = await c.env.DB.prepare('SELECT application_id applicationId FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ applicationId: string | null }>();
-    if (!context?.applicationId) return;
-    const application = await c.env.DB.prepare('SELECT project_id projectId FROM applications WHERE id=? AND organization_id=?').bind(context.applicationId, organizationId).first<{ projectId: string }>();
-    if (!application) return;
-    await c.env.DB.prepare('INSERT INTO events (id,organization_id,project_id,application_id,event_name,properties,occurred_at,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), organizationId, application.projectId, context.applicationId, 'roulette_prize_redeemed', JSON.stringify({ experienceId, claimId: c.req.param('claimId') }), Date.now(), Date.now()).run();
-  })().catch(() => undefined);
+  trackPrizeRedeemed(c.executionCtx, c.env.DB, organizationId, experienceId, c.req.param('claimId'));
   const row = await c.env.DB.prepare('SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: userId }, {
     action: 'claim.redeemed',

@@ -50,6 +50,33 @@ export type RoulettePublicExperiencePayload = PublicExperiencePayload & {
   recovery?: RoulettePublicRecovery;
 };
 
+function renderableRouletteConfig(config: DraftConfig): DraftConfig {
+  return {
+    schemaVersion: config.schemaVersion,
+    backgroundColor: config.backgroundColor,
+    ...(config.branding ? { branding: { logoUrl: config.branding.logoUrl ?? null, backgroundImageUrl: config.branding.backgroundImageUrl ?? null } } : {}),
+    ...(config.content ? { content: {
+      ...(config.content.title !== undefined ? { title: config.content.title } : {}),
+      ...(config.content.intro !== undefined ? { intro: config.content.intro } : {}),
+      ...(config.content.spinButtonLabel !== undefined ? { spinButtonLabel: config.content.spinButtonLabel } : {}),
+      ...(config.content.winMessage !== undefined ? { winMessage: config.content.winMessage } : {}),
+      ...(config.content.noPrizeMessage !== undefined ? { noPrizeMessage: config.content.noPrizeMessage } : {}),
+    } } : {}),
+    prizes: config.prizes.map(({ id, name, iconUrl }) => ({ id, name, iconUrl: iconUrl ?? null })),
+    segments: config.segments.map(({ id, color, prizeId }) => ({ id, color, prizeId })),
+    ...(config.effects ? { effects: {
+      ...(config.effects.sound !== undefined ? { sound: config.effects.sound } : {}),
+      ...(config.effects.vibration !== undefined ? { vibration: config.effects.vibration } : {}),
+      ...(config.effects.celebration !== undefined ? { celebration: config.effects.celebration } : {}),
+    } } : {}),
+    ...(config.resultCta ? { resultCta: {
+      ...(config.resultCta.enabled !== undefined ? { enabled: config.resultCta.enabled } : {}),
+      ...(config.resultCta.label !== undefined ? { label: config.resultCta.label } : {}),
+      ...(config.resultCta.url !== undefined ? { url: config.resultCta.url } : {}),
+    } } : {}),
+  };
+}
+
 export type CatalogPublicProduct = {
   name: string;
   description: string;
@@ -102,7 +129,7 @@ const roulettePublicExperienceAdapter: PublicExperienceAdapter<RoulettePublicExp
         if (segment && prize) recovery = { spinId: recovered.spinId, segmentIndex: recovered.segmentIndex, segment: { id: segment.id, prizeId: segment.prizeId }, prize: { id: prize.id, name: prize.name, iconUrl: prize.iconUrl ?? null }, claim: { code: recovered.code, status: recovered.status }, prizeAvailability };
       }
     }
-    return { kind: 'ready', payload: { type: 'roulette', config, prizeAvailability, ...(recovery ? { recovery } : {}) } };
+    return { kind: 'ready', payload: { type: 'roulette', config: renderableRouletteConfig(config), prizeAvailability, ...(recovery ? { recovery } : {}) } };
   },
 };
 

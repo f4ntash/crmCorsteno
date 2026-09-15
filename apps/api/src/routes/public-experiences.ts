@@ -54,7 +54,6 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   return c.json({
     active: true,
     experience: {
-      id: row.id,
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       featureEntitlements,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { publicExperiencesApi } from '../../api/publicExperiencesApi';
-import { Roulette3DView } from '../roulette3d/Roulette3DView';
+import { LazyRoulette3DView } from '../roulette3d/LazyRoulette3DView';
 import { resolveRuntimeConfig } from '../../config/runtimeConfig';
 
 export function PreviewViewer() {
@@ -22,5 +22,5 @@ export function PreviewViewer() {
   if (state.status === 'error' || !state.data) return <main aria-live="polite"><h1>No se pudo abrir la prueba.</h1><p>Volvé al editor e intentá nuevamente.</p></main>;
   const config = resolveRuntimeConfig(state.data.config, state.data.featureEntitlements);
   const safeReturnTo = returnTo && /^https?:\/\//i.test(returnTo) ? returnTo : null;
-  return <main><a className="secondary-cta" href={safeReturnTo ?? '/app/experiences'}>← Volver al editor</a><Roulette3DView config={config} slug={`preview-${id}`} entitlements={state.data.featureEntitlements} prizeAvailability={state.data.prizeAvailability} testMode /></main>;
+  return <main><a className="secondary-cta" href={safeReturnTo ?? '/app/experiences'}>← Volver al editor</a><LazyRoulette3DView config={config} slug={`preview-${id}`} entitlements={state.data.featureEntitlements} prizeAvailability={state.data.prizeAvailability} testMode /></main>;
 }

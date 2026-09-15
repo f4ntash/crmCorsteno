@@ -46,8 +46,13 @@ function fixture(options: { role?: string; platformRole?: string; activity?: Act
   return { DB, ENVIRONMENT: 'test', APP_VERSION: 'test', activity, statements };
 }
 
-function request(path: string, env: any, init: RequestInit = {}) {
-  return app.fetch(new Request(`http://localhost${path}`, { ...init, headers: { Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', 'Content-Type': 'application/json', ...(init.headers ?? {}) } }), env);
+async function request(path: string, env: any, init: RequestInit = {}) {
+  const pending: Promise<unknown>[] = [];
+  const response = await app.fetch(new Request(`http://localhost${path}`, { ...init, headers: { Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', 'Content-Type': 'application/json', ...(init.headers ?? {}) } }), env, {
+    waitUntil(promise: Promise<unknown>) { pending.push(promise); },
+  } as ExecutionContext);
+  await Promise.allSettled(pending);
+  return response;
 }
 
 describe('organization activity infrastructure', () => {

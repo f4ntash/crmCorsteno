@@ -299,7 +299,6 @@ analyticsRoutes.get('/timeseries', async (c) => {
       { error: { code: 'BAD_REQUEST', message: 'Invalid metric' } },
       400,
     );
-  const size = s.range === '24h' ? 3600000 : 86400000;
   const rows = await c.env.DB.prepare(
     `SELECT occurred_at occurredAt,event_name event,anonymous_user_id userId FROM events WHERE ${s.where} ORDER BY occurred_at`,
   )

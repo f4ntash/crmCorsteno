@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { rouletteRotationToPlaceSegmentAtPointer } from './RouletteAngles';
 
 export type RouletteSpinCallbacks = { onSpinStart?: () => void; onSpinComplete?: (targetSegmentIndex: number) => void; onTick?: (final: boolean) => void };
 
@@ -42,13 +43,9 @@ export class RouletteSpinAnimator {
   spinTo(targetSegmentIndex: number) {
     if (this.spinning || targetSegmentIndex < 0 || targetSegmentIndex >= this.segmentCount) return false;
     const step = TAU / this.segmentCount;
-    const centerAngle = -Math.PI / 2 + (targetSegmentIndex + 0.5) * step;
-    const targetAngle = mod(Math.PI / 2 - centerAngle, TAU);
-    const currentAngle = mod(this.wheel.rotation.z, TAU);
-    const alignment = mod(targetAngle - currentAngle, TAU);
     const extraTurns = this.reducedMotion ? 2 : 5;
     this.startRotation = this.wheel.rotation.z;
-    this.targetRotation = this.startRotation + extraTurns * TAU + alignment;
+    this.targetRotation = rouletteRotationToPlaceSegmentAtPointer(targetSegmentIndex, this.segmentCount, this.startRotation) + extraTurns * TAU;
     this.targetIndex = targetSegmentIndex;
     this.elapsed = 0;
     this.duration = this.reducedMotion ? 1400 : 5000;

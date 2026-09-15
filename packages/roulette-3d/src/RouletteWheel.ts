@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createLabelTexture, disposeTexture, loadPrizeTexture } from './RouletteTextures';
+import { rouletteSegmentCenterAngle, rouletteSegmentGeometryStartAngle } from './RouletteAngles';
 import type { Roulette3DConfig } from './types';
 
 const radius = 2.3;
@@ -18,7 +19,7 @@ export class RouletteWheel {
     const step = (Math.PI * 2) / count;
     const gap = Math.min(0.035, step * 0.08);
     config.segments.forEach((segment, index) => {
-      const geometry = new THREE.CylinderGeometry(radius, radius, depth, 24, 1, false, -Math.PI / 2 + index * step + gap, step - gap * 2);
+      const geometry = new THREE.CylinderGeometry(radius, radius, depth, 24, 1, false, rouletteSegmentGeometryStartAngle(index, count) + gap, step - gap * 2);
       geometry.rotateX(Math.PI / 2);
       const material = new THREE.MeshStandardMaterial({
         color: segment.color,
@@ -41,7 +42,7 @@ export class RouletteWheel {
       if (!texture) return;
       const iconMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
       const icon = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.24), iconMaterial);
-      const angle = -Math.PI / 2 + (index + 0.5) * step;
+      const angle = rouletteSegmentCenterAngle(index, count);
       icon.position.set(Math.cos(angle) * radius * 0.6, Math.sin(angle) * radius * 0.6, depth / 2 + 0.025);
       icon.rotation.z = angle - Math.PI / 2; // FIX: antes era +Math.PI/2, quedaba el texto invertido
       icon.scale.setScalar(prize?.iconUrl ? 1.35 : 1);

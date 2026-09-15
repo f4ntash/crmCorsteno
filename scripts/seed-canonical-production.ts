@@ -30,13 +30,13 @@ const ADMIN_EMAIL = 'admin@corsteno.com';
 const FURNITURE_ASSETS = [
   {
     id: '00000000-0000-4000-8000-000000000501',
-    filename: 'sillon-modular.svg',
-    name: 'Sillón modular',
+    filename: 'mesa-comedor.svg',
+    name: 'Mesa de comedor',
   },
   {
     id: '00000000-0000-4000-8000-000000000502',
-    filename: 'mesa-comedor.svg',
-    name: 'Mesa de comedor',
+    filename: 'sillon-modular.svg',
+    name: 'Sillón modular',
   },
   {
     id: '00000000-0000-4000-8000-000000000503',

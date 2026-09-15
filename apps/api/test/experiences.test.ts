@@ -23,6 +23,7 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
       __sql: sql, __args: args,
       async first<T>() {
         if (sql.includes('JOIN roulette_prize_claims c')) { const spin = spins.find((item) => item.experienceId === args[0] && item.organizationId === args[1] && item.participantDeviceId === args[2] && item.participantSessionId === args[3]); const claim = spin ? claims.find((item) => item.spinId === spin.id && (item.status === 'active' || item.status === 'redeemed')) : null; return claim && spin ? { spinId: spin.id, segmentId: spin.segmentId, segmentIndex: spin.segmentIndex, prizeId: spin.prizeId, code: claim.code, status: claim.status } as T : null as T; }
+        if (sql.includes('COUNT(*) spin_count') && sql.includes('FROM experience_spins')) { const isDevice = sql.includes('participant_device_id'); const matches = spins.filter((spin) => spin.experienceId === args[0] && spin.organizationId === args[1] && (isDevice ? spin.participantDeviceId === args[2] : spin.participantSessionId === args[2])); return { spin_count: matches.length, last_spin_at: matches.at(-1)?.createdAt ?? null } as T; }
         if (sql.includes('experience_prize_inventory') && sql.includes('stock_mode')) { const item = inventory.find((x) => x.experience_id === args[0] && x.prize_id === args[1]); return item ? { stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count } as T : null as T; }
         if (sql.includes('auth_sessions')) return { session_id: 's', id: 'u', email: 'u@x', name: 'U', platformRole, expires_at: Date.now() + 10000 } as T;
           if (sql.includes('experience_participation')) { const isDevice = args[2] === 'device'; const id = args[3]; const matches = spins.filter((x) => x.experienceId === args[0] && x.organizationId === args[1] && (isDevice ? x.participantDeviceId === id : x.participantSessionId === id)); const latest = matches.at(-1); return matches.length ? { spin_count: matches.length, last_spin_at: latest?.createdAt ?? null } as T : null as T; }
@@ -33,9 +34,9 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
         return null as T;
       },
       async all<T>() { if (sql.includes('experience_access_periods')) return { results: accessPeriods.filter((item) => item.experience_id === args[0] && item.organization_id === args[1]).map((item) => ({ id: item.id, experienceId: item.experience_id, organizationId: item.organization_id, startsAt: item.starts_at, endsAt: item.ends_at, source: item.source, createdAt: item.created_at, createdBy: item.created_by, note: item.note })) as T[] }; if (sql.includes('experience_prize_inventory')) return { results: inventory.filter((item) => item.experience_id === args[0]).map((item) => ({ prizeId: item.prize_id, stockMode: item.stock_mode, stockAvailable: item.stock_available, deliveredCount: item.delivered_count })) as T[] }; if (sql.includes('FROM roulette_prize_claims')) return { results: claims.filter((item) => item.experienceId === args[1]).map((item) => ({ id: item.id, code: item.code, prizeId: item.prizeId, prizeName: item.prizeName, status: item.status, createdAt: item.createdAt, redeemedAt: item.redeemedAt ?? null })) as T[] }; if (sql.includes('FROM experience_spins')) { const filtered = spins.filter((item) => item.organizationId === args[0] && item.experienceId === args[1]); const sorted = [...filtered].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id))); const offset = Number(args[args.length - 1]); const limit = Number(args[args.length - 2]); return { results: sorted.slice(offset, offset + limit).map((item) => item) as T[] }; } return { results: experiences.filter((e) => e.organization_id === args[0]).map((e) => ({ ...e, organizationId: e.organization_id, schemaVersion: e.schema_version, draftConfig: e.draft_config, publishedConfig: e.published_config, startsAt: e.starts_at, endsAt: e.ends_at, createdAt: e.created_at, updatedAt: e.updated_at })) as T[] }; },
-       async run() { if (sql.startsWith('INSERT INTO experience_access_periods')) { accessPeriods.push({ id: args[0], experience_id: args[1], organization_id: args[2], starts_at: args[3], ends_at: args[4], source: args[5], created_at: '2026-01-03', created_by: args[6], note: args[7] }); } if (sql.startsWith('INSERT INTO experiences')) { experiences.push({ id: args[0], organization_id: args[1], name: args[2], slug: args[3], type: args[4], status: 'draft', schema_version: args[5] === 1 ? 1 : args[5], draft_config: args[6], published_config: null, starts_at: args[7], ends_at: args[8], created_at: '2026-01-03', updated_at: '2026-01-03' }); } if (sql.startsWith('INSERT INTO experience_channels')) channelLinks.push({ organizationId: args[1], experienceId: args[2], channelId: args[3] }); if (sql.includes('experience_prize_inventory') && sql.startsWith('INSERT')) { const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!existing) inventory.push({ experience_id: args[0], prize_id: args[1], stock_mode: args[2] as 'limited' | 'unlimited', stock_available: args[3] as number | null, delivered_count: 0 }); } if (sql.includes('stock_available=stock_available+?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) + (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('stock_available=stock_available-?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing || (existing.stock_available ?? 0) < (args[0] as number)) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) - (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('experience_prize_inventory') && sql.startsWith('UPDATE')) { const limited = sql.includes('stock_available=stock_available-1'); const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!existing || (limited && (existing.stock_available ?? 0) <= 0)) return { success: true, meta: { changes: 0 } }; if (limited) existing.stock_available = (existing.stock_available ?? 0) - 1; existing.delivered_count += 1; return { success: true, meta: { changes: 1 } }; } if (sql.includes('published_config')) { const experience = experiences.find((e) => e.id === args[args.length - 2] && e.organization_id === args[args.length - 1]); if (experience) { experience.published_config = args[0] as string; experience.status = 'published'; } } const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
+       async run() { if (sql.startsWith('INSERT INTO experience_access_periods')) { accessPeriods.push({ id: args[0], experience_id: args[1], organization_id: args[2], starts_at: args[3], ends_at: args[4], source: args[5], created_at: '2026-01-03', created_by: args[6], note: args[7] }); } if (sql.startsWith('INSERT INTO experiences')) { experiences.push({ id: args[0], organization_id: args[1], name: args[2], slug: args[3], type: args[4], status: 'draft', schema_version: args[5] === 1 ? 1 : args[5], draft_config: args[6], published_config: null, starts_at: args[7], ends_at: args[8], created_at: '2026-01-03', updated_at: '2026-01-03' }); } if (sql.startsWith('INSERT INTO experience_channels')) channelLinks.push({ organizationId: args[1], experienceId: args[2], channelId: args[3] }); if (sql.includes('experience_prize_inventory') && sql.startsWith('INSERT')) { const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); const conditionalUnlimitedInsert = sql.includes("SELECT ?, ?, 'unlimited'"); const canInsert = !conditionalUnlimitedInsert || spins.some((spin) => spin.id === args[2]); if (!existing && canInsert) inventory.push({ experience_id: args[0], prize_id: args[1], stock_mode: conditionalUnlimitedInsert ? 'unlimited' : args[2] as 'limited' | 'unlimited', stock_available: conditionalUnlimitedInsert ? null : args[3] as number | null, delivered_count: 0 }); } if (sql.includes('stock_available=stock_available+?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) + (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('stock_available=stock_available-?')) { const existing = inventory.find((item) => item.experience_id === args[1] && item.prize_id === args[2]); if (!existing || (existing.stock_available ?? 0) < (args[0] as number)) return { success: true, meta: { changes: 0 } }; existing.stock_available = (existing.stock_available ?? 0) - (args[0] as number); return { success: true, meta: { changes: 1 } }; } if (sql.includes('experience_prize_inventory') && sql.startsWith('UPDATE')) { const conditionalSpinId = args[2] as string | undefined; const spinExists = !sql.includes('EXISTS (SELECT 1 FROM experience_spins') || spins.some((spin) => spin.id === conditionalSpinId); const limited = sql.includes('stock_available=stock_available-1'); const existing = inventory.find((item) => item.experience_id === args[0] && item.prize_id === args[1]); if (!spinExists || !existing || (limited && (existing.stock_available ?? 0) <= 0)) return { success: true, meta: { changes: 0 } }; if (limited) existing.stock_available = (existing.stock_available ?? 0) - 1; existing.delivered_count += 1; return { success: true, meta: { changes: 1 } }; } if (sql.includes('published_config')) { const experience = experiences.find((e) => e.id === args[args.length - 2] && e.organization_id === args[args.length - 1]); if (experience) { experience.published_config = args[0] as string; experience.status = 'published'; } } const changes = sql.startsWith('DELETE') && !experiences.some((e) => e.id === args[0] && e.organization_id === args[1]) ? 0 : 1; return { success: true, meta: { changes } }; },
     };
-  } }; }, batch(statements: Array<{ __sql?: string; __args?: any[]; run: () => Promise<{ success: boolean; meta?: { changes?: number } }> }>) { for (const statement of statements) { if (statement.__sql?.includes('experience_spins')) { const args = statement.__args ?? []; spins.push({ id: args[0], experienceId: args[1], organizationId: args[2], applicationId: args[3], segmentId: args[4], segmentIndex: args[5], prizeId: args[6], participantDeviceId: args[7], participantSessionId: args[8], outcomeType: statement.__sql.includes("'prize'") ? 'prize' : 'no_prize', createdAt: new Date().toISOString() }); } if (statement.__sql?.includes('roulette_prize_claims')) { const args = statement.__args ?? []; claims.push({ id: args[0], code: args[1], experienceId: args[3], spinId: args[4], prizeId: args[5], status: args[7] }); } if (statement.__sql?.includes('experience_prize_inventory_events')) { const args = statement.__args ?? []; inventoryEvents.push({ id: args[0], experienceId: args[1], prizeId: args[2], type: 'prize_delivered', quantity: 1, spinId: args[3] }); } } return Promise.all(statements.map((statement) => statement.run())); } };
+  } }; }, batch(statements: Array<{ __sql?: string; __args?: any[]; run: () => Promise<{ success: boolean; meta?: { changes?: number } }> }>) { return (async () => { const results = []; for (const statement of statements) { const sql = statement.__sql ?? ''; const args = statement.__args ?? []; if (sql.startsWith('INSERT INTO experience_spins')) { const experience = experiences.find((item) => item.id === args[1] && item.organization_id === args[2]); const config = experience?.published_config ? JSON.parse(experience.published_config) as { participation?: { maxSpinsPerDevice?: number | null; maxSpinsPerSession?: number | null; cooldownSeconds?: number }; prizes?: Array<{ id: string; stockMode?: string; initialStock?: number; stockLimit?: number | null }> } : {}; const policy = config.participation ?? {}; const existingForDevice = spins.filter((spin) => spin.experienceId === args[1] && spin.organizationId === args[2] && spin.participantDeviceId === args[8]); const existingForSession = spins.filter((spin) => spin.experienceId === args[1] && spin.organizationId === args[2] && spin.participantSessionId === args[9]); const duplicateRequest = spins.some((spin) => spin.experienceId === args[1] && spin.organizationId === args[2] && spin.requestId === args[10]); const item = inventory.find((entry) => entry.experience_id === args[1] && entry.prize_id === args[6]); const prize = config.prizes?.find((entry) => entry.id === args[6]); const validDevice = policy.maxSpinsPerDevice == null || (args[8] != null && existingForDevice.length < policy.maxSpinsPerDevice); const validSession = policy.maxSpinsPerSession == null || (args[9] != null && existingForSession.length < policy.maxSpinsPerSession); const validStock = args[7] !== 'prize' || item?.stock_mode === 'unlimited' || item?.stock_mode === 'limited' && (item.stock_available ?? 0) > 0 || !item && (prize?.stockMode ?? (prize?.stockLimit == null ? 'unlimited' : 'limited')) === 'unlimited'; const validSnapshot = experience?.status === 'published' && experience.published_config === args[14]; const accepted = Boolean(validDevice && validSession && validStock && validSnapshot && !duplicateRequest); if (accepted) spins.push({ id: args[0], experienceId: args[1], organizationId: args[2], applicationId: args[3], segmentId: args[4], segmentIndex: args[5], prizeId: args[6], participantDeviceId: args[8], participantSessionId: args[9], outcomeType: args[7], requestId: args[10], responseJson: args[11], createdAt: new Date().toISOString() }); results.push({ success: true, meta: { changes: accepted ? 1 : 0 } }); continue; } if (sql.includes('roulette_prize_claims') && sql.startsWith('INSERT')) { const spinId = args[8] as string; if (spins.some((spin) => spin.id === spinId)) claims.push({ id: args[0], code: args[1], organizationId: args[2], experienceId: args[3], spinId: args[4], prizeId: args[5], status: args[7] }); results.push({ success: true, meta: { changes: spins.some((spin) => spin.id === spinId) ? 1 : 0 } }); continue; } if (sql.includes('experience_prize_inventory_events') && sql.startsWith('INSERT')) { const spinId = args[4] as string; if (spins.some((spin) => spin.id === spinId)) inventoryEvents.push({ id: args[0], experienceId: args[1], prizeId: args[2], type: 'prize_delivered', quantity: 1, spinId }); results.push({ success: true, meta: { changes: spins.some((spin) => spin.id === spinId) ? 1 : 0 } }); continue; } results.push(await statement.run()); } return results; })(); } };
   const objects = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
   const assets = {
     async put(key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }) { objects.set(key, { bytes: value, contentType: options.httpMetadata.contentType }); },
@@ -43,7 +44,8 @@ function fixture(initialDraft = '{"segments":[]}', initialStatus = 'draft', init
   };
   return { DB: db, EXPERIENCE_ASSETS: assets, ENVIRONMENT: 'test', APP_VERSION: 'test', __spins: spins, __claims: claims, __inventoryEvents: inventoryEvents, __channelLinks: channelLinks };
 }
-function request(path: string, env: any, init?: RequestInit) { const headers = new Headers({ Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers }); return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }), env); }
+async function fetchWithContext(request: Request, env: any) { const pending: Promise<unknown>[] = []; const response = await app.fetch(request, env, { waitUntil: (promise: Promise<unknown>) => pending.push(promise) } as unknown as ExecutionContext); await Promise.all(pending); return response; }
+function request(path: string, env: any, init?: RequestInit) { const headers = new Headers({ Cookie: 'corsteno_session=x', 'X-Organization-Id': 'org-a', ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers }); return fetchWithContext(new Request(`http://localhost${path}`, { ...init, headers }), env); }
 
 function schedulingFixture() {
   const experience = { id: 'a', organization_id: 'org-a', name: 'Catálogo', slug: 'catalogo', type: 'product-catalog', status: 'published', schema_version: 1, draft_config: '{}', published_config: '{}', starts_at: null as string | null, ends_at: null as string | null, created_at: '2026-01-01', updated_at: '2026-01-01' };
@@ -216,7 +218,7 @@ describe('experience permissions', () => {
   });
   it('denies unauthenticated experience mutations', async () => {
     const env = fixture();
-    expect((await app.fetch(new Request('http://localhost/experiences/a', { method: 'PATCH', body: JSON.stringify({ name: 'blocked' }) }), env)).status).toBe(401);
+    expect((await fetchWithContext(new Request('http://localhost/experiences/a', { method: 'PATCH', body: JSON.stringify({ name: 'blocked' }) }), env)).status).toBe(401);
   });
 });
 
@@ -294,7 +296,7 @@ describe('experience publishing', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(expect.objectContaining({ config: JSON.parse(validDraft), prizeAvailability: expect.any(Object) }));
     expect((env as any).__spins).toHaveLength(0);
-    expect((await app.fetch(new Request('http://localhost/experiences/a/preview'), env)).status).toBe(401);
+    expect((await fetchWithContext(new Request('http://localhost/experiences/a/preview'), env)).status).toBe(401);
   });
   it('rejects a draft asset reference from another organization at the API boundary', async () => {
     const env = fixture(validDraft);
@@ -330,6 +332,12 @@ describe('experience publishing', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual(expect.objectContaining({ error: expect.objectContaining({ code: 'INVALID_DRAFT_CONFIG', issues: expect.arrayContaining([expect.objectContaining({ path: 'prizes[0].weight', message: expect.stringContaining('peso') })]) }) }));
   });
+  it('rejects zero probability weights at the API validation boundary', async () => {
+    const invalid = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio', weight: 0 }], segments: sixSegments() };
+    const response = await request('/experiences/a', fixture(), { method: 'PATCH', body: JSON.stringify({ draft_config: invalid }) });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(expect.objectContaining({ error: expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ path: 'prizes[0].weight' })]) }) }));
+  });
   it('blocks configurations without a usable outcome', async () => {
     const config = { schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Premio', enabled: true, stockMode: 'limited', initialStock: 0 }], segments: sixSegments() };
     const response = await request('/experiences/a/publish', fixture(JSON.stringify(config)), { method: 'POST' });
@@ -349,40 +357,42 @@ function sixSegments() { return [0, 1, 2, 3, 4, 5].map((i) => ({ id: `seg-${i}`,
 describe('public published experience', () => {
   const published = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera' }], segments: sixSegments() });
   it('returns only published_config for an active experience', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published));
     expect(response.status).toBe(200);
     const body = await response.json() as { active: boolean; experience: Record<string, unknown> };
     expect(body.active).toBe(true);
     expect(body.experience.type).toBe('roulette');
-    expect(body.experience.config).toEqual(JSON.parse(published));
+    expect(body.experience.config).toEqual(expect.objectContaining({ schemaVersion: 1, backgroundColor: '#111111', prizes: [expect.objectContaining({ id: 'prize-1', name: 'Remera', iconUrl: null })], segments: expect.any(Array) }));
+    expect(body.experience.config).not.toHaveProperty('participation');
+    expect((body.experience.config as { prizes: Array<Record<string, unknown>> }).prizes[0]).not.toHaveProperty('weight');
     expect(body.experience).not.toHaveProperty('draft_config');
     expect(body.experience).not.toHaveProperty('organization_id');
   });
   it('does not expose a published experience without an active Hosted association', async () => {
     const env = fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'roulette', null);
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), env);
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a'), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ active: false, reason: 'unavailable' });
-    const spin = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), env);
+    const spin = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), env);
     expect(await spin.json()).toEqual({ active: false, reason: 'unavailable' });
     expect((env as any).__spins).toHaveLength(0);
   });
   it('keeps an inactive Hosted association unavailable without changing the experience', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'roulette', 'inactive'));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'roulette', 'inactive'));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ active: false, reason: 'unavailable' });
   });
   it.each(['draft', 'paused'])('does not expose %s experiences', async (status) => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, status, published));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a'), fixture(published, status, published));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ active: false, reason: status });
   });
   it('returns 404 for an unknown slug', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/missing'), fixture());
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/missing'), fixture());
     expect(response.status).toBe(404);
   });
   it('fails safely for an unsupported published type without Roulette fallback or private config', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'unsupported-event'));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a'), fixture(published, 'published', published, 'owner', [], 'corsteno_admin', [], null, null, 'unsupported-event'));
     expect(response.status).toBe(503);
     const body = await response.json() as Record<string, unknown>;
     expect(body).toEqual({ active: false, reason: 'unavailable' });
@@ -390,7 +400,7 @@ describe('public published experience', () => {
   });
 
   it('returns a server-selected spin result without private fields', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), fixture(published, 'published', published));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), fixture(published, 'published', published));
     expect(response.status).toBe(200);
     const body = await response.json() as { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null };
     expect(body.spinId).toEqual(expect.any(String));
@@ -406,7 +416,7 @@ describe('public published experience', () => {
     const noPrize = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', enabled: false }], segments: sixSegments().map((segment, index) => index === 0 ? { ...segment, prizeId: null } : segment) });
     const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => { (array as Uint32Array)[0] = 0; return array; });
     try {
-      const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(noPrize, 'published', noPrize));
+      const response = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(noPrize, 'published', noPrize));
       expect(response.status).toBe(200);
       const body = await response.json() as { segmentIndex: number; prize: unknown };
       expect(body.segmentIndex).toBe(0);
@@ -415,21 +425,21 @@ describe('public published experience', () => {
   });
 
   it.each(['draft', 'paused'])('does not spin %s experiences', async (status) => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(published, status, published));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture(published, status, published));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ active: false, reason: status });
   });
 
   it('does not spin invalid published configuration', async () => {
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture('{"segments":[]}', 'published', '{"segments":[]}'));
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST' }), fixture('{"segments":[]}', 'published', '{"segments":[]}'));
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ active: false, reason: 'unavailable' });
   });
 
   it('keeps expired commercial experiences unavailable before spin mutations', async () => {
     const env = fixture(published, 'published', published, 'owner', [{ id: 'access-1', experience_id: 'a', organization_id: 'org-a', starts_at: '2020-01-01T00:00:00.000Z', ends_at: '2020-02-01T00:00:00.000Z', source: 'manual', created_at: '2020-01-01T00:00:00.000Z', created_by: null, note: null }]);
-    expect(await (await app.fetch(new Request('http://localhost/public/experiences/a'), env)).json()).toEqual({ active: false, reason: 'unavailable' });
-    const response = await app.fetch(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), env);
+    expect(await (await fetchWithContext(new Request('http://localhost/public/experiences/a'), env)).json()).toEqual({ active: false, reason: 'unavailable' });
+    const response = await fetchWithContext(new Request('http://localhost/public/experiences/a/spin', { method: 'POST', body: '{}' }), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ active: false, reason: 'unavailable' });
     expect((env as any).__spins).toHaveLength(0);
@@ -475,8 +485,21 @@ describe('authoritative experience spin history', () => {
     const prizeEnv = fixture(prizeConfig, 'published', prizeConfig); const prize = await spin(prizeEnv); const prizeHistory = await history(prizeEnv); expect(prizeHistory.items[0]).toMatchObject({ id: prize.spinId, experienceId: 'a', segmentId: prize.segment.id, segmentIndex: prize.segmentIndex, prizeId: 'prize-1', outcomeType: 'prize' });
     const noPrizeEnv = fixture(noPrizeConfig, 'published', noPrizeConfig); const noPrize = await spin(noPrizeEnv); const noPrizeHistory = await history(noPrizeEnv); expect(noPrizeHistory.items[0]).toMatchObject({ id: noPrize.spinId, prizeId: null, outcomeType: 'no_prize', segmentIndex: noPrize.segmentIndex, segmentId: noPrize.segment.id });
   });
+  it('publishes only the renderable roulette configuration and omits internal experience IDs', async () => {
+    const adminConfig = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: null, enabled: true, weight: 37, stockMode: 'limited', initialStock: 8, redemption: { enabled: true } }], segments: sixSegments(), participation: { maxSpinsPerDevice: 1, maxSpinsPerSession: 2, cooldownSeconds: 30 }, effects: { sound: true, vibration: false, celebration: true, internalFlag: true }, resultCta: { enabled: true, label: 'Ver', url: 'https://example.com', internalNote: 'private' } });
+    const response = await request('/public/experiences/a', fixture(adminConfig, 'published', adminConfig));
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { experience: { id?: string; config: Record<string, unknown> } };
+    expect(payload.experience).not.toHaveProperty('id');
+    expect(payload.experience.config).toEqual(expect.objectContaining({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', iconUrl: null }], segments: expect.any(Array) }));
+    expect(payload.experience.config).not.toHaveProperty('participation');
+    expect(payload.experience.config).not.toHaveProperty('weight');
+    expect(payload.experience.config.prizes).not.toEqual(expect.arrayContaining([expect.objectContaining({ weight: expect.any(Number), enabled: expect.any(Boolean), stockMode: expect.any(String), initialStock: expect.any(Number), redemption: expect.any(Object) })]));
+    expect(payload.experience.config.effects).toEqual({ sound: true, vibration: false, celebration: true });
+    expect(payload.experience.config.resultCta).toEqual({ enabled: true, label: 'Ver', url: 'https://example.com' });
+  });
   it('requires auth, isolates organizations, and paginates newest-first', async () => {
-    const env = fixture(prizeConfig, 'published', prizeConfig); await spin(env); await spin(env); const page = await history(env, '/experiences/a/spins?limit=1'); expect(page.items).toHaveLength(1); expect(page.pagination.nextOffset).toBe(1); const next = await history(env, '/experiences/a/spins?limit=1&offset=1'); expect(next.items).toHaveLength(1); expect((await request('/experiences/b/spins', env)).status).toBe(404); expect((await app.fetch(new Request('http://localhost/experiences/a/spins'), env)).status).toBe(401);
+    const env = fixture(prizeConfig, 'published', prizeConfig); await spin(env); await spin(env); const page = await history(env, '/experiences/a/spins?limit=1'); expect(page.items).toHaveLength(1); expect(page.pagination.nextOffset).toBe(1); const next = await history(env, '/experiences/a/spins?limit=1&offset=1'); expect(next.items).toHaveLength(1); expect((await request('/experiences/b/spins', env)).status).toBe(404); expect((await fetchWithContext(new Request('http://localhost/experiences/a/spins'), env)).status).toBe(401);
   });
   it('persists limited delivery and spin with the same spinId', async () => {
     const limited = JSON.stringify({ schemaVersion: 1, backgroundColor: '#111111', prizes: [{ id: 'prize-1', name: 'Remera', stockMode: 'limited', initialStock: 1 }], segments: sixSegments() }); const env = fixture(limited); expect((await request('/experiences/a/publish', env, { method: 'POST' })).status).toBe(200); const spinResult = await spin(env); const item = (await history(env)).items[0]; expect(item).toMatchObject({ id: spinResult.spinId, prizeId: 'prize-1', outcomeType: 'prize' }); expect((env as any).__inventoryEvents).toEqual([expect.objectContaining({ spinId: spinResult.spinId, type: 'prize_delivered', quantity: 1 })]); const inventory = await request('/experiences/a/inventory', env); expect((await inventory.json() as { items: Array<{ stockAvailable: number; deliveredCount: number }> }).items[0]).toMatchObject({ stockAvailable: 0, deliveredCount: 1 });

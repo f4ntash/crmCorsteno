@@ -67,12 +67,14 @@ function environment(role = 'owner', organizationId = 'org-a') {
   };
   return { DB: db, ENVIRONMENT: 'test', APP_VERSION: 'test' };
 }
-function request(
+async function request(
   path: string,
   env: ReturnType<typeof environment>,
   init?: RequestInit,
 ) {
-  return app.fetch(
+  const pending: Promise<unknown>[] = [];
+  const executionCtx = { waitUntil: (promise: Promise<unknown>) => pending.push(promise) };
+  const response = await app.fetch(
     new Request(`http://localhost${path}`, {
       ...init,
       headers: new Headers({
@@ -82,7 +84,10 @@ function request(
       }),
     }),
     env,
+    executionCtx as unknown as ExecutionContext,
   );
+  await Promise.all(pending);
+  return response;
 }
 
 describe('roulette prize claim operations', () => {
@@ -113,6 +118,25 @@ describe('roulette prize claim operations', () => {
       { method: 'POST' },
     );
     expect(second.status).toBe(409);
+  });
+  it('allows only one of two simultaneous redemptions', async () => {
+    const env = environment();
+    const path = '/experiences/experience-1/claims/claim-1/redeem';
+    const results = await Promise.all([
+      request(path, env, { method: 'POST' }),
+      request(path, env, { method: 'POST' }),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const lookup = await request('/experiences/claims/lookup?code=abcd2345-efgh6789', env);
+    expect(lookup.status).toBe(200);
+    expect((await lookup.json() as { claim: { status: string } }).claim.status).toBe('redeemed');
+  });
+  it('redeems a claim entered by code atomically under simultaneous requests', async () => {
+    const env = environment();
+    const requestByCode = () => request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'ABCD2345-EFGH6789' }) });
+    const results = await Promise.all([requestByCode(), requestByCode()]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect((await results.find((result) => result.status === 200)!.json() as { status: string }).status).toBe('redeemed');
   });
   it('requires manage permission and keeps tenant isolation', async () => {
     const operator = environment('operator');

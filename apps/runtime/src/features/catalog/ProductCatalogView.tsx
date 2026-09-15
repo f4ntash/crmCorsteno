@@ -8,12 +8,14 @@ type CatalogConfig = { schemaVersion: 1; title?: string; intro?: string };
 
 function CatalogProductCard({ product }: { product: CatalogPublicProduct }) {
   const [selectedImage, setSelectedImage] = useState(0);
+  const [failedImage, setFailedImage] = useState<string | null>(null);
   const images = [product.mainImageUrl, ...product.gallery].filter((url): url is string => Boolean(url));
   useEffect(() => setSelectedImage(0), [images.join('|')]);
   const image = images[selectedImage];
+  const imageToShow = image && failedImage !== image ? image : null;
   return <article className="catalog-product">
     <div className="catalog-product-media">
-      <div className="catalog-product-image">{image ? <img src={image} alt={product.name} /> : <span>Sin imagen</span>}</div>
+      <div className="catalog-product-image">{imageToShow ? <img src={imageToShow} alt={product.name} onError={() => setFailedImage(imageToShow)} /> : <span role="img" aria-label={`Imagen no disponible para ${product.name}`}>Sin imagen</span>}</div>
       {images.length > 1 && <div className="catalog-product-thumbnails" role="list" aria-label={`Imágenes de ${product.name}`}>
         {images.map((url, index) => <button type="button" className={`catalog-product-thumbnail${selectedImage === index ? ' is-selected' : ''}`} key={`${url}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Ver imagen ${index + 1} de ${product.name}`} aria-current={selectedImage === index ? 'true' : undefined}><img src={url} alt="" /></button>)}
       </div>}

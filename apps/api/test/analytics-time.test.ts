@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyticsBucketTimestamp, analyticsDateParts } from '@corsteno/types';
-import { formatAnalyticsBucket, formatAnalyticsClock, formatAnalyticsTooltip, formatRecentEventTime } from '../../web/src/features/dashboard/analytics-format';
+import { formatAnalyticsBucket, formatAnalyticsClock, formatAnalyticsTooltip, formatRecentEventTime, formatStoredUtcDateTime } from '../../web/src/features/dashboard/analytics-format';
 import { readableEventLabel } from '../../web/src/features/dashboard/event-labels';
 
 describe('analytics timezone and display', () => {
@@ -28,11 +28,13 @@ describe('analytics timezone and display', () => {
 
   it('formats hourly ticks, tooltips, and recent timestamps in Argentina time', () => {
     const timestamp = Date.parse('2026-09-15T12:37:14.000Z');
-    expect(formatAnalyticsBucket(timestamp, true)).toBe('09:00');
-    expect(formatAnalyticsClock(timestamp)).toBe('09:37');
+    expect(formatAnalyticsBucket(timestamp, true)).toBe('09:00 ART');
+    expect(formatAnalyticsClock(timestamp)).toBe('09:37 ART');
     expect(formatAnalyticsBucket(timestamp, false)).toBe('15/9');
     expect(formatAnalyticsTooltip(timestamp, true)).toContain('09:00');
     expect(formatRecentEventTime(timestamp)).toContain('09:37:14');
+    expect(formatRecentEventTime(timestamp)).toContain('ART');
+    expect(formatStoredUtcDateTime('2026-09-15 12:37:14')).toMatch(/9:37:14.*ART/);
   });
 
   it('maps Cosquín events to human labels', () => {

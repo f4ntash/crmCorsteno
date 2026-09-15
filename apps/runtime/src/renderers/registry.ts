@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import type { Roulette3DConfig } from '@corsteno/roulette-3d';
 import type { CommercialEntitlements } from '@corsteno/types';
-import { Roulette3DView } from '../features/roulette3d/Roulette3DView';
+import { LazyRoulette3DView } from '../features/roulette3d/LazyRoulette3DView';
 import { resolveRuntimeConfig } from '../config/runtimeConfig';
 import type { SpinResult } from '../api/publicExperiencesApi';
 import type { CatalogPublicProduct } from '../api/publicExperiencesApi';
@@ -24,7 +24,7 @@ export type RuntimeRenderer = {
 
 const rouletteRuntimeRenderer: RuntimeRenderer = {
   type: 'roulette',
-  render: ({ config, slug, entitlements, prizeAvailability, recovery }) => createElement(Roulette3DView, {
+  render: ({ config, slug, entitlements, prizeAvailability, recovery }) => createElement(LazyRoulette3DView, {
     config: resolveRuntimeConfig(config as Roulette3DConfig, entitlements),
     slug,
     entitlements,

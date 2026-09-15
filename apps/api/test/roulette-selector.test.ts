@@ -30,6 +30,15 @@ describe('roulette selector', () => {
     expect(selectRouletteOutcome(outcomes, 0.75).prizeId).toBe('b');
   });
 
+  it('selects the only eligible prize for every valid random value', () => {
+    const outcomes = buildRouletteOutcomes({ prizes: [{ id: 'only', weight: 17 }], segments: [{ prizeId: 'only' }, { prizeId: 'only' }] }, new Map());
+    expect(outcomes).toEqual([{ prizeId: 'only', weight: 17, segmentIndices: [0, 1] }]);
+    expect(selectRouletteOutcome(outcomes, 0).prizeId).toBe('only');
+    expect(selectRouletteOutcome(outcomes, 0.999999).prizeId).toBe('only');
+    expect(() => selectRouletteOutcome([], 0.5)).toThrow('invalid roulette selection input');
+    expect(() => selectRouletteOutcome(outcomes, 1)).toThrow('invalid roulette selection input');
+  });
+
   it('keeps no-prize segments as one weighted outcome', () => {
     const outcomes = buildRouletteOutcomes({ prizes: [{ id: 'a' }], segments: [{ prizeId: null }, { prizeId: null }, { prizeId: 'a' }] }, new Map());
     expect(outcomes).toEqual([{ prizeId: 'a', weight: 1, segmentIndices: [2] }, { prizeId: null, weight: 1, segmentIndices: [0, 1] }]);
