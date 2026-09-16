@@ -189,8 +189,8 @@ function Shell() {
            <Route path="analytics" element={!canAccess('analytics') ? <Navigate to="/app" replace /> : <Analytics org={o} />} />
            <Route path="reports" element={!canAccess('reports') ? <Navigate to="/app" replace /> : <ReportsPage org={o} />} />
            <Route path="experiences" element={!canAccess('experiences') ? <Navigate to="/app" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
-           <Route path="treasure-hunt" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntListPage org={o} />} />
-           <Route path="treasure-hunt/:id" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntDetailPage org={o} />} />
+           <Route path="treasure-hunt" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntListPage org={o} organizationName={currentOrganization?.organizationName} />} />
+           <Route path="treasure-hunt/:id" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntDetailPage org={o} organizationName={currentOrganization?.organizationName} />} />
            <Route path="products" element={!canAccess('products') || !canUseWorkspaceProduct('product-catalog') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} isPlatformOperator={platformOperator} />} />
             <Route path="leads" element={!adminMode || !canAccess('leads') ? <Navigate to="/app" replace /> : <LeadsPage org={o} canEdit={adminMode || canManage} internal />} />
             <Route path="experiences/:id" element={!workspaceProductsReady ? <WorkspaceProductsLoading /> : !canAccess('experiences') || !currentExperienceAssigned ? <Navigate to="/app" replace /> : <ExperienceDetailPage org={o} permissions={currentPermissions} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
