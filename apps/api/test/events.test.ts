@@ -36,6 +36,16 @@ function environment(state: Fixture) { return { DB: database(state), ENVIRONMENT
 function headers(key = 'valid-key') { return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }; }
 const validEvent = { event: 'game_finished', userId: 'user-a', sessionId: 'session-a', occurredAt: 1000, properties: { game: 'roulette', result: 'win' } };
 const webArEvent = { userId: '4745b141-f137-459c-a87b-311d315f2899', sessionId: '4745b141-f137-459c-a87b-311d315f2899', occurredAt: 1700000000000, properties: { surface: 'web', experience: 'cosquin_ar', target_id: 'cosquin-rock' } };
+const treasureHuntEventNames = [
+  'hunt_started',
+  'hunt_resumed',
+  'step_blocked',
+  'step_completed',
+  'hunt_completed',
+  'reward_issued',
+  'reward_redeemed',
+  'hunt_reset',
+] as const;
 
 describe('Event API credentials and ingestion', () => {
   it('preserves the supplied millisecond occurredAt timestamp', async () => {
@@ -62,6 +72,13 @@ describe('Event API credentials and ingestion', () => {
     if (!inserted) throw new Error('expected an inserted WebAR event');
     expect(inserted).toMatchObject({ event, userId: webArEvent.userId, sessionId: webArEvent.sessionId, occurredAt: webArEvent.occurredAt });
     expect(JSON.parse(inserted.properties ?? '{}')).toEqual(webArEvent.properties);
+  });
+  it.each(treasureHuntEventNames)('accepts Treasure Hunt event %s without a redemption token', async event => {
+    const state = fixture();
+    const response = await app.request('/v1/events', { method: 'POST', headers: headers(), body: JSON.stringify({ ...webArEvent, event, properties: { campaignSlug: 'demo-treasure-hunt', clientEventId: `${event}:session-a` } }) }, environment(state));
+    expect(response.status).toBe(201);
+    expect(state.inserted[0]?.event).toBe(event);
+    expect(JSON.parse(state.inserted[0]?.properties ?? '{}')).toEqual({ campaignSlug: 'demo-treasure-hunt', clientEventId: `${event}:session-a` });
   });
   it.each([
     'camera_permission_granted',
