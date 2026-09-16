@@ -30,9 +30,9 @@ function errorMessage(error: unknown) {
   return 'No pudimos cargar Búsqueda del Tesoro. Intentá nuevamente.';
 }
 
-type TreasureHuntPageProps = { org: string; organizationName?: string };
+type TreasureHuntPageProps = { org: string; organizationName?: string; canManage?: boolean };
 
-export function TreasureHuntListPage({ org }: TreasureHuntPageProps) {
+export function TreasureHuntListPage({ org, canManage = false }: TreasureHuntPageProps) {
   const navigate = useNavigate();
   const [items, setItems] = useState<TreasureHuntSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +55,7 @@ export function TreasureHuntListPage({ org }: TreasureHuntPageProps) {
         <h1>Búsqueda del Tesoro</h1>
         <p className="page-description">Consultá las campañas y sus versiones publicadas de forma segura.</p>
       </div>
-      <span className="read-only-badge">Solo lectura</span>
+      <div className="treasure-hunt-heading-actions"><span className="read-only-badge">{canManage ? 'Edición de borradores' : 'Solo lectura'}</span>{canManage && <button type="button" className="button" onClick={() => navigate('/app/treasure-hunt/new')}>Nueva búsqueda del tesoro</button>}</div>
     </div>
     {loading ? <div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando campañas…</div>
       : error ? <div className="empty"><h2>{error}</h2><button className="button button-secondary" onClick={load}>Reintentar</button></div>
@@ -66,19 +66,19 @@ export function TreasureHuntListPage({ org }: TreasureHuntPageProps) {
               <h2>{item.name}</h2>
               <p className="treasure-hunt-secondary">{item.slug}</p>
             </div>
-            <span className={`status status-${item.status.toLowerCase()}`}>{statusLabels[item.status] ?? item.status}</span>
+            <div className="treasure-hunt-card-status"><span className={`status status-${item.status.toLowerCase()}`}>{item.publishedVersion ? `${statusLabels[item.status] ?? item.status} · v${item.publishedVersion}` : `${item.draftStatus ?? 'Borrador · Sin publicar'}${item.draftIncomplete ? ' · incompleto' : ''}`}</span>{item.draftStatus && item.publishedVersion && <small>{item.draftStatus}{item.draftIncomplete ? ' · incompleto' : ''}</small>}</div>
             <div className="treasure-hunt-card-meta">
               <span><small>Versión publicada</small><strong>{item.publishedVersion ? `v${item.publishedVersion}` : 'Sin publicar'}</strong></span>
               <span><small>Recorrido</small><strong>{item.stepCount} {item.stepCount === 1 ? 'paso' : 'pasos'}</strong></span>
               <span><small>Premio</small><strong>{item.rewardName ?? 'Sin premio'}</strong></span>
               <span><small>Actualizada</small><strong>{date(item.updatedAt)}</strong></span>
             </div>
-            <button className="button button-secondary" onClick={() => navigate(`/app/treasure-hunt/${item.campaignId}`)}>Ver campaña</button>
+            <div className="treasure-hunt-card-actions"><button className="button button-secondary" onClick={() => navigate(`/app/treasure-hunt/${item.campaignId}`)}>Ver campaña</button>{canManage && <button className="button button-quiet" onClick={() => navigate(`/app/treasure-hunt/${item.campaignId}/draft`)}>Editar borrador</button>}</div>
           </article>)}</div>}
   </main>;
 }
 
-export function TreasureHuntDetailPage({ org, organizationName }: TreasureHuntPageProps) {
+export function TreasureHuntDetailPage({ org, organizationName, canManage = false }: TreasureHuntPageProps) {
   const { id = '' } = useParams();
   const [campaign, setCampaign] = useState<TreasureHuntDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,7 +104,7 @@ export function TreasureHuntDetailPage({ org, organizationName }: TreasureHuntPa
         <h1>{campaign.name}</h1>
         <p className="page-description">{campaign.slug}</p>
       </div>
-      <span className="read-only-badge">Solo lectura</span>
+      <div className="treasure-hunt-heading-actions"><span className="read-only-badge">{canManage ? 'Edición de borradores' : 'Solo lectura'}</span>{canManage && <Link className="button" to={`/app/treasure-hunt/${campaign.campaignId}/draft`}>Editar borrador</Link>}</div>
     </div>
     <div className="treasure-hunt-detail-grid">
       <section className="card treasure-hunt-section">
@@ -117,6 +117,7 @@ export function TreasureHuntDetailPage({ org, organizationName }: TreasureHuntPa
         </dl>
         {campaign.description && <p className="field-help">{campaign.description}</p>}
       </section>
+      {campaign.draft && <section className="card treasure-hunt-section treasure-hunt-draft-summary"><div className="workspace-section-heading"><div><p className="eyebrow">BORRADOR</p><h2>{campaign.draft.draftStatus}</h2></div><span className={campaign.draft.draftIncomplete ? 'status status-paused' : 'status status-published'}>{campaign.draft.draftIncomplete ? 'Incompleto' : 'Guardado'}</span></div><p className="field-help">Revisión {campaign.draft.draftRevision} · {campaign.draft.draftIssueCount ? `${campaign.draft.draftIssueCount} observaciones pendientes.` : 'Sin observaciones pendientes.'}</p></section>}
       <section className="card treasure-hunt-section">
         <div className="workspace-section-heading"><div><p className="eyebrow">RECORRIDO</p><h2>{campaign.steps.length} {campaign.steps.length === 1 ? 'paso' : 'pasos'}</h2></div></div>
         <ol className="treasure-hunt-steps">{campaign.steps.map((step) => <li key={step.stepId}>

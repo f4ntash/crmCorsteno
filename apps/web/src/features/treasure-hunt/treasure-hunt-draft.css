@@ -1,0 +1,43 @@
+.treasure-hunt-editor-page .page-heading { align-items: flex-start; }
+.treasure-hunt-back-button { border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0; }
+.treasure-hunt-editor-section { display: grid; gap: 1.25rem; min-width: 0; padding: 1.25rem; }
+.treasure-hunt-editor-state { color: var(--text-secondary); font-size: .8rem; font-weight: 650; }
+.treasure-hunt-form-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.treasure-hunt-form-grid label { display: grid; gap: .35rem; color: var(--text-secondary); font-size: .8rem; font-weight: 650; }
+.treasure-hunt-form-grid input, .treasure-hunt-form-grid textarea, .treasure-hunt-form-grid select { width: 100%; }
+.treasure-hunt-form-grid textarea { resize: vertical; }
+.treasure-hunt-form-grid small { color: var(--text-muted); font-size: .72rem; font-weight: 400; }
+.treasure-hunt-form-wide { grid-column: 1 / -1; }
+.treasure-hunt-draft-steps { display: grid; gap: 1rem; }
+.treasure-hunt-draft-step { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+.treasure-hunt-draft-step-heading, .treasure-hunt-draft-step-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.treasure-hunt-draft-step-heading span { color: var(--text-secondary); font-size: .78rem; }
+.treasure-hunt-draft-step-footer small { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .7rem; overflow-wrap: anywhere; }
+.treasure-hunt-draft-step-footer > div { display: flex; gap: .4rem; }
+.treasure-hunt-target-editor { display: grid; gap: 1rem; grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); align-items: start; }
+.treasure-hunt-target-preview { width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); }
+.treasure-hunt-target-fields { display: grid; gap: .8rem; min-width: 0; }
+.treasure-hunt-target-fields label { display: grid; gap: .35rem; color: var(--text-secondary); font-size: .8rem; font-weight: 650; }
+.treasure-hunt-target-fields input { width: 100%; }
+.treasure-hunt-target-fields small, .treasure-hunt-target-meta { color: var(--text-muted); font-size: .72rem; }
+.treasure-hunt-target-meta { display: grid; gap: .3rem; }
+.treasure-hunt-target-meta strong { color: var(--text); overflow-wrap: anywhere; }
+.treasure-hunt-draft-readiness { margin-top: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); }
+.treasure-hunt-draft-readiness.is-ready { border-left-color: var(--success); }
+.treasure-hunt-draft-readiness ul { display: grid; gap: .35rem; margin: .5rem 0 0; padding-left: 1.2rem; color: var(--text-secondary); }
+.treasure-hunt-draft-readiness small { display: block; margin-top: .5rem; color: var(--text-secondary); }
+.treasure-hunt-draft-validation { margin-top: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); }
+.treasure-hunt-draft-validation ul { display: grid; gap: .35rem; margin: .5rem 0 0; padding-left: 1.2rem; color: var(--text-secondary); }
+.treasure-hunt-editor-actions { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: 1rem; padding: .9rem 0; border-top: 1px solid var(--border); background: var(--bg); }
+.treasure-hunt-editor-actions > span { margin-right: auto; color: var(--text-secondary); font-size: .8rem; }
+@media (max-width: 680px) {
+  .treasure-hunt-form-grid { grid-template-columns: 1fr; }
+  .treasure-hunt-form-wide { grid-column: auto; }
+  .treasure-hunt-draft-step-heading, .treasure-hunt-draft-step-footer { align-items: flex-start; flex-direction: column; }
+  .treasure-hunt-target-editor { grid-template-columns: 1fr; }
+  .treasure-hunt-draft-step-footer > div { width: 100%; }
+  .treasure-hunt-draft-step-footer button { flex: 1; }
+  .treasure-hunt-editor-actions { align-items: stretch; flex-wrap: wrap; }
+  .treasure-hunt-editor-actions > span { flex-basis: 100%; margin-right: 0; }
+  .treasure-hunt-editor-actions > button { flex: 1; }
+}

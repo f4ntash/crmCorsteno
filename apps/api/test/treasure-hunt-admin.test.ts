@@ -17,7 +17,7 @@ function fixture(role = 'owner') {
       };
     },
   };
-  return { DB, ENVIRONMENT: 'test', APP_VERSION: 'test', TREASURE_HUNT_ADMIN_API_URL: 'https://treasure-hunt.example', TREASURE_HUNT_ADMIN_TOKEN: 'server-only-token' };
+  return { DB, ENVIRONMENT: 'test', APP_VERSION: 'test', TREASURE_HUNT_ADMIN_API_URL: 'http://127.0.0.1:8791', TREASURE_HUNT_ADMIN_TOKEN: 'server-only-token' };
 }
 
 function request(path: string, env: ReturnType<typeof fixture>, init?: RequestInit) {
@@ -40,8 +40,26 @@ describe('Treasure Hunt PEC server boundary', () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(JSON.parse(body)).toEqual({ items: [] });
-    expect(upstream).toHaveBeenCalledWith('https://treasure-hunt.example/v1/admin/hunts', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer server-only-token', 'X-Organization-Id': 'org-a' }) }));
+    expect(upstream).toHaveBeenCalledWith('http://127.0.0.1:8791/v1/admin/hunts', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer server-only-token', 'X-Organization-Id': 'org-a' }) }));
     expect(body).not.toContain('server-only-token');
+  });
+
+  it('forwards draft writes only for crm.manage and preserves ETag concurrency headers', async () => {
+    const upstream = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ draft: { revision: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"1"' } }));
+    vi.stubGlobal('fetch', upstream);
+    const create = await request('/admin/treasure-hunt/campaigns', fixture(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Demo', slug: 'demo', description: '', progressionMode: 'SEQUENTIAL', steps: [], reward: null }) });
+    expect(create.status).toBe(200);
+    expect(upstream).toHaveBeenCalledWith('http://127.0.0.1:8791/v1/admin/hunts', expect.objectContaining({ method: 'POST', body: expect.any(String), headers: expect.objectContaining({ Authorization: 'Bearer server-only-token', 'X-Organization-Id': 'org-a' }) }));
+
+    const draft = await request('/admin/treasure-hunt/campaigns/campaign-a/draft', fixture(), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ name: 'Demo', slug: 'demo', description: '', progressionMode: 'SEQUENTIAL', steps: [], reward: null }) });
+    expect(draft.status).toBe(200);
+    expect(draft.headers.get('ETag')).toBe('"1"');
+    expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft', expect.objectContaining({ method: 'PUT', body: expect.any(String), headers: expect.objectContaining({ 'If-Match': '"1"' }) }));
+  });
+
+  it('keeps draft writes unavailable to read-only memberships', async () => {
+    const response = await request('/admin/treasure-hunt/campaigns', fixture('viewer'), { method: 'POST', body: JSON.stringify({}) });
+    expect(response.status).toBe(403);
   });
 
   it('maps an upstream not found and unavailable response without leaking details', async () => {
@@ -59,5 +77,30 @@ describe('Treasure Hunt PEC server boundary', () => {
   it('enforces the existing read permission', async () => {
     const response = await request('/admin/treasure-hunt/campaigns', fixture('viewer'));
     expect(response.status).toBe(403);
+  });
+
+  it('forwards target upload, preview and compile through the authenticated server boundary', async () => {
+    const upstream = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ draft: { revision: 2 } }), { status: 200, headers: { ETag: '"2"' } }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([137, 80, 78, 71]), { status: 200, headers: { 'Content-Type': 'image/png' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ draft: { revision: 2 } }), { status: 200, headers: { ETag: '"2"' } }));
+    vi.stubGlobal('fetch', upstream);
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([137, 80, 78, 71])], 'target.png', { type: 'image/png' }));
+    form.append('physicalWidthCm', '18');
+    const upload = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/steps/step-a/target', fixture(), { method: 'POST', headers: { 'If-Match': '"1"' }, body: form });
+    expect(upload.status).toBe(200);
+    const uploadCall = upstream.mock.calls[0]?.[1] as RequestInit;
+    expect(uploadCall.method).toBe('POST');
+    expect(uploadCall.headers).toMatchObject({ Authorization: 'Bearer server-only-token', 'X-Organization-Id': 'org-a', 'X-Physical-Width-Cm': '18', 'X-Original-Filename': 'target.png', 'If-Match': '"1"' });
+    expect((await new Response(uploadCall.body).arrayBuffer()).byteLength).toBe(4);
+
+    const preview = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/steps/step-a/target', fixture());
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('Content-Type')).toContain('image/png');
+
+    const compile = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile', fixture(), { method: 'POST', headers: { 'If-Match': '"2"' } });
+    expect(compile.status).toBe(200);
+    expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft/compile', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'If-Match': '"2"' }) }));
   });
 });

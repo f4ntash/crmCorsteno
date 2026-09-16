@@ -1,4 +1,4 @@
-import { apiRequest } from '../../shared/api/client';
+import { apiDownload, apiRequest, apiRequestWithMeta } from '../../shared/api/client';
 
 export type TreasureHuntSummary = {
   campaignId: string;
@@ -11,11 +11,41 @@ export type TreasureHuntSummary = {
   updatedAt: string;
   stepCount: number;
   rewardName: string | null;
+  draftId?: string;
+  draftRevision?: number;
+  draftStatus?: string;
+  draftIncomplete?: boolean;
+  draftIssueCount?: number;
 };
 
 export type TreasureHuntStep = { stepId: string; order: number; title: string; clue: string; triggerId: string };
 export type TreasureHuntVersion = { id: string; version: number; name: string; description: string; progressionMode: string; publicationStatus: string; createdAt: string; publishedAt: string | null };
 export type TreasureHuntReward = { rewardId: string; type: string; name: string; displayValue: string; expiresInSeconds: number | null; status: string };
+export type TreasureHuntDraftIssue = { code: string; message: string; stepId?: string };
+export type TreasureHuntDraftTarget = { id: string; stepId: string; originalFilename: string; mimeType: string; byteSize: number; checksum: string; storageKey: string; status: string; physicalWidthCm: number; widthPx: number | null; heightPx: number | null; featureCount: number | null; createdAt: string; updatedAt: string };
+export type TreasureHuntDraftCompilation = { id: string; draftRevision: number; status: 'COMPILE_PENDING' | 'COMPILED' | 'FAILED'; artifactChecksum: string | null; artifactByteSize: number | null; compilerVersion: string | null; mapping: Array<{ stepId: string; order: number; targetIndex: number; storageKey?: string; physicalWidthCm?: number }>; errorMessage: string | null; compiledAt: string | null };
+export type TreasureHuntDraftStep = { stepId: string; order: number; title: string; clue: string; triggerType: 'IMAGE_TARGET'; triggerId: string; targetRef: string | null; targetStatus: 'PENDING' | 'READY'; target: TreasureHuntDraftTarget | null };
+export type TreasureHuntDraftReward = { type: 'COUPON'; name: string; displayValue: string; expiresInSeconds: number | null };
+export type TreasureHuntDraft = {
+  id: string;
+  campaignId: string;
+  organizationId: string;
+  baseCampaignVersionId: string | null;
+  basePublishedVersion: number | null;
+  revision: number;
+  name: string;
+  slug: string;
+  description: string;
+  progressionMode: 'SEQUENTIAL';
+  steps: TreasureHuntDraftStep[];
+  reward: TreasureHuntDraftReward | null;
+  issues: TreasureHuntDraftIssue[];
+  incomplete: boolean;
+  readiness: 'READY' | 'INCOMPLETE';
+  compilation: TreasureHuntDraftCompilation | null;
+  createdAt: string;
+  updatedAt: string;
+};
 export type TreasureHuntDetail = Omit<TreasureHuntSummary, 'stepCount' | 'rewardName'> & {
   description: string | null;
   progressionMode: string | null;
@@ -23,9 +53,25 @@ export type TreasureHuntDetail = Omit<TreasureHuntSummary, 'stepCount' | 'reward
   triggers: Array<{ stepId: string; order: number; triggerId: string }>;
   reward: TreasureHuntReward | null;
   versions: TreasureHuntVersion[];
+  draft?: { draftId: string; draftRevision: number; draftStatus: string; draftIncomplete: boolean; draftIssueCount: number } | null;
 };
+
+export type TreasureHuntDraftInput = Omit<TreasureHuntDraft, 'id' | 'campaignId' | 'organizationId' | 'baseCampaignVersionId' | 'basePublishedVersion' | 'revision' | 'issues' | 'incomplete' | 'readiness' | 'compilation' | 'createdAt' | 'updatedAt'>;
 
 export const treasureHuntApi = {
   list: (organizationId: string) => apiRequest<{ items: TreasureHuntSummary[] }>('/admin/treasure-hunt/campaigns', organizationId),
   get: (organizationId: string, campaignId: string) => apiRequest<{ campaign: TreasureHuntDetail }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}`, organizationId),
+  create: (organizationId: string, input: Pick<TreasureHuntDraftInput, 'name' | 'slug' | 'description' | 'progressionMode'>) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>('/admin/treasure-hunt/campaigns', organizationId, { method: 'POST', body: JSON.stringify({ ...input, steps: [], reward: null }) }),
+  getDraft: (organizationId: string, campaignId: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft`, organizationId),
+  saveDraft: (organizationId: string, campaignId: string, input: TreasureHuntDraftInput, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft`, organizationId, { method: 'PUT', headers: { 'If-Match': etag }, body: JSON.stringify(input) }),
+  uploadTarget: (organizationId: string, campaignId: string, stepId: string, file: File, physicalWidthCm: number, etag: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('physicalWidthCm', String(physicalWidthCm));
+    return apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId, { method: 'POST', headers: { 'If-Match': etag }, body: form });
+  },
+  removeTarget: (organizationId: string, campaignId: string, stepId: string, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId, { method: 'DELETE', headers: { 'If-Match': etag } }),
+  updateTargetWidth: (organizationId: string, campaignId: string, stepId: string, physicalWidthCm: number, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId, { method: 'PATCH', headers: { 'If-Match': etag }, body: JSON.stringify({ physicalWidthCm }) }),
+  compile: (organizationId: string, campaignId: string, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile`, organizationId, { method: 'POST', headers: { 'If-Match': etag } }),
+  previewTarget: (organizationId: string, campaignId: string, stepId: string) => apiDownload(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId),
 };

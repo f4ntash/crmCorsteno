@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import '../analytics.css';
 import '../activity.css';
 import '../attention.css';
@@ -32,6 +32,7 @@ import { ChannelDetailPage } from '../features/channels/ChannelDetailPage';
 import { ProductsPage } from '../features/products/ProductsPage';
 import { LeadsPage } from '../features/leads/LeadsPage';
 import { TreasureHuntDetailPage, TreasureHuntListPage } from '../features/treasure-hunt/TreasureHuntPages';
+import { TreasureHuntDraftPage } from '../features/treasure-hunt/TreasureHuntDraftPage';
 import { buildNavigation, canAccessTreasureHuntRoute, isExperienceAssignedToWorkspace, isWorkspaceProductAssigned, navigationHasKey } from './navigation';
 import type { Experience } from '../features/experiences/types';
 type LegacyJson = ReturnType<JSON['parse']>;
@@ -40,6 +41,10 @@ async function get<T = LegacyJson>(path: string, org?: string, init?: RequestIni
 }
 function WorkspaceProductsLoading() {
   return <main className="page access-state" aria-live="polite"><span className="loading-mark" />Cargando los productos asignados…</main>;
+}
+function TreasureHuntDraftRoute({ org, organizationName }: { org: string; organizationName?: string }) {
+  const { id } = useParams();
+  return <TreasureHuntDraftPage org={org} organizationName={organizationName} campaignId={id} />;
 }
 function Shell() {
   const [m, setM] = useState<Me>(),
@@ -189,8 +194,10 @@ function Shell() {
            <Route path="analytics" element={!canAccess('analytics') ? <Navigate to="/app" replace /> : <Analytics org={o} />} />
            <Route path="reports" element={!canAccess('reports') ? <Navigate to="/app" replace /> : <ReportsPage org={o} />} />
            <Route path="experiences" element={!canAccess('experiences') ? <Navigate to="/app" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
-           <Route path="treasure-hunt" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntListPage org={o} organizationName={currentOrganization?.organizationName} />} />
-           <Route path="treasure-hunt/:id" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntDetailPage org={o} organizationName={currentOrganization?.organizationName} />} />
+           <Route path="treasure-hunt" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntListPage org={o} organizationName={currentOrganization?.organizationName} canManage={canManage} />} />
+           <Route path="treasure-hunt/new" element={!canManage ? <Navigate to="/app/treasure-hunt" replace /> : <TreasureHuntDraftPage org={o} organizationName={currentOrganization?.organizationName} />} />
+           <Route path="treasure-hunt/:id/draft" element={!canManage ? <Navigate to="/app/treasure-hunt" replace /> : <TreasureHuntDraftRoute org={o} organizationName={currentOrganization?.organizationName} />} />
+           <Route path="treasure-hunt/:id" element={!canReadTreasureHunt ? <Navigate to="/app" replace /> : <TreasureHuntDetailPage org={o} organizationName={currentOrganization?.organizationName} canManage={canManage} />} />
            <Route path="products" element={!canAccess('products') || !canUseWorkspaceProduct('product-catalog') ? <Navigate to="/app" replace /> : <ProductsPage org={o} canEdit={canManage} canManageAssets={currentPermissions.includes('assets.manage')} isPlatformOperator={platformOperator} />} />
             <Route path="leads" element={!adminMode || !canAccess('leads') ? <Navigate to="/app" replace /> : <LeadsPage org={o} canEdit={adminMode || canManage} internal />} />
             <Route path="experiences/:id" element={!workspaceProductsReady ? <WorkspaceProductsLoading /> : !canAccess('experiences') || !currentExperienceAssigned ? <Navigate to="/app" replace /> : <ExperienceDetailPage org={o} permissions={currentPermissions} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />

@@ -1,10 +1,14 @@
 .treasure-hunt-page .page-heading { align-items: flex-start; }
+.treasure-hunt-heading-actions, .treasure-hunt-card-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; }
 .read-only-badge { border: 1px solid var(--border-strong); border-radius: 999px; color: var(--text-secondary); font-size: .75rem; font-weight: 700; letter-spacing: .04em; padding: .45rem .75rem; text-transform: uppercase; }
 .treasure-hunt-list { display: grid; gap: 1rem; }
 .treasure-hunt-card { align-items: center; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text); display: grid; gap: 1rem; grid-template-columns: minmax(12rem, 1fr) auto; min-width: 0; padding: 1.25rem; }
 .treasure-hunt-card h2, .treasure-hunt-section h2 { color: var(--text); margin: .2rem 0; }
 .treasure-hunt-card-main { min-width: 0; }
 .treasure-hunt-card-main .eyebrow { margin: 0; }
+.treasure-hunt-card-status { display: grid; justify-items: end; gap: .25rem; min-width: 0; }
+.treasure-hunt-card-status small { color: var(--text-secondary); font-size: .72rem; }
+.treasure-hunt-card-actions { grid-column: 1 / -1; }
 .treasure-hunt-secondary { color: var(--text-secondary); margin: .25rem 0 0; overflow-wrap: anywhere; }
 .treasure-hunt-card-meta { display: flex; flex-wrap: wrap; gap: 1rem; grid-column: 1 / -1; min-width: 0; }
 .treasure-hunt-card-meta span { display: grid; gap: .25rem; min-width: min(8rem, 100%); }
@@ -23,13 +27,17 @@
 .treasure-hunt-step-trigger { display: grid; flex: 0 1 12rem; gap: .2rem; justify-items: end; min-width: 0; text-align: right; }
 .treasure-hunt-step-trigger span { color: var(--text-secondary); font-size: .8rem; font-weight: 600; }
 .treasure-hunt-step-trigger small { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .68rem; overflow-wrap: anywhere; }
+.treasure-hunt-draft-summary { background: var(--surface-2); }
 .back-link { color: inherit; display: inline-block; margin-bottom: 1.25rem; text-decoration: none; }
 @media (max-width: 680px) {
   .treasure-hunt-card { grid-template-columns: 1fr; }
   .treasure-hunt-card .button { width: 100%; }
+  .treasure-hunt-heading-actions, .treasure-hunt-card-actions { align-items: stretch; justify-content: stretch; width: 100%; }
+  .treasure-hunt-heading-actions > *, .treasure-hunt-card-actions > * { flex: 1; text-align: center; }
   .treasure-hunt-card-meta { gap: .75rem; }
   .treasure-hunt-card-meta span { flex: 1 1 8rem; }
   .treasure-hunt-facts { grid-template-columns: 1fr; }
   .treasure-hunt-steps li, .treasure-hunt-version { align-items: stretch; flex-direction: column; gap: .5rem; }
   .treasure-hunt-step-trigger { justify-items: start; text-align: left; }
+  .treasure-hunt-card-status { justify-items: start; }
 }

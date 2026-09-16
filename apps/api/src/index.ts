@@ -89,7 +89,8 @@ app.use('*', async (c, next) => {
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
     credentials: !publicApiRequest && !publicAssetRequest,
     allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id', 'Idempotency-Key'],
+    allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id', 'Idempotency-Key', 'If-Match'],
+    exposeHeaders: ['ETag'],
   })(c, next);
 });
 app.get('/health', health);
