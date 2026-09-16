@@ -161,4 +161,27 @@ describe('production CORS', () => {
     );
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
+
+  it('allows the public runtime to fetch asset maps without credentials', async () => {
+    const response = await app.request(
+      '/assets/organizations/org-a/assets/00000000-0000-0000-0000-000000000001.webp',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://corsteno-runtime.matiasgerstner.workers.dev',
+          'Access-Control-Request-Method': 'GET',
+        },
+      },
+      {
+        ENVIRONMENT: 'production',
+        APP_VERSION: 'test',
+        PUBLIC_ORIGINS: 'https://corsteno-runtime.matiasgerstner.workers.dev',
+      },
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://corsteno-runtime.matiasgerstner.workers.dev',
+    );
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+  });
 });

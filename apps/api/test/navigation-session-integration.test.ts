@@ -99,7 +99,7 @@ describe('real-session navigation integration contract', () => {
     const rouletteMe = await (await readMe(env, rouletteCookie)).json() as { user: { id: string; platformRole: string }; memberships: Array<{ organizationId: string; role: string; permissions: string[] }> };
     expect(rouletteMe.user).toMatchObject({ id: 'user-roulette', platformRole: 'user' });
     expect(rouletteMe.memberships).toEqual([{ organizationId: 'org-roulette', role: 'owner', organizationName: 'QA Roulette', organizationSlug: 'qa-roulette', permissions: expect.any(Array) }]);
-    expect(buildNavigation({ mode: 'workspace', platformRole: rouletteMe.user.platformRole, permissions: rouletteMe.memberships[0]?.permissions ?? [], workspace: true, productTypes: new Set(['roulette']) }).map((item) => item.label)).toEqual(['Inicio', 'Ruleta', 'Resultados', 'Reportes', 'Canjear premio']);
+    expect(buildNavigation({ mode: 'workspace', platformRole: rouletteMe.user.platformRole, permissions: rouletteMe.memberships[0]?.permissions ?? [], workspace: true, productTypes: new Set(['roulette']) }).map((item) => item.label)).toEqual(['Inicio', 'Ruleta', 'Resultados', 'Reportes', 'Canjear premio', 'Búsqueda del Tesoro']);
     expect((await app.fetch(new Request('http://localhost/leads', { headers: { Cookie: rouletteCookie } }), env)).status).toBe(403);
     await logout(env, rouletteCookie);
 
@@ -107,7 +107,7 @@ describe('real-session navigation integration contract', () => {
     const catalogMe = await (await readMe(env, catalogCookie)).json() as { user: { platformRole: string }; memberships: Array<{ organizationId: string; role: string; permissions: string[] }> };
     expect(catalogMe.user.platformRole).toBe('user');
     expect(catalogMe.memberships[0]).toMatchObject({ organizationId: 'org-catalog', role: 'admin' });
-    expect(buildNavigation({ mode: 'workspace', platformRole: catalogMe.user.platformRole, permissions: catalogMe.memberships[0]?.permissions ?? [], workspace: true, productTypes: new Set(['product-catalog']) }).map((item) => item.label)).toEqual(['Inicio', 'Catálogo', 'Productos', 'Sitios y canales']);
+    expect(buildNavigation({ mode: 'workspace', platformRole: catalogMe.user.platformRole, permissions: catalogMe.memberships[0]?.permissions ?? [], workspace: true, productTypes: new Set(['product-catalog']) }).map((item) => item.label)).toEqual(['Inicio', 'Catálogo', 'Productos', 'Sitios y canales', 'Búsqueda del Tesoro']);
     await logout(env, catalogCookie);
 
     const websiteMe = await (await readMe(env, await login(env, 'website@example.test'))).json() as { user: { platformRole: string }; memberships: Array<{ role: string }> };

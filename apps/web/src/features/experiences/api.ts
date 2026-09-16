@@ -1,5 +1,5 @@
 import { apiRequest } from '../../shared/api/client';
-import type { Product3DConfig } from '@corsteno/types';
+import type { CatalogProductMetadata, Product3DConfig, ProductSurfaceConfig } from '@corsteno/types';
 import type { Experience, ExperienceTemplate } from './types';
 export type ExperienceSpin = {
   id: string;
@@ -27,6 +27,8 @@ export type CatalogProduct = {
   description: string;
   priceMinorUnits: number;
   currency: string;
+  priceUnit?: string | null;
+  metadata?: CatalogProductMetadata | null;
   stock: number;
   sortOrder: number;
   visible: boolean;
@@ -39,6 +41,21 @@ export type CatalogProduct = {
   ctaUrl: string | null;
   createdAt: number;
   updatedAt: number;
+};
+
+export type SurfaceMaterialAsset = { id: string; url: string; originalFilename: string; displayName: string; mimeType: string; byteSize: number; category: 'surface-material-map'; archivedAt: number | null };
+export type ProductSurfaceState = {
+  productId: string;
+  organizationId: string;
+  status: 'not_configured' | 'draft' | 'published' | 'changes' | 'error';
+  draftConfig: ProductSurfaceConfig | null;
+  publishedConfig: ProductSurfaceConfig | null;
+  draftAssets: { baseColor: SurfaceMaterialAsset | null; normal: SurfaceMaterialAsset | null; roughness: SurfaceMaterialAsset | null };
+  publishedAssets: { baseColor: SurfaceMaterialAsset | null; normal: SurfaceMaterialAsset | null; roughness: SurfaceMaterialAsset | null };
+  draftIssues: Array<{ code: string; path: string; message: string }>;
+  publishedAt: number | null;
+  draftVersion: number;
+  publishedVersion: number | null;
 };
 export type CatalogProductImage = { id: string; organizationId: string; experienceId: string; productId: string; assetId: string; url: string; sortOrder: number; createdAt: number };
 export type CatalogProductWrite = Omit<CatalogProduct, 'sortOrder' | 'gallery'>;
@@ -215,4 +232,10 @@ export const products3dApi = {
   update: (id: string, organizationId: string, body: { modelAssetId?: string | null; config?: Product3DConfig | null }) => apiRequest<Product3DState>(`/products/${id}/3d`, organizationId, { method: 'PATCH', body: JSON.stringify(body) }),
   upload: (id: string, organizationId: string, file: File) => { const body = new FormData(); body.append('file', file); return apiRequest<{ asset: Product3DAsset; state: Product3DState }>(`/products/${id}/3d/assets`, organizationId, { method: 'POST', body }); },
   publish: (id: string, organizationId: string) => apiRequest<Product3DState>(`/products/${id}/3d/publish`, organizationId, { method: 'POST' }),
+};
+
+export const productsSurfaceApi = {
+  get: (id: string, organizationId: string) => apiRequest<ProductSurfaceState>(`/products/${id}/surface`, organizationId),
+  update: (id: string, organizationId: string, config: ProductSurfaceConfig | null) => apiRequest<ProductSurfaceState>(`/products/${id}/surface`, organizationId, { method: 'PATCH', body: JSON.stringify({ config }) }),
+  publish: (id: string, organizationId: string) => apiRequest<ProductSurfaceState>(`/products/${id}/surface/publish`, organizationId, { method: 'POST' }),
 };

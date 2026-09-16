@@ -1,6 +1,6 @@
 import { CRM_PRODUCT_TYPES, isCrmProductType, type CrmProductType } from '@corsteno/types';
 
-export type NavigationKey = 'summary' | 'experiences' | 'products' | 'leads' | 'analytics' | 'channels' | 'reports' | 'redeem' | 'commercial' | 'subscriptions';
+export type NavigationKey = 'summary' | 'experiences' | 'treasure-hunt' | 'products' | 'leads' | 'analytics' | 'channels' | 'reports' | 'redeem' | 'commercial' | 'subscriptions';
 export type NavigationMode = 'admin' | 'workspace';
 export type NavigationItem = {
   key: NavigationKey;
@@ -20,6 +20,15 @@ export type NavigationContext = {
   workspace: boolean;
   productTypes: ReadonlySet<string>;
 };
+
+/**
+ * Treasure Hunt is a read-only workspace module. Its route must be authorized
+ * by the active organization and permission, independently of whether the
+ * campaign list has finished loading or is empty.
+ */
+export function canAccessTreasureHuntRoute(context: Pick<NavigationContext, 'workspace' | 'permissions'>) {
+  return context.workspace && context.permissions.includes('crm.read');
+}
 
 type ProductNavigationItem = Omit<NavigationItem, 'capabilities' | 'adminOnly' | 'requiredProduct' | 'requiredPermission' | 'allowedMode'> & {
   adminOnly: false;
@@ -63,6 +72,17 @@ const adminNavigation: readonly NavigationItem[] = [
   { key: 'subscriptions', label: 'Suscripciones', to: '/app/subscriptions', adminOnly: true, requiredProduct: null, requiredPermission: null, allowedMode: ['admin'], capabilities: [] },
 ];
 
+const treasureHuntNavigation: NavigationItem = {
+  key: 'treasure-hunt',
+  label: 'Búsqueda del Tesoro',
+  to: '/app/treasure-hunt',
+  adminOnly: false,
+  requiredProduct: null,
+  requiredPermission: 'crm.read',
+  allowedMode: ['workspace'],
+  capabilities: [],
+};
+
 function hasPermission(context: NavigationContext, permission: string | null) {
   return !permission || context.permissions.includes(permission);
 }
@@ -102,6 +122,9 @@ export function buildNavigation(context: NavigationContext): NavigationItem[] {
       if (!item.adminOnly && item.allowedMode.includes('workspace') && item.requiredProduct && hasPermission(context, item.requiredPermission)) mergeProductItem(items, item);
     }
   }
+  // Route availability is determined by the active workspace and read permission.
+  // Campaign loading belongs to the page and must not hide or reject the route.
+  if (context.workspace && hasPermission(context, treasureHuntNavigation.requiredPermission)) items.set(treasureHuntNavigation.key, treasureHuntNavigation);
   return [...items.values()];
 }
 

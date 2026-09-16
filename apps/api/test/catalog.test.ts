@@ -77,6 +77,8 @@ describe('product-catalog type', () => {
 
     const errors = catalogProductFieldErrors({ name: '   ', description: 'ok', priceMinorUnits: '12abc', currency: 'ARS', stock: 1.5, visible: true, ctaLabel: null, ctaUrl: 'javascript:alert(1)' });
     expect(errors).toEqual(expect.objectContaining({ name: expect.any(String), priceMinorUnits: expect.any(String), stock: expect.any(String), ctaUrl: expect.any(String) }));
+    expect(catalogProductFieldErrors({ name: 'Revestimiento', description: '', priceMinorUnits: 3_890_000, currency: 'ARS', priceUnit: 'm²', metadata: { material: 'Madera', environment: 'Interior' }, stock: 4, visible: true, ctaLabel: 'Consultar', ctaUrl: null })).toEqual({});
+    expect(catalogProductFieldErrors({ name: 'Revestimiento', description: '', priceMinorUnits: 3_890_000, currency: 'ARS', priceUnit: 'x'.repeat(33), metadata: ['privado'], stock: 4, visible: true, ctaLabel: 'Consultar', ctaUrl: null })).toEqual(expect.objectContaining({ priceUnit: expect.any(String), metadata: expect.any(String) }));
   });
 
   it('accepts WhatsApp phone numbers and normalizes them to wa.me', () => {
@@ -88,7 +90,7 @@ describe('product-catalog type', () => {
   });
 
   it('returns field-specific API issues instead of silently coercing bad product input', async () => {
-    const response = await request('/experiences/catalog-1/catalog-products', { DB: db() }, { method: 'POST', body: JSON.stringify({ name: 'Producto', description: '', priceMinorUnits: '12abc', currency: 'ARS', stock: 1.5, visible: true, mainAssetUrl: null, ctaLabel: null, ctaUrl: 'javascript:alert(1)' }) });
+    const response = await request('/experiences/catalog-1/catalog-products', { DB: db() }, { method: 'POST', body: JSON.stringify({ name: 'Producto', description: '', priceMinorUnits: '12abc', currency: 'ARS', priceUnit: 'x'.repeat(33), metadata: ['privado'], stock: 1.5, visible: true, mainAssetUrl: null, ctaLabel: null, ctaUrl: 'javascript:alert(1)' }) });
     expect(response.status).toBe(400);
     const payload = await response.json() as { error?: { code?: string; issues?: Array<{ code: string; path: string }> } };
     expect(payload.error?.code).toBe('VALIDATION_ERROR');
@@ -96,6 +98,8 @@ describe('product-catalog type', () => {
       expect.objectContaining({ code: 'PRODUCT_PRICE_INVALID', path: 'products.priceMinorUnits' }),
       expect.objectContaining({ code: 'PRODUCT_STOCK_INVALID', path: 'products.stock' }),
       expect.objectContaining({ code: 'PRODUCT_CTA_URL_INVALID', path: 'products.ctaUrl' }),
+      expect.objectContaining({ code: 'PRODUCT_PRICE_UNIT_INVALID', path: 'products.priceUnit' }),
+      expect.objectContaining({ code: 'PRODUCT_METADATA_INVALID', path: 'products.metadata' }),
     ]));
   });
 
@@ -112,6 +116,40 @@ describe('product-catalog public adapter and report safety', () => {
     const adapter = publicExperienceRegistry.get('product-catalog');
     const context: PublicExperienceAdapterContext = { db: db({ catalog: [{ name: 'Publicado', description: '', priceMinorUnits: 100, currency: 'ARS', stock: 4, mainImageUrl: null, ctaLabel: null, ctaUrl: null }] }), experience: { id: 'catalog-1', organizationId: 'org-a', name: 'Catálogo', type: 'product-catalog', publishedConfig: JSON.stringify(productCatalogExperienceType.createDraftConfig()), startsAt: null, endsAt: null }, featureEntitlements: { features: [], maxActiveExperiences: 0 }, deviceId: null, sessionId: null };
     await expect(adapter?.buildPublicPayload(context)).resolves.toEqual(expect.objectContaining({ kind: 'ready', payload: expect.objectContaining({ type: 'product-catalog' }) }));
+  });
+
+  it('serves only published merchandising fields and sanitizes the public experience contract', async () => {
+    const snapshot = { name: 'Listón Roble Natural', description: 'Veta suave.', priceMinorUnits: 3_890_000, currency: 'ARS', priceUnit: 'm²', metadata: { material: 'Madera', environment: 'Interior', adminNote: 'private', internalCost: 12000 }, stock: 48, mainAssetUrl: '/assets/wood.svg', ctaLabel: 'Consultar', ctaUrl: 'https://wa.me/5493515550199?text=Hola' };
+    const experience = { id: 'experience-public', organization_id: 'org-public', name: 'Revestimientos', type: 'product-catalog', status: 'published', published_config: JSON.stringify({ schemaVersion: 1, title: 'Revestimientos', intro: 'Materiales.' }), starts_at: null, ends_at: null };
+    const product = { id: 'product-public-id', organizationId: 'org-public', productKey: 'private-key', name: snapshot.name, description: snapshot.description, priceMinorUnits: snapshot.priceMinorUnits, currency: snapshot.currency, priceUnit: snapshot.priceUnit, metadata: JSON.stringify(snapshot.metadata), stock: snapshot.stock, mainAssetUrl: snapshot.mainAssetUrl, ctaLabel: snapshot.ctaLabel, ctaUrl: snapshot.ctaUrl, status: 'active', publishedContent: JSON.stringify(snapshot), publishedAt: 1, createdAt: 1, updatedAt: 1, archivedAt: null, sortOrder: 0, visible: 1 };
+    const publicDb = {
+      prepare(sql: string) {
+        return { bind() {
+          return {
+            async first<T>() {
+              if (sql.includes('FROM experiences')) return experience as T;
+              if (sql.includes('sqlite_master')) return { value: 1 } as T;
+              if (sql.includes("c.type='hosted_runtime'")) return { id: 'hosted-channel', status: 'active' } as T;
+              return null as T;
+            },
+            async all<T>() {
+              if (sql.includes('catalog_published_experience_products cp')) return { results: [product] as T[] };
+              return { results: [] as T[] };
+            },
+          };
+        } };
+      },
+    } as unknown as D1Database;
+    const response = await app.fetch(new Request('http://localhost/public/experiences/revestimientos-demo-catalogo'), { DB: publicDb } as never);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { experience: { products: Array<Record<string, unknown>> } };
+    expect(body.experience.products).toEqual([expect.objectContaining({ name: snapshot.name, priceUnit: 'm²', metadata: { material: 'Madera', environment: 'Interior' }, stock: 48 })]);
+    expect(body.experience.products[0]).toHaveProperty('id', 'product-public-id');
+    expect(body.experience.products[0]).not.toHaveProperty('organizationId');
+    expect(body.experience.products[0]).not.toHaveProperty('productKey');
+    expect(body.experience.products[0]).not.toHaveProperty('publishedContent');
+    expect(body.experience.products[0]?.metadata).not.toHaveProperty('adminNote');
+    expect(body.experience.products[0]?.metadata).not.toHaveProperty('internalCost');
   });
 
   it('exports customer-safe inventory CSV with escaping and formula protection', () => {

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" role="img" aria-label="Muestra de cemento arena">
+  <defs>
+    <linearGradient id="cement" x2=".9" y2="1"><stop stop-color="#d8c9b3"/><stop offset=".45" stop-color="#c6b49a"/><stop offset="1" stop-color="#b39e83"/></linearGradient>
+    <filter id="texture"><feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" seed="17"/><feColorMatrix values=".65 0 0 0 .25 .65 0 0 0 .22 .65 0 0 0 .17 0 0 0 .12 0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
+    <filter id="shadow" x="-.2" y="-.2" width="1.4" height="1.4"><feDropShadow dx="0" dy="21" stdDeviation="24" flood-color="#574a3a" flood-opacity=".22"/></filter>
+  </defs>
+  <rect width="960" height="960" fill="#e6dfd3"/><path d="M0 739h960v221H0z" fill="#d5cbbd"/>
+  <g filter="url(#shadow)"><rect x="106" y="106" width="748" height="700" rx="8" fill="url(#cement)"/><rect x="106" y="106" width="748" height="700" rx="8" fill="#9f896c" opacity=".22" filter="url(#texture)"/>
+    <path d="M112 398c98-28 174-3 244-15 117-20 160-75 266-57 78 13 145 8 227-23M117 665c112 30 226 1 314 14 114 18 225 2 416-38" fill="none" stroke="#f3e5d0" stroke-opacity=".32" stroke-width="13"/>
+    <path d="M120 282c88 13 155 29 234 12m242 396c68-12 145-8 237-36" fill="none" stroke="#8d785f" stroke-opacity=".17" stroke-width="9"/>
+  </g>
+  <circle cx="798" cy="167" r="126" fill="#fff" opacity=".14"/>
+</svg>

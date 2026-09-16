@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildNavigation,
+  canAccessTreasureHuntRoute,
   isExperienceAssignedToWorkspace,
   isWorkspaceProductAssigned,
   navigationHasKey,
@@ -33,44 +34,56 @@ describe('product-scoped navigation', () => {
   });
 
   it('shows only Roulette modules in a Roulette workspace', () => {
-    expect(keys(['roulette'])).toEqual(['summary', 'experiences', 'analytics', 'reports', 'redeem']);
+    expect(keys(['roulette'])).toEqual(['summary', 'experiences', 'analytics', 'reports', 'redeem', 'treasure-hunt']);
     expect(keys(['roulette'])).not.toContain('channels');
     expect(keys(['roulette'])).not.toContain('products');
     expect(keys(['roulette'])).not.toContain('leads');
   });
 
   it('shows Web modules only in a Web workspace', () => {
-    expect(keys(['website'])).toEqual(['summary', 'experiences', 'channels', 'analytics']);
+    expect(keys(['website'])).toEqual(['summary', 'experiences', 'channels', 'analytics', 'treasure-hunt']);
     expect(keys(['website'])).not.toContain('redeem');
     expect(keys(['website'])).not.toContain('products');
     expect(keys(['website'])).not.toContain('leads');
   });
 
   it('registers AR without inventing Roulette or Web modules', () => {
-    expect(keys(['ar'])).toEqual(['summary', 'experiences', 'analytics']);
+    expect(keys(['ar'])).toEqual(['summary', 'experiences', 'analytics', 'treasure-hunt']);
     expect(keys(['ar'])).not.toContain('redeem');
     expect(keys(['ar'])).not.toContain('channels');
     expect(keys(['ar'])).not.toContain('leads');
   });
 
   it('keeps Product Catalog separate from Web', () => {
-    expect(keys(['product-catalog'])).toEqual(['summary', 'experiences', 'products', 'channels']);
+    expect(keys(['product-catalog'])).toEqual(['summary', 'experiences', 'products', 'channels', 'treasure-hunt']);
     expect(keys(['product-catalog'])).not.toContain('analytics');
     expect(keys(['product-catalog'])).not.toContain('leads');
   });
 
   it('unions combined Roulette and Web modules without duplicates or unrelated products', () => {
     const result = keys(['roulette', 'website']);
-    expect(result).toEqual(['summary', 'experiences', 'analytics', 'reports', 'redeem', 'channels']);
+    expect(result).toEqual(['summary', 'experiences', 'analytics', 'reports', 'redeem', 'channels', 'treasure-hunt']);
     expect(result).toEqual([...new Set(result)]);
     expect(result).not.toContain('products');
     expect(result).not.toContain('leads');
   });
 
   it('keeps an empty workspace on Inicio only', () => {
-    expect(keys([])).toEqual(['summary']);
+    expect(keys([])).toEqual(['summary', 'treasure-hunt']);
     expect(keys([])).not.toContain('leads');
     expect(keys([])).not.toContain('experiences');
+  });
+
+  it('adds the read-only Treasure Hunt section for an authorized workspace', () => {
+    expect(buildNavigation(context([])).find((item) => item.key === 'treasure-hunt')).toMatchObject({ to: '/app/treasure-hunt' });
+    expect(keys([], { permissions: [] })).not.toContain('treasure-hunt');
+    expect(keys([], { workspace: false })).not.toContain('treasure-hunt');
+  });
+
+  it('authorizes the Treasure Hunt route from workspace permission, not campaign loading state', () => {
+    expect(canAccessTreasureHuntRoute({ workspace: true, permissions: ['crm.read'] })).toBe(true);
+    expect(canAccessTreasureHuntRoute({ workspace: true, permissions: [] })).toBe(false);
+    expect(canAccessTreasureHuntRoute({ workspace: false, permissions: ['crm.read'] })).toBe(false);
   });
 
   it('recomputes navigation when the organization changes product type', () => {
@@ -97,7 +110,7 @@ describe('product-scoped navigation', () => {
       }
     }
     expect(buildNavigation(context(['roulette']))[0]).toMatchObject({ adminOnly: false, requiredProduct: null, requiredPermission: null, allowedMode: ['workspace'] });
-    expect(keys(['roulette', 'product-catalog'], { permissions: ['crm.read'] })).toEqual(['summary', 'experiences', 'products', 'channels']);
+    expect(keys(['roulette', 'product-catalog'], { permissions: ['crm.read'] })).toEqual(['summary', 'experiences', 'products', 'channels', 'treasure-hunt']);
     expect(keys(['roulette', 'product-catalog'], { permissions: ['claims.redeem'] })).toEqual(['summary', 'redeem']);
   });
 

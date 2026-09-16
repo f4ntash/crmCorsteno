@@ -1,5 +1,5 @@
 import type { Roulette3DConfig } from '@corsteno/roulette-3d';
-import type { CommercialEntitlements } from '@corsteno/types';
+import type { CommercialEntitlements, SurfaceMaterialConfig } from '@corsteno/types';
 import { runtimeApiBaseUrl as api } from '../config/runtimeEnvironment';
 export type InactivePublicExperienceResponse = { active: false; reason?: string };
 export type ActivePublicExperienceResponse = {
@@ -15,7 +15,7 @@ export type ActivePublicExperienceResponse = {
     products?: CatalogPublicProduct[];
   };
 };
-export type CatalogPublicProduct = { name: string; description: string; priceMinorUnits: number; currency: string; stock: number; mainImageUrl: string | null; gallery: string[]; ctaLabel: string | null; ctaUrl: string | null };
+export type CatalogPublicProduct = { id: string; name: string; description: string; priceMinorUnits: number; currency: string; priceUnit?: string | null; metadata?: Record<string, string | number | boolean | null> | null; stock: number; mainImageUrl: string | null; gallery: string[]; ctaLabel: string | null; ctaUrl: string | null; surfaceConfig?: SurfaceMaterialConfig | null };
 export type PublicExperienceResponse = InactivePublicExperienceResponse | ActivePublicExperienceResponse;
 export type SpinResult = { spinId: string; segmentIndex: number; segment: { id: string; prizeId: string | null }; prize: { id: string; name: string; iconUrl: string | null } | null; claim: { code: string; status: 'active' | 'redeemed' } | null; prizeAvailability?: Record<string, 'available' | 'sold_out'> };
 export type ParticipationBlocked = { error: 'participation_limit_reached'; reason: 'device_limit' | 'session_limit' | 'cooldown' | 'identity_required'; message: string; retryAt?: string };

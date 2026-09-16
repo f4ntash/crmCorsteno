@@ -213,7 +213,26 @@ main:has(.catalog-runtime) {
   color: #f7f4ee;
 }
 
+.catalog-visualizer-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 17px;
+  padding: 0 17px;
+  border: 1px solid #314d4c;
+  border-radius: 999px;
+  background: #263f42;
+  color: #f7f4ee;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.catalog-visualizer-link:hover { background: #1d3437; }
+
 .catalog-cta:focus-visible,
+.catalog-visualizer-link:focus-visible,
 .catalog-product-thumbnail:focus-visible {
   outline: 2px solid #936b43;
   outline-offset: 3px;
@@ -303,4 +322,6 @@ main:has(.catalog-runtime) {
     font-size: 10px;
     line-height: 1.15;
   }
+
+  .catalog-visualizer-link { width: 100%; min-height: 44px; margin-top: 12px; padding-inline: 6px; font-size: 10px; }
 }

@@ -1,5 +1,7 @@
 import { assetUrl, SUPPORTED_IMAGE_TYPES } from './assets';
 import { catalogAssetIdFromUrl, catalogProductIssues, MAX_CATALOG_PRODUCT_IMAGES, type CatalogProductInput } from './product-catalog';
+import { normalizeCatalogProductMetadata } from '@corsteno/types';
+import { publishedSurfaceConfigs } from './product-surface';
 import type { PublishReadinessIssue } from './roulette-config';
 
 export type OrganizationProduct = CatalogProductInput & {
@@ -42,7 +44,7 @@ export type CatalogAssociationProduct = OrganizationProduct & {
 
 type ProductRow = Record<string, unknown>;
 
-export const productSelectFields = 'SELECT p.id,p.organization_id organizationId,p.product_key productKey,p.name,p.description,p.price_minor_units priceMinorUnits,p.currency,p.stock,p.main_asset_url mainAssetUrl,p.cta_label ctaLabel,p.cta_url ctaUrl,p.status,p.published_content publishedContent,p.published_at publishedAt,p.created_at createdAt,p.updated_at updatedAt,p.archived_at archivedAt';
+export const productSelectFields = 'SELECT p.id,p.organization_id organizationId,p.product_key productKey,p.name,p.description,p.price_minor_units priceMinorUnits,p.currency,p.price_unit priceUnit,p.metadata,p.stock,p.main_asset_url mainAssetUrl,p.cta_label ctaLabel,p.cta_url ctaUrl,p.status,p.published_content publishedContent,p.published_at publishedAt,p.created_at createdAt,p.updated_at updatedAt,p.archived_at archivedAt';
 export const productSelect = `${productSelectFields} FROM products p`;
 export const productImageSelect = `SELECT i.id,i.organization_id organizationId,i.product_id productId,i.asset_id assetId,i.sort_order sortOrder,i.created_at createdAt,a.storage_key storageKey FROM product_images i JOIN organization_assets a ON a.id=i.asset_id AND a.organization_id=i.organization_id AND a.archived_at IS NULL`;
 
@@ -73,6 +75,13 @@ function text(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
+function metadata(value: unknown) {
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  return normalizeCatalogProductMetadata(value);
+}
+
 export function productImageFromRow(row: ProductRow, origin: string): ProductImage {
   return {
     id: String(row.id),
@@ -91,6 +100,8 @@ function productCoreFromRow(row: ProductRow): CatalogProductInput {
     description: text(row.description),
     priceMinorUnits: numeric(row.priceMinorUnits),
     currency: text(row.currency, 'ARS'),
+    priceUnit: typeof row.priceUnit === 'string' && row.priceUnit.trim() ? row.priceUnit : null,
+    metadata: metadata(row.metadata),
     stock: numeric(row.stock),
     visible: row.visible === undefined ? true : Boolean(Number(row.visible)),
     mainAssetUrl: typeof row.mainAssetUrl === 'string' ? row.mainAssetUrl : null,
@@ -172,6 +183,8 @@ function productSnapshot(value: CatalogProductInput, gallery: ProductImage[] = [
     description: value.description,
     priceMinorUnits: value.priceMinorUnits,
     currency: value.currency,
+    priceUnit: value.priceUnit ?? null,
+    metadata: value.metadata ?? null,
     stock: value.stock,
     mainAssetUrl: value.mainAssetUrl,
     ctaLabel: value.ctaLabel,
@@ -183,8 +196,13 @@ function productSnapshot(value: CatalogProductInput, gallery: ProductImage[] = [
 }
 
 function publishedProductMatches(value: CatalogProductInput, gallery: ProductImage[], snapshot: Record<string, unknown>) {
-  const matches = ['name', 'description', 'priceMinorUnits', 'currency', 'stock', 'mainAssetUrl', 'ctaLabel', 'ctaUrl']
-    .every((key) => snapshot[key] === value[key as keyof CatalogProductInput]);
+  const matches = ['name', 'description', 'priceMinorUnits', 'currency', 'stock', 'mainAssetUrl', 'ctaLabel', 'ctaUrl', 'priceUnit', 'metadata']
+    .every((key) => {
+      const current = value[key as keyof CatalogProductInput];
+      if ((key === 'priceUnit' || key === 'metadata') && !(key in snapshot)) return current === null || current === undefined;
+      if (key === 'metadata') return JSON.stringify(normalizeCatalogProductMetadata(snapshot[key])) === JSON.stringify(normalizeCatalogProductMetadata(current));
+      return snapshot[key] === current;
+    });
   if (!matches || !Array.isArray(snapshot.gallery)) return matches;
   const publishedGallery = snapshot.gallery.filter((item): item is { assetId: string; sortOrder: number } => Boolean(item && typeof item === 'object' && typeof (item as { assetId?: unknown }).assetId === 'string' && typeof (item as { sortOrder?: unknown }).sortOrder === 'number'));
   return publishedGallery.length === gallery.length && publishedGallery.every((image, index) => image.assetId === gallery[index]?.assetId && image.sortOrder === gallery[index]?.sortOrder);
@@ -198,8 +216,8 @@ export async function createOrganizationProduct(db: D1Database, organizationId: 
   const id = crypto.randomUUID();
   const now = Date.now();
   const content = publishInitial ? publishedContent(value) : null;
-  await db.prepare('INSERT INTO products (id,organization_id,product_key,name,description,price_minor_units,currency,stock,main_asset_url,cta_label,cta_url,status,published_content,published_at,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,\'active\',?,?,?, ?,NULL)')
-    .bind(id, organizationId, `product-${id}`, value.name, value.description, value.priceMinorUnits, value.currency, value.stock, value.mainAssetUrl, value.ctaLabel, value.ctaUrl, content, publishInitial ? now : null, now, now).run();
+  await db.prepare('INSERT INTO products (id,organization_id,product_key,name,description,price_minor_units,currency,price_unit,metadata,stock,main_asset_url,cta_label,cta_url,status,published_content,published_at,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,\'active\',?,?,?, ?,NULL)')
+    .bind(id, organizationId, `product-${id}`, value.name, value.description, value.priceMinorUnits, value.currency, value.priceUnit ?? null, value.metadata ? JSON.stringify(value.metadata) : null, value.stock, value.mainAssetUrl, value.ctaLabel, value.ctaUrl, content, publishInitial ? now : null, now, now).run();
   return getOrganizationProduct(db, organizationId, id, origin);
 }
 
@@ -207,8 +225,8 @@ export async function updateOrganizationProduct(db: D1Database, organizationId: 
   const merged = { ...current, ...changes } as CatalogProductInput;
   const fields: string[] = [];
   const values: unknown[] = [];
-  const columns: Record<string, keyof CatalogProductInput> = { name: 'name', description: 'description', priceMinorUnits: 'priceMinorUnits', currency: 'currency', stock: 'stock', mainAssetUrl: 'mainAssetUrl', ctaLabel: 'ctaLabel', ctaUrl: 'ctaUrl' };
-  for (const [column, key] of Object.entries(columns)) if (key in changes) { fields.push(`${column === 'priceMinorUnits' ? 'price_minor_units' : column === 'mainAssetUrl' ? 'main_asset_url' : column === 'ctaLabel' ? 'cta_label' : column === 'ctaUrl' ? 'cta_url' : column}=?`); values.push(merged[key]); }
+  const columns: Record<string, keyof CatalogProductInput> = { name: 'name', description: 'description', priceMinorUnits: 'priceMinorUnits', currency: 'currency', priceUnit: 'priceUnit', metadata: 'metadata', stock: 'stock', mainAssetUrl: 'mainAssetUrl', ctaLabel: 'ctaLabel', ctaUrl: 'ctaUrl' };
+  for (const [column, key] of Object.entries(columns)) if (key in changes) { fields.push(`${column === 'priceMinorUnits' ? 'price_minor_units' : column === 'mainAssetUrl' ? 'main_asset_url' : column === 'ctaLabel' ? 'cta_label' : column === 'ctaUrl' ? 'cta_url' : column === 'priceUnit' ? 'price_unit' : column}=?`); values.push(key === 'metadata' && merged.metadata ? JSON.stringify(merged.metadata) : merged[key]); }
   if (!fields.length) return current;
   fields.push('updated_at=?');
   values.push(Date.now(), productId, organizationId);
@@ -304,15 +322,16 @@ export async function publishCatalogFirstClass(db: D1Database, experienceId: str
   await db.batch(statements);
 }
 
-export async function publishedCatalogProductsFirstClass(db: D1Database, experienceId: string, organizationId: string) {
-  const rows = await db.prepare('SELECT p.id,p.organization_id organizationId,p.product_key productKey,p.name,p.description,p.price_minor_units priceMinorUnits,p.currency,p.stock,p.main_asset_url mainAssetUrl,p.cta_label ctaLabel,p.cta_url ctaUrl,p.status,p.published_content publishedContent,p.published_at publishedAt,p.created_at createdAt,p.updated_at updatedAt,p.archived_at archivedAt,cp.sort_order sortOrder,cp.visible FROM catalog_published_experience_products cp JOIN products p ON p.id=cp.product_id AND p.organization_id=cp.organization_id WHERE cp.experience_id=? AND cp.organization_id=? AND cp.visible=1 AND p.status=\'active\' ORDER BY cp.sort_order,cp.id').bind(experienceId, organizationId).all<ProductRow>();
+export async function publishedCatalogProductsFirstClass(db: D1Database, experienceId: string, organizationId: string, origin = '') {
+  const rows = await db.prepare('SELECT p.id,p.organization_id organizationId,p.product_key productKey,p.name,p.description,p.price_minor_units priceMinorUnits,p.currency,p.price_unit priceUnit,p.metadata,p.stock,p.main_asset_url mainAssetUrl,p.cta_label ctaLabel,p.cta_url ctaUrl,p.status,p.published_content publishedContent,p.published_at publishedAt,p.created_at createdAt,p.updated_at updatedAt,p.archived_at archivedAt,cp.sort_order sortOrder,cp.visible FROM catalog_published_experience_products cp JOIN products p ON p.id=cp.product_id AND p.organization_id=cp.organization_id WHERE cp.experience_id=? AND cp.organization_id=? AND cp.visible=1 AND p.status=\'active\' ORDER BY cp.sort_order,cp.id').bind(experienceId, organizationId).all<ProductRow>();
   const ids = rows.results.map((row) => String(row.id));
   const images = ids.length ? await db.prepare('SELECT product_id productId,asset_url assetUrl,sort_order sortOrder,id FROM product_published_images WHERE organization_id=? AND product_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY product_id,sort_order,id').bind(organizationId, ...ids).all<ProductRow>() : { results: [] as ProductRow[] };
   const galleries = new Map<string, string[]>();
   for (const image of images.results) if (typeof image.assetUrl === 'string') galleries.set(String(image.productId), [...(galleries.get(String(image.productId)) ?? []), image.assetUrl]);
+  const surfaces = await publishedSurfaceConfigs(db, organizationId, ids, origin);
   return rows.results.map((row) => {
     const published = parsePublishedProduct(row.publishedContent) ?? productCoreFromRow(row) as unknown as Record<string, unknown>;
-    return { name: text(published.name, text(row.name)), description: text(published.description, text(row.description)), priceMinorUnits: numeric(published.priceMinorUnits, numeric(row.priceMinorUnits)), currency: text(published.currency, text(row.currency, 'ARS')), stock: numeric(published.stock, numeric(row.stock)), mainImageUrl: typeof published.mainAssetUrl === 'string' ? published.mainAssetUrl : typeof row.mainAssetUrl === 'string' ? row.mainAssetUrl : null, gallery: galleries.get(String(row.id)) ?? [], ctaLabel: typeof published.ctaLabel === 'string' ? published.ctaLabel : typeof row.ctaLabel === 'string' ? row.ctaLabel : null, ctaUrl: typeof published.ctaUrl === 'string' ? published.ctaUrl : typeof row.ctaUrl === 'string' ? row.ctaUrl : null };
+    return { id: String(row.id), name: text(published.name, text(row.name)), description: text(published.description, text(row.description)), priceMinorUnits: numeric(published.priceMinorUnits, numeric(row.priceMinorUnits)), currency: text(published.currency, text(row.currency, 'ARS')), priceUnit: typeof published.priceUnit === 'string' ? published.priceUnit : null, metadata: metadata(published.metadata), stock: numeric(published.stock, numeric(row.stock)), mainImageUrl: typeof published.mainAssetUrl === 'string' ? published.mainAssetUrl : typeof row.mainAssetUrl === 'string' ? row.mainAssetUrl : null, gallery: galleries.get(String(row.id)) ?? [], ctaLabel: typeof published.ctaLabel === 'string' ? published.ctaLabel : typeof row.ctaLabel === 'string' ? row.ctaLabel : null, ctaUrl: typeof published.ctaUrl === 'string' ? published.ctaUrl : typeof row.ctaUrl === 'string' ? row.ctaUrl : null, surfaceConfig: surfaces.get(String(row.id)) ?? null };
   });
 }
 

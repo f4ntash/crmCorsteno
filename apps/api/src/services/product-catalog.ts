@@ -1,4 +1,4 @@
-import { CATALOG_PRODUCT_LIMITS, catalogProductFieldErrors } from '@corsteno/types';
+import { CATALOG_PRODUCT_LIMITS, catalogProductFieldErrors, normalizeCatalogProductMetadata, type CatalogProductMetadata } from '@corsteno/types';
 import { assetUrl, SUPPORTED_IMAGE_TYPES } from './assets';
 import { validAssetUrl, type PublishReadinessIssue } from './roulette-config';
 
@@ -27,6 +27,8 @@ export type CatalogProductInput = {
   description: string;
   priceMinorUnits: number;
   currency: string;
+  priceUnit?: string | null;
+  metadata?: CatalogProductMetadata | null;
   stock: number;
   visible: boolean;
   mainAssetUrl: string | null;
@@ -84,6 +86,8 @@ export function catalogProductIssues(product: Partial<CatalogProductInput>, path
     visible: { code: 'PRODUCT_VISIBILITY_INVALID', message: 'La visibilidad del producto no es válida.' },
     ctaLabel: { code: 'PRODUCT_CTA_LABEL_INVALID', message: `El texto del botón debe tener hasta ${CATALOG_PRODUCT_LIMITS.ctaLabel} caracteres.` },
     ctaUrl: { code: 'PRODUCT_CTA_URL_INVALID', message: 'Ingresá un enlace http:// o https://, o un número de WhatsApp válido.' },
+    priceUnit: { code: 'PRODUCT_PRICE_UNIT_INVALID', message: `La unidad del precio debe tener hasta ${CATALOG_PRODUCT_LIMITS.priceUnit} caracteres.` },
+    metadata: { code: 'PRODUCT_METADATA_INVALID', message: 'La metadata debe ser un objeto simple con campos y valores válidos.' },
   };
   for (const field of Object.keys(fieldErrors)) {
     const meta = issueMeta[field];
@@ -93,11 +97,20 @@ export function catalogProductIssues(product: Partial<CatalogProductInput>, path
   return issues;
 }
 
+export function catalogMetadataFromValue(value: unknown): CatalogProductMetadata | null {
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  return normalizeCatalogProductMetadata(value);
+}
+
 export function catalogProductFromRow(row: Record<string, unknown>): CatalogProduct {
   return {
     id: String(row.id), organizationId: String(row.organizationId), experienceId: String(row.experienceId),
     name: String(row.name), description: String(row.description ?? ''), priceMinorUnits: Number(row.priceMinorUnits),
     currency: String(row.currency ?? 'ARS'), stock: Number(row.stock), visible: Boolean(Number(row.visible)),
+    priceUnit: typeof row.priceUnit === 'string' && row.priceUnit.trim() ? row.priceUnit : null,
+    metadata: catalogMetadataFromValue(row.metadata),
     mainAssetUrl: typeof row.mainAssetUrl === 'string' ? row.mainAssetUrl : null,
     ctaLabel: typeof row.ctaLabel === 'string' ? row.ctaLabel : null,
     ctaUrl: typeof row.ctaUrl === 'string' ? row.ctaUrl : null,
@@ -114,7 +127,7 @@ export function catalogImageFromRow(row: Record<string, unknown>, origin: string
   };
 }
 
-export const catalogProductSelect = `SELECT id,organization_id organizationId,experience_id experienceId,name,description,price_minor_units priceMinorUnits,currency,stock,visible,main_asset_url mainAssetUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder,created_at createdAt,updated_at updatedAt FROM catalog_products`;
+export const catalogProductSelect = `SELECT id,organization_id organizationId,experience_id experienceId,name,description,price_minor_units priceMinorUnits,currency,price_unit priceUnit,metadata,stock,visible,main_asset_url mainAssetUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder,created_at createdAt,updated_at updatedAt FROM catalog_products`;
 export const catalogImageSelect = `SELECT i.id,i.organization_id organizationId,i.experience_id experienceId,i.product_id productId,i.asset_id assetId,i.sort_order sortOrder,i.created_at createdAt,a.storage_key storageKey FROM catalog_product_images i JOIN organization_assets a ON a.id=i.asset_id AND a.organization_id=i.organization_id AND a.archived_at IS NULL`;
 
 function organizationAssetId(value: unknown, organizationId: string) {
@@ -171,7 +184,8 @@ export async function publishCatalogSnapshot(db: D1Database, experienceId: strin
   for (const row of products.results) {
     const publishedId = crypto.randomUUID();
     publishedIds.set(String(row.id), publishedId);
-    statements.push(db.prepare('INSERT INTO catalog_published_products (id,organization_id,experience_id,source_product_id,name,description,price_minor_units,currency,stock,sort_order,main_asset_url,cta_label,cta_url,published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(publishedId, organizationId, experienceId, row.id, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.sortOrder ?? 0, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now));
+    const parsedMetadata = catalogMetadataFromValue(row.metadata);
+    statements.push(db.prepare('INSERT INTO catalog_published_products (id,organization_id,experience_id,source_product_id,name,description,price_minor_units,currency,price_unit,metadata,stock,sort_order,main_asset_url,cta_label,cta_url,published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(publishedId, organizationId, experienceId, row.id, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.priceUnit ?? null, parsedMetadata ? JSON.stringify(parsedMetadata) : null, row.stock, row.sortOrder ?? 0, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now));
   }
   for (const row of images.results) {
     const publishedProductId = publishedIds.get(String(row.productId));
@@ -196,7 +210,8 @@ export async function cloneCatalogProducts(db: D1Database, sourceExperienceId: s
     const id = crypto.randomUUID();
     productIds.set(String(row.id), id);
     const now = Date.now();
-    return db.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, targetExperienceId, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.stock, row.sortOrder ?? 0, row.visible, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now, now);
+    const parsedMetadata = catalogMetadataFromValue(row.metadata);
+    return db.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,price_unit,metadata,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, targetExperienceId, row.name, row.description ?? '', row.priceMinorUnits, row.currency, row.priceUnit ?? null, parsedMetadata ? JSON.stringify(parsedMetadata) : null, row.stock, row.sortOrder ?? 0, row.visible, row.mainAssetUrl ?? null, row.ctaLabel ?? null, row.ctaUrl ?? null, now, now);
   });
   const images = await db.prepare('SELECT id,product_id productId,asset_id assetId,sort_order sortOrder,created_at createdAt FROM catalog_product_images WHERE experience_id=? AND organization_id=? ORDER BY product_id,sort_order,id').bind(sourceExperienceId, organizationId).all<Record<string, unknown>>();
   statements.push(...images.results.flatMap((row) => {

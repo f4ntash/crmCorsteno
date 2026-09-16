@@ -80,4 +80,5 @@ export * from './roulette-validation';
 export * from './experience-products';
 export * from './claimQr';
 export * from './product-3d';
+export * from './surface-material';
 export * from './public-api';

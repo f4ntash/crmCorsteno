@@ -6,13 +6,15 @@ export type AssetPickerProps = {
   org: string;
   value?: string | null;
   onChange: (url: string | null) => void;
+  onAssetChange?: (asset: OrganizationAsset | null) => void;
   categories?: string[];
   canUpload?: boolean;
   disabled?: boolean;
   label?: string;
+  accept?: string;
 };
 
-export function AssetPicker({ org, value, onChange, categories = [], canUpload = false, disabled = false, label = 'Seleccionar archivo' }: AssetPickerProps) {
+export function AssetPicker({ org, value, onChange, onAssetChange, categories = [], canUpload = false, disabled = false, label = 'Seleccionar archivo', accept = 'image/png,image/jpeg,image/webp,image/svg+xml' }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<OrganizationAsset[]>([]);
   const [search, setSearch] = useState('');
@@ -46,6 +48,7 @@ export function AssetPicker({ org, value, onChange, categories = [], canUpload =
     try {
       const asset = await assetsApi.upload(org, file, categories[0] ?? 'image');
       onChange(asset.url);
+      onAssetChange?.(asset);
       setOpen(false);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'No se pudo cargar el archivo.');
@@ -60,7 +63,7 @@ export function AssetPicker({ org, value, onChange, categories = [], canUpload =
         {value ? <img src={value} alt="Archivo seleccionado" /> : <span className="asset-picker-empty">Sin selección</span>}
         <div>
           <button type="button" className="secondary" disabled={disabled} onClick={() => setOpen(true)}>{label}</button>
-          {value && <button type="button" className="link" disabled={disabled} onClick={() => onChange(null)}>Quitar</button>}
+          {value && <button type="button" className="link" disabled={disabled} onClick={() => { onChange(null); onAssetChange?.(null); }}>Quitar</button>}
         </div>
       </div>
       {open && (
@@ -74,12 +77,12 @@ export function AssetPicker({ org, value, onChange, categories = [], canUpload =
             <button type="submit" className="secondary" disabled={loading}>Buscar</button>
           </form>
           {canUpload && <>
-            <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ''; }} />
+            <input ref={inputRef} type="file" accept={accept} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ''; }} />
             <button type="button" className="secondary" disabled={uploading} onClick={() => inputRef.current?.click()}>{uploading ? 'Subiendo…' : 'Subir archivo nuevo'}</button>
           </>}
           {error && <p className="error">{error}</p>}
           {loading ? <p className="field-help">Cargando archivos…</p> : items.length ? <div className="asset-picker-list">
-            {items.map((item) => <button type="button" className={`asset-picker-item${item.url === value ? ' selected' : ''}`} key={item.id} onClick={() => { onChange(item.url); setOpen(false); }}>
+            {items.map((item) => <button type="button" className={`asset-picker-item${item.url === value ? ' selected' : ''}`} key={item.id} onClick={() => { onChange(item.url); onAssetChange?.(item); setOpen(false); }}>
               <img src={item.url} alt="" />
               <span><strong>{item.displayName}</strong><small>{item.category} · {item.mimeType}</small></span>
             </button>)}

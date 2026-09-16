@@ -110,6 +110,11 @@ function productFromBody(body: Record<string, unknown>, partial = false): Record
     if (body.currency === undefined && !partial) result.currency = 'ARS';
     else result.currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : body.currency;
   }
+  if (!partial || 'priceUnit' in body || 'price_unit' in body) {
+    const value = 'priceUnit' in body ? body.priceUnit : body.price_unit;
+    result.priceUnit = optionalString(value);
+  }
+  if (!partial || 'metadata' in body) result.metadata = body.metadata ?? null;
   if (!partial || 'stock' in body) {
     if (body.stock === undefined && !partial) result.stock = 0;
     else result.stock = body.stock;
@@ -137,6 +142,7 @@ function completeProduct(value: Record<string, unknown>): CatalogProductInput {
   return {
     name: (value.name ?? '') as string, description: (value.description ?? '') as string, priceMinorUnits: (value.priceMinorUnits ?? 0) as number,
     currency: (value.currency ?? 'ARS') as string, stock: (value.stock ?? 0) as number, visible: (value.visible ?? true) as boolean,
+    priceUnit: (value.priceUnit ?? null) as string | null, metadata: (value.metadata ?? null) as CatalogProductInput['metadata'],
     mainAssetUrl: (value.mainAssetUrl ?? null) as string | null, ctaLabel: (value.ctaLabel ?? null) as string | null, ctaUrl: normalizeCatalogCtaUrl(value.ctaUrl) ?? (value.ctaUrl ?? null) as string | null,
   };
 }
@@ -232,7 +238,7 @@ catalogRoutes.post('/:id/catalog-products', manage, async (c) => {
   const order = await c.env.DB.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 sortOrder FROM catalog_products WHERE experience_id=? AND organization_id=?').bind(experience.id, organizationId).first<{ sortOrder: number }>();
   const now = Date.now();
   const id = crypto.randomUUID();
-  await c.env.DB.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, experience.id, complete.name, complete.description, complete.priceMinorUnits, complete.currency, complete.stock, Number(order?.sortOrder ?? 0), complete.visible ? 1 : 0, complete.mainAssetUrl, complete.ctaLabel, complete.ctaUrl, now, now).run();
+  await c.env.DB.prepare('INSERT INTO catalog_products (id,organization_id,experience_id,name,description,price_minor_units,currency,price_unit,metadata,stock,sort_order,visible,main_asset_url,cta_label,cta_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, organizationId, experience.id, complete.name, complete.description, complete.priceMinorUnits, complete.currency, complete.priceUnit ?? null, complete.metadata ? JSON.stringify(complete.metadata) : null, complete.stock, Number(order?.sortOrder ?? 0), complete.visible ? 1 : 0, complete.mainAssetUrl, complete.ctaLabel, complete.ctaUrl, now, now).run();
   const row = await c.env.DB.prepare(`${catalogProductSelect} WHERE id=? AND organization_id=?`).bind(id, organizationId).first<Record<string, unknown>>();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'catalog.product.created', resourceType: 'catalog_product', resourceId: id, metadata: { experienceId: experience.id, name: complete.name.slice(0, 120) } });
   return c.json(catalogProductFromRow(row ?? { id, organizationId, experienceId: experience.id, ...complete, sortOrder: Number(order?.sortOrder ?? 0), createdAt: now, updatedAt: now }), 201);
@@ -385,8 +391,8 @@ catalogRoutes.patch('/:id/catalog-products/:productId', manage, async (c) => {
   if (issues.length) return c.json(error('Revisá los datos del producto.', 'VALIDATION_ERROR', issues), 400);
   const columns: string[] = [];
   const values: unknown[] = [];
-  const columnMap: Record<string, string> = { name: 'name', description: 'description', priceMinorUnits: 'price_minor_units', currency: 'currency', stock: 'stock', visible: 'visible', mainAssetUrl: 'main_asset_url', ctaLabel: 'cta_label', ctaUrl: 'cta_url' };
-  for (const [key, column] of Object.entries(columnMap)) if (key in changes) { columns.push(`${column}=?`); values.push(key === 'visible' ? (changes[key as keyof CatalogProductInput] ? 1 : 0) : changes[key as keyof CatalogProductInput]); }
+  const columnMap: Record<string, string> = { name: 'name', description: 'description', priceMinorUnits: 'price_minor_units', currency: 'currency', priceUnit: 'price_unit', metadata: 'metadata', stock: 'stock', visible: 'visible', mainAssetUrl: 'main_asset_url', ctaLabel: 'cta_label', ctaUrl: 'cta_url' };
+  for (const [key, column] of Object.entries(columnMap)) if (key in changes) { columns.push(`${column}=?`); const value = changes[key as keyof CatalogProductInput]; values.push(key === 'visible' ? (value ? 1 : 0) : key === 'metadata' && value ? JSON.stringify(value) : value); }
   columns.push('updated_at=?'); values.push(Date.now(), current.id, experience.id, organizationId);
   await c.env.DB.prepare(`UPDATE catalog_products SET ${columns.join(',')} WHERE id=? AND experience_id=? AND organization_id=? AND archived_at IS NULL`).bind(...values).run();
   const row = await c.env.DB.prepare(`${catalogProductSelect} WHERE id=? AND organization_id=?`).bind(current.id, organizationId).first<Record<string, unknown>>();

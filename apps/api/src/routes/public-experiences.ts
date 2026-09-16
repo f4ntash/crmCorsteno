@@ -36,6 +36,7 @@ publicExperienceRoutes.get('/experiences/:slug', async (c) => {
   const featureEntitlements = await getExperienceEntitlements(c.env.DB, row.id, row.organization_id);
   const result = await adapter.buildPublicPayload({
     db: c.env.DB,
+    origin: new URL(c.req.url).origin,
     experience: {
       id: row.id,
       organizationId: row.organization_id,

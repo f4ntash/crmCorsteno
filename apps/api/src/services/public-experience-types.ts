@@ -1,8 +1,11 @@
 import type { CommercialEntitlements } from '@corsteno/types';
+import type { CatalogProductMetadata } from '@corsteno/types';
+import type { SurfaceMaterialConfig } from '@corsteno/types';
 import { buildRouletteOutcomes } from './roulette-selector';
 import { validDraftConfig, type DraftConfig } from './roulette-config';
 import { PRODUCT_CATALOG_TYPE, validateProductCatalogDraft } from './product-catalog';
 import { firstClassProductsAvailable, publishedCatalogProductsFirstClass } from './organization-products';
+import { publishedSurfaceConfigs } from './product-surface';
 
 export type PublicExperienceShell = {
   id: string;
@@ -16,6 +19,7 @@ export type PublicExperienceShell = {
 
 export type PublicExperienceAdapterContext = {
   db: D1Database;
+  origin?: string;
   experience: PublicExperienceShell;
   featureEntitlements: CommercialEntitlements;
   deviceId: string | null;
@@ -78,16 +82,35 @@ function renderableRouletteConfig(config: DraftConfig): DraftConfig {
 }
 
 export type CatalogPublicProduct = {
+  id: string;
   name: string;
   description: string;
   priceMinorUnits: number;
   currency: string;
+  priceUnit: string | null;
+  metadata: CatalogProductMetadata | null;
   stock: number;
   mainImageUrl: string | null;
   gallery: string[];
   ctaLabel: string | null;
   ctaUrl: string | null;
+  surfaceConfig: SurfaceMaterialConfig | null;
 };
+
+const PUBLIC_CATALOG_METADATA_KEYS = new Set(['material', 'color', 'finish', 'format', 'width', 'height', 'thickness', 'recommendedUse', 'environment', 'surface']);
+
+export function sanitizePublicCatalogMetadata(value: unknown): CatalogProductMetadata | null {
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const safe: CatalogProductMetadata = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (!PUBLIC_CATALOG_METADATA_KEYS.has(key)) continue;
+    if (typeof item === 'string' && item.length <= 120 || typeof item === 'number' && Number.isFinite(item) || typeof item === 'boolean') safe[key] = item as string | number | boolean;
+  }
+  return Object.keys(safe).length ? safe : null;
+}
 
 export type ProductCatalogPublicExperiencePayload = PublicExperiencePayload & {
   type: 'product-catalog';
@@ -135,23 +158,25 @@ const roulettePublicExperienceAdapter: PublicExperienceAdapter<RoulettePublicExp
 
 const productCatalogPublicExperienceAdapter: PublicExperienceAdapter<ProductCatalogPublicExperiencePayload> = {
   type: PRODUCT_CATALOG_TYPE,
-  async buildPublicPayload({ db, experience }) {
+  async buildPublicPayload({ db, experience, origin }) {
     let config: unknown;
     try { config = parsePublishedConfig(experience.publishedConfig); } catch { return { kind: 'inactive', reason: 'unavailable', status: 503 }; }
     if (!validateProductCatalogDraft(config)) return { kind: 'inactive', reason: 'unavailable', status: 503 };
     if (await firstClassProductsAvailable(db)) {
-      const products = await publishedCatalogProductsFirstClass(db, experience.id, experience.organizationId);
+      const products = await publishedCatalogProductsFirstClass(db, experience.id, experience.organizationId, origin ?? '');
       if (!products.length) return { kind: 'inactive', reason: 'unavailable', status: 503 };
-      return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products } };
+      return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.map((product) => ({ ...product, priceUnit: typeof product.priceUnit === 'string' && product.priceUnit.trim() ? product.priceUnit : null, metadata: sanitizePublicCatalogMetadata(product.metadata) })) } };
     }
     const [products, images] = await Promise.all([
-      db.prepare('SELECT id,name,description,price_minor_units priceMinorUnits,currency,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY sort_order ASC,id ASC').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
+      db.prepare('SELECT id,source_product_id sourceProductId,name,description,price_minor_units priceMinorUnits,currency,price_unit priceUnit,metadata,stock,main_asset_url mainImageUrl,cta_label ctaLabel,cta_url ctaUrl,sort_order sortOrder FROM catalog_published_products WHERE experience_id=? AND organization_id=? AND stock>=0 ORDER BY sort_order ASC,id ASC').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
       db.prepare('SELECT published_product_id publishedProductId,asset_url assetUrl,sort_order sortOrder,id FROM catalog_published_product_images WHERE experience_id=? AND organization_id=? ORDER BY published_product_id,sort_order,id').bind(experience.id, experience.organizationId).all<Record<string, unknown>>(),
     ]);
     if (!products.results.length) return { kind: 'inactive', reason: 'unavailable', status: 503 };
+    const sourceIds = products.results.map((product) => typeof product.sourceProductId === 'string' ? product.sourceProductId : String(product.id));
+    const surfaces = await publishedSurfaceConfigs(db, experience.organizationId, sourceIds, origin ?? '');
     const galleryByProduct = new Map<string, string[]>();
     for (const image of images.results) if (typeof image.publishedProductId === 'string' && typeof image.assetUrl === 'string') galleryByProduct.set(image.publishedProductId, [...(galleryByProduct.get(image.publishedProductId) ?? []), image.assetUrl]);
-    return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.results.map((product) => ({ name: String(product.name), description: String(product.description ?? ''), priceMinorUnits: Number(product.priceMinorUnits), currency: String(product.currency), stock: Number(product.stock), mainImageUrl: typeof product.mainImageUrl === 'string' ? product.mainImageUrl : null, gallery: galleryByProduct.get(String(product.id)) ?? [], ctaLabel: typeof product.ctaLabel === 'string' ? product.ctaLabel : null, ctaUrl: typeof product.ctaUrl === 'string' ? product.ctaUrl : null })) } };
+    return { kind: 'ready', payload: { type: PRODUCT_CATALOG_TYPE, config, products: products.results.map((product, index) => ({ id: String(product.id), name: String(product.name), description: String(product.description ?? ''), priceMinorUnits: Number(product.priceMinorUnits), currency: String(product.currency), priceUnit: typeof product.priceUnit === 'string' && product.priceUnit.trim() ? product.priceUnit : null, metadata: sanitizePublicCatalogMetadata(product.metadata), stock: Number(product.stock), mainImageUrl: typeof product.mainImageUrl === 'string' ? product.mainImageUrl : null, gallery: galleryByProduct.get(String(product.id)) ?? [], ctaLabel: typeof product.ctaLabel === 'string' ? product.ctaLabel : null, ctaUrl: typeof product.ctaUrl === 'string' ? product.ctaUrl : null, surfaceConfig: surfaces.get(sourceIds[index]!) ?? null })) } };
   },
 };
 

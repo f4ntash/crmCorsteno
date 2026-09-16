@@ -16,6 +16,7 @@
     "seed:local": "tsx scripts/seed-local-platform-admin.ts",
     "demo:catalog": "tsx scripts/seed-demo-catalog.ts",
     "demo:catalog:reset": "tsx scripts/seed-demo-catalog.ts --reset",
+    "demo:revestimientos": "tsx scripts/seed-revestimientos-demo.ts --local",
     "db:reset:local": "tsx scripts/reset-local-db.ts",
     "analytics:demo": "tsx scripts/generate-demo-events.ts",
     "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",

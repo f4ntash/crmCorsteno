@@ -2,6 +2,9 @@ export const MAX_ASSET_BYTES = 2 * 1024 * 1024;
 export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'] as const;
 export type SupportedImageType = typeof SUPPORTED_IMAGE_TYPES[number];
 export const MODEL_ASSET_CATEGORY = 'model-3d' as const;
+export const SURFACE_MATERIAL_ASSET_CATEGORY = 'surface-material-map' as const;
+export const MAX_SURFACE_MATERIAL_MAP_BYTES = 8 * 1024 * 1024;
+export const SUPPORTED_SURFACE_MATERIAL_MAP_TYPE = 'image/webp' as const;
 /** Initial operational limit for a single GLB; large enough for real product models without requiring chunked uploads. */
 export const MAX_MODEL_ASSET_BYTES = 25 * 1024 * 1024;
 export const SUPPORTED_MODEL_TYPE = 'model/gltf-binary' as const;
@@ -19,6 +22,8 @@ export type ImageValidationFailure = { ok: false; status: 400 | 413 | 415; messa
 
 export type ValidatedModel = { ok: true; bytes: ArrayBuffer; extension: 'glb'; mimeType: typeof SUPPORTED_MODEL_TYPE };
 export type ModelValidationFailure = { ok: false; status: 400 | 413 | 415; message: string };
+export type ValidatedSurfaceMaterialMap = { ok: true; bytes: ArrayBuffer; extension: 'webp'; mimeType: typeof SUPPORTED_SURFACE_MATERIAL_MAP_TYPE };
+export type SurfaceMaterialMapValidationFailure = { ok: false; status: 400 | 413 | 415; message: string };
 
 export async function validateImageFile(file: File, allowedTypes: readonly SupportedImageType[] = SUPPORTED_IMAGE_TYPES): Promise<ValidatedImage | ImageValidationFailure> {
   if (file.size > MAX_ASSET_BYTES) return { ok: false, status: 413, message: 'File exceeds the 2 MB limit' };
@@ -57,6 +62,15 @@ export async function validateGlbFile(file: File): Promise<ValidatedModel | Mode
     return { ok: false, status: 400, message: 'El archivo GLB contiene JSON inválido' };
   }
   return { ok: true, bytes, extension: 'glb', mimeType: SUPPORTED_MODEL_TYPE };
+}
+
+export async function validateSurfaceMaterialMapFile(file: File): Promise<ValidatedSurfaceMaterialMap | SurfaceMaterialMapValidationFailure> {
+  if (file.size > MAX_SURFACE_MATERIAL_MAP_BYTES) return { ok: false, status: 413, message: 'El mapa PBR supera el límite de 8 MB' };
+  if (file.type !== SUPPORTED_SURFACE_MATERIAL_MAP_TYPE) return { ok: false, status: 415, message: 'Los mapas PBR deben estar en formato WebP' };
+  const bytes = await file.arrayBuffer();
+  const view = new Uint8Array(bytes);
+  if (view.length < 12 || new TextDecoder().decode(view.slice(0, 4)) !== 'RIFF' || new TextDecoder().decode(view.slice(8, 12)) !== 'WEBP') return { ok: false, status: 400, message: 'El archivo no contiene un WebP válido' };
+  return { ok: true, bytes, extension: 'webp', mimeType: SUPPORTED_SURFACE_MATERIAL_MAP_TYPE };
 }
 
 export function cleanOriginalFilename(value: string) {

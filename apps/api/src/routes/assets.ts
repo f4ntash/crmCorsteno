@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import { recordActivityBestEffort } from '../services/activity';
-import { assetUrl, cleanOriginalFilename, MODEL_ASSET_CATEGORY, organizationAssetKey, validateImageFile } from '../services/assets';
+import { assetUrl, cleanOriginalFilename, MODEL_ASSET_CATEGORY, organizationAssetKey, SURFACE_MATERIAL_ASSET_CATEGORY, validateImageFile, validateSurfaceMaterialMapFile } from '../services/assets';
 import type { Env } from '../index';
 
 type Variables = {
@@ -77,7 +77,7 @@ assetRoutes.post('/', requireOrganizationPermission('assets.manage'), async (c) 
   const category = body && typeof body.category === 'string' && body.category ? body.category : 'image';
   if (!validCategory(category)) return c.json(error('Invalid asset category'), 400);
   if (category === MODEL_ASSET_CATEGORY) return c.json(error('Los modelos 3D se gestionan desde la configuración interna de producto.', 'FORBIDDEN'), 403);
-  const validation = await validateImageFile(file);
+  const validation = category === SURFACE_MATERIAL_ASSET_CATEGORY ? await validateSurfaceMaterialMapFile(file) : await validateImageFile(file);
   if (!validation.ok) return c.json(error(validation.message), validation.status);
   const rawDisplayName = body && typeof body.display_name === 'string' ? body.display_name : '';
   const requestedDisplayName = rawDisplayName.trim();
@@ -121,6 +121,8 @@ assetRoutes.delete('/:id', requireOrganizationPermission('assets.manage'), async
   const reference = await c.env.DB.prepare('SELECT id FROM experiences WHERE organization_id=? AND (draft_config LIKE ? OR published_config LIKE ?) LIMIT 1').bind(organizationId, `%${storageKey}%`, `%${storageKey}%`).first();
   const product3dReference = await c.env.DB.prepare('SELECT product_id productId,published_model_asset_id publishedModelAssetId FROM product_3d_config WHERE organization_id=? AND (draft_model_asset_id=? OR published_model_asset_id=?) LIMIT 1').bind(organizationId, id, id).first<{ productId: string; publishedModelAssetId: string | null }>();
   if (product3dReference) return c.json(error('No se puede archivar un modelo 3D referenciado por un producto.', 'ASSET_REFERENCED'), 409);
+  const surfaceReference = await c.env.DB.prepare("SELECT product_id productId FROM product_surface_config WHERE organization_id=? AND (draft_config LIKE ? OR published_config LIKE ?) LIMIT 1").bind(organizationId, `%${id}%`, `%${id}%`).first<{ productId: string }>();
+  if (surfaceReference) return c.json(error('No se puede archivar un mapa PBR referenciado por un producto.', 'ASSET_REFERENCED'), 409);
   await c.env.DB.prepare('UPDATE organization_assets SET archived_at=?,updated_at=? WHERE id=? AND organization_id=? AND archived_at IS NULL').bind(Date.now(), Date.now(), id, organizationId).run();
   await recordActivityBestEffort(c.env.DB, { organizationId, actorUserId: c.get('user').id }, { action: 'asset.archived', resourceType: 'asset', resourceId: id, metadata: { displayName: row.displayName, referenced: Boolean(reference) } });
   return c.json({ id, archived: true, referenced: Boolean(reference) });

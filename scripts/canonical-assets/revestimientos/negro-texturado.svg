@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" role="img" aria-label="Muestra de revestimiento negro texturado">
+  <defs>
+    <linearGradient id="dark" x2="1" y2="1"><stop stop-color="#515353"/><stop offset=".5" stop-color="#292e30"/><stop offset="1" stop-color="#15191b"/></linearGradient>
+    <pattern id="ridges" width="82" height="82" patternUnits="userSpaceOnUse"><path d="M0 0h82v82H0z" fill="url(#dark)"/><path d="M0 10h82M0 16h82M0 66h82M0 72h82" stroke="#929796" stroke-opacity=".2" stroke-width="3"/><path d="M0 42h82" stroke="#070a0b" stroke-opacity=".45" stroke-width="7"/></pattern>
+    <filter id="shadow" x="-.2" y="-.2" width="1.4" height="1.4"><feDropShadow dx="0" dy="22" stdDeviation="25" flood-color="#15191b" flood-opacity=".28"/></filter>
+  </defs>
+  <rect width="960" height="960" fill="#d5d2cc"/><path d="M0 762h960v198H0z" fill="#c4c0b8"/>
+  <g transform="rotate(5 480 470)" filter="url(#shadow)"><rect x="105" y="105" width="750" height="710" rx="7" fill="#101415"/><rect x="116" y="116" width="728" height="688" rx="3" fill="url(#ridges)"/>
+    <path d="M140 130h300v25H140zM520 130h300v25H520z" fill="#b8b8b2" opacity=".18"/><path d="M154 754h651" stroke="#a2a5a2" stroke-opacity=".18" stroke-width="4"/>
+  </g>
+  <path d="M88 88 870 0v125L111 210z" fill="#fff" opacity=".09"/>
+</svg>

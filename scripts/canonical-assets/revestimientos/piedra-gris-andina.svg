@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" role="img" aria-label="Muestra de piedra gris andina">
+  <defs>
+    <linearGradient id="stone" x2=".9" y2="1"><stop stop-color="#aeb0ad"/><stop offset=".48" stop-color="#747a79"/><stop offset="1" stop-color="#555c5c"/></linearGradient>
+    <pattern id="mineral" width="180" height="150" patternUnits="userSpaceOnUse"><path d="M-10 41 36 18l27 18 47-19 35 24 42-6M-8 111l31-25 42 13 28-23 40 18 31-24 35 17M18 0l7 22m96 75 22 26m-78-54 11-17" fill="none" stroke="#e2e2dc" stroke-opacity=".3" stroke-width="7"/><circle cx="70" cy="61" r="4" fill="#363e3f" opacity=".25"/><circle cx="151" cy="44" r="3" fill="#fff" opacity=".35"/></pattern>
+    <filter id="shadow" x="-.2" y="-.2" width="1.4" height="1.4"><feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#202525" flood-opacity=".26"/></filter>
+  </defs>
+  <rect width="960" height="960" fill="#d8d5cf"/><path d="M0 760 960 620v340H0z" fill="#c9c6c0"/>
+  <g transform="rotate(4 480 470)" filter="url(#shadow)"><rect x="106" y="110" width="748" height="690" rx="8" fill="url(#stone)"/><rect x="106" y="110" width="748" height="690" rx="8" fill="url(#mineral)"/>
+    <path d="M111 340c150-42 231 27 365-5 126-30 230-52 373-7M108 586c180-51 264 43 429 5 108-25 213-68 313-47" fill="none" stroke="#41494a" stroke-opacity=".3" stroke-width="13"/>
+  </g>
+  <circle cx="180" cy="188" r="92" fill="#fff" opacity=".12"/>
+</svg>

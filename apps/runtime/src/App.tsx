@@ -1,11 +1,14 @@
 import { Route, Routes, useParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { publicExperiencesApi, type PublicExperienceResponse } from './api/publicExperiencesApi';
 import { getParticipantIdentity } from './analytics/experienceAnalytics';
 import './claim.css';
 import { availabilityMessage } from './config/runtimeState';
 import { resolveRuntimeRenderer } from './renderers/registry';
 import { PreviewViewer } from './features/preview/PreviewViewer';
+import { SurfaceVisualizerErrorBoundary } from './features/surface-visualizer/state/SurfaceVisualizerErrorBoundary';
+
+const SurfaceVisualizerRoute = lazy(() => import('./features/surface-visualizer/SurfaceVisualizerRoute').then(({ SurfaceVisualizerRoute: route }) => ({ default: route })));
 
 
 function Viewer() {
@@ -33,4 +36,9 @@ function Viewer() {
 function MissingSlugState() { return <main><h1>Falta el enlace de la experiencia.</h1><p>Usá un enlace público válido para abrir esta ruleta.</p></main>; }
 function AvailabilityState({ reason }: { reason?: string }) { return <main><h1>{availabilityMessage(reason)}</h1></main>; }
 
-export function App() { return <Routes><Route path="/r/" element={<MissingSlugState />} /><Route path="/r/:slug" element={<Viewer />} /><Route path="/test/experiences/:id" element={<PreviewViewer />} /><Route path="*" element={<MissingSlugState />} /></Routes>; }
+function SurfaceVisualizerRouteFrame() {
+  const { slug = '' } = useParams();
+  return <SurfaceVisualizerErrorBoundary slug={slug}><Suspense fallback={<main aria-live="polite"><p>Cargando ambiente…</p></main>}><SurfaceVisualizerRoute /></Suspense></SurfaceVisualizerErrorBoundary>;
+}
+
+export function App() { return <Routes><Route path="/r/" element={<MissingSlugState />} /><Route path="/r/:slug/visualizer/:productId" element={<SurfaceVisualizerRouteFrame />} /><Route path="/r/:slug" element={<Viewer />} /><Route path="/test/experiences/:id" element={<PreviewViewer />} /><Route path="*" element={<MissingSlugState />} /></Routes>; }

@@ -3,6 +3,10 @@ export const CATALOG_PRODUCT_LIMITS = {
   description: 1000,
   ctaLabel: 80,
   ctaUrl: 2048,
+  priceUnit: 32,
+  metadataKeys: 32,
+  metadataKey: 40,
+  metadataValue: 160,
   priceMinorUnits: 9_000_000_000_000_000,
   stock: 1_000_000_000,
   galleryImages: 6,
@@ -16,7 +20,10 @@ export type CatalogProductField =
   | 'stock'
   | 'visible'
   | 'ctaLabel'
-  | 'ctaUrl';
+  | 'ctaUrl'
+  | 'priceUnit'
+  | 'metadata';
+export type CatalogProductMetadata = Record<string, string | number | boolean | null>;
 export type CatalogCtaType = 'url' | 'whatsapp';
 
 export function isSafeCatalogExternalUrl(value: unknown): value is string {
@@ -125,5 +132,29 @@ export function catalogProductFieldErrors(
       ? 'Ingresá el número con código de país y área.'
       : 'Usá un enlace http:// o https:// válido.';
   }
+
+  const priceUnit = product.priceUnit;
+  if (priceUnit !== null && priceUnit !== undefined && (typeof priceUnit !== 'string' || priceUnit.trim().length > CATALOG_PRODUCT_LIMITS.priceUnit)) {
+    errors.priceUnit = `Usá hasta ${CATALOG_PRODUCT_LIMITS.priceUnit} caracteres.`;
+  }
+
+  const metadata = product.metadata;
+  if (metadata !== null && metadata !== undefined) {
+    const validRecord = typeof metadata === 'object' && !Array.isArray(metadata);
+    const entries = validRecord ? Object.entries(metadata as Record<string, unknown>) : [];
+    if (!validRecord || entries.length > CATALOG_PRODUCT_LIMITS.metadataKeys || entries.some(([key, value]) =>
+      !/^[A-Za-z][A-Za-z0-9_-]*$/.test(key) || key.length > CATALOG_PRODUCT_LIMITS.metadataKey ||
+      !(value === null || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && value.length <= CATALOG_PRODUCT_LIMITS.metadataValue))) {
+      errors.metadata = 'La metadata debe ser un objeto simple con campos y valores válidos.';
+    }
+  }
   return errors;
+}
+
+export function normalizeCatalogProductMetadata(value: unknown): CatalogProductMetadata | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (!entries.length || entries.some(([, item]) => !(item === null || typeof item === 'string' || typeof item === 'number' && Number.isFinite(item) || typeof item === 'boolean'))) return null;
+  return Object.fromEntries(entries) as CatalogProductMetadata;
 }

@@ -27,6 +27,7 @@ import { findPublicSite } from './services/public-site';
 import { consumeLeadJobBatch, type LeadJobMessage } from './services/lead-queue';
 import type { FinderJobMessage } from './services/finder-contract';
 import { finderInternalRoutes } from './routes/finder-internal';
+import { treasureHuntRoutes } from './routes/treasure-hunt';
 
 export interface Env {
   ENVIRONMENT: string;
@@ -47,6 +48,8 @@ export interface Env {
   LEAD_JOB_QUEUE: Queue<LeadJobMessage>;
   FINDER_JOB_QUEUE?: Queue<FinderJobMessage>;
   FINDER_SERVICE_SECRET?: string;
+  TREASURE_HUNT_ADMIN_API_URL?: string;
+  TREASURE_HUNT_ADMIN_TOKEN?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -67,10 +70,11 @@ app.use('*', async (c, next) => {
       .filter(Boolean) ?? [];
   const configuredPublicOrigins = c.env.PUBLIC_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
   const publicSiteMatch = c.req.path.match(/^\/public\/v1\/sites\/([^/]+)(?:\/|$)/);
+  const publicAssetRequest = c.req.path.startsWith('/assets/');
   let allowedOrigins =
     c.env.ENVIRONMENT === 'development'
       ? [...new Set([...developmentOrigins, ...configuredOrigins, ...configuredPublicOrigins])]
-      : c.req.path.startsWith('/public/')
+      : c.req.path.startsWith('/public/') || publicAssetRequest
         ? [...configuredOrigins, ...configuredPublicOrigins]
         : configuredOrigins;
   const publicApiRequest = Boolean(publicSiteMatch);
@@ -83,7 +87,7 @@ app.use('*', async (c, next) => {
   }
   return cors({
     origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
-    credentials: !publicApiRequest,
+    credentials: !publicApiRequest && !publicAssetRequest,
     allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Organization-Id', 'Authorization', 'X-Anonymous-User-Id', 'X-Session-Id', 'Idempotency-Key'],
   })(c, next);
@@ -95,6 +99,7 @@ app.route('/organizations/assets', assetRoutes);
 app.route('/products', productRoutes);
 app.route('/leads', leadRoutes);
 app.route('/internal/finder', finderInternalRoutes);
+app.route('/admin/treasure-hunt', treasureHuntRoutes);
 app.route('/admin', adminRoutes);
 app.route('/v1', eventRoutes);
 app.route('/analytics', analyticsRoutes);

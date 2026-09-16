@@ -53,7 +53,7 @@ function fakeDb(role = 'admin') {
       },
       async run() {
         if (sql.startsWith('INSERT INTO catalog_products')) {
-          products.push({ id: args[0], organizationId: args[1], experienceId: args[2], name: args[3], description: args[4], priceMinorUnits: args[5], currency: args[6], stock: args[7], sortOrder: args[8], visible: args[9], mainAssetUrl: args[10], ctaLabel: args[11], ctaUrl: args[12], createdAt: args[13], updatedAt: args[14] });
+          products.push({ id: args[0], organizationId: args[1], experienceId: args[2], name: args[3], description: args[4], priceMinorUnits: args[5], currency: args[6], priceUnit: args[7], metadata: args[8], stock: args[9], sortOrder: args[10], visible: args[11], mainAssetUrl: args[12], ctaLabel: args[13], ctaUrl: args[14], createdAt: args[15], updatedAt: args[16] });
         } else if (sql.startsWith('INSERT INTO catalog_product_images')) {
           images.push({ id: args[0], organizationId: args[1], experienceId: args[2], productId: args[3], assetId: args[4], sortOrder: args[5], createdAt: args[6] });
         } else if (sql.startsWith('UPDATE catalog_products SET sort_order')) {
@@ -69,7 +69,7 @@ function fakeDb(role = 'admin') {
         } else if (sql.startsWith('DELETE FROM catalog_published_products')) {
           publishedProducts.splice(0, publishedProducts.length);
         } else if (sql.startsWith('INSERT INTO catalog_published_products')) {
-          publishedProducts.push({ id: args[0], organizationId: args[1], experienceId: args[2], sourceProductId: args[3], name: args[4], description: args[5], priceMinorUnits: args[6], currency: args[7], stock: args[8], sortOrder: args[9], mainImageUrl: args[10], ctaLabel: args[11], ctaUrl: args[12], publishedAt: args[13] });
+          publishedProducts.push({ id: args[0], organizationId: args[1], experienceId: args[2], sourceProductId: args[3], name: args[4], description: args[5], priceMinorUnits: args[6], currency: args[7], priceUnit: args[8], metadata: args[9], stock: args[10], sortOrder: args[11], mainImageUrl: args[12], ctaLabel: args[13], ctaUrl: args[14], publishedAt: args[15] });
         } else if (sql.startsWith('INSERT INTO catalog_published_product_images')) {
           publishedImages.push({ id: args[0], organizationId: args[1], experienceId: args[2], publishedProductId: args[3], sourceImageId: args[4], assetUrl: args[5], sortOrder: args[6], publishedAt: args[7] });
         } else if (sql.startsWith('INSERT INTO organization_activity')) {

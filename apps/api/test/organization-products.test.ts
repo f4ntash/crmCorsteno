@@ -68,6 +68,10 @@ describe('organization products', () => {
     const publishedGallery = organizationProductFromRow(row(JSON.stringify({ ...product, gallery: [{ assetId: 'gallery-1', sortOrder: 0 }] })), [image('gallery-1')]);
     expect(publishedGallery.hasUnpublishedChanges).toBe(false);
     expect(organizationProductFromRow(row(null)).published).toBe(false);
+
+    const surfaced = { ...product, priceUnit: 'm²', metadata: { material: 'Madera', environment: 'Interior' } };
+    const withSurfaceData = organizationProductFromRow({ ...row(JSON.stringify(surfaced)), priceUnit: 'm²', metadata: JSON.stringify(surfaced.metadata) });
+    expect(withSurfaceData).toEqual(expect.objectContaining({ priceUnit: 'm²', metadata: surfaced.metadata, hasUnpublishedChanges: false }));
   });
 
   it('keeps product validation shared with the existing catalog editor', async () => {

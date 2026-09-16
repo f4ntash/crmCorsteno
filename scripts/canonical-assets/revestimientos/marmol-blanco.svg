@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" role="img" aria-label="Muestra de mármol blanco con vetas">
+  <defs>
+    <linearGradient id="marble" x2="1" y2="1"><stop stop-color="#fbfaf6"/><stop offset=".52" stop-color="#e8e7e2"/><stop offset="1" stop-color="#cfceca"/></linearGradient>
+    <pattern id="veins" width="390" height="310" patternUnits="userSpaceOnUse"><path d="M-20 48c65 18 77 56 133 51 69-6 87-57 154-31 36 14 54 45 116 42M-15 188c49-28 79-20 125 11 55 37 102-10 153 5 48 14 80 65 145 52M49 322c28-53 60-82 105-78 40 4 43 36 86 34 68-3 83-90 158-83" fill="none" stroke="#9a9d9d" stroke-opacity=".5" stroke-width="5"/><path d="M14 109c30 9 49 32 80 23m199 89c27 3 39 18 53 38" fill="none" stroke="#b79d7b" stroke-opacity=".38" stroke-width="3"/></pattern>
+    <filter id="shadow" x="-.2" y="-.2" width="1.4" height="1.4"><feDropShadow dx="0" dy="18" stdDeviation="25" flood-color="#383b3a" flood-opacity=".2"/></filter>
+  </defs>
+  <rect width="960" height="960" fill="#dcdad4"/><rect x="0" y="742" width="960" height="218" fill="#cbc8c1"/>
+  <g transform="rotate(-3 480 480)" filter="url(#shadow)"><rect x="107" y="111" width="746" height="710" rx="6" fill="url(#marble)"/><rect x="107" y="111" width="746" height="710" rx="6" fill="url(#veins)"/>
+    <path d="M174 114c36 129 16 194 82 252 43 38 111 24 157 73 67 72 28 155 108 208 63 41 139 27 196 174" fill="none" stroke="#a9abad" stroke-opacity=".45" stroke-width="8"/>
+  </g>
+  <path d="M685 150h168v168" fill="none" stroke="#fff" stroke-opacity=".24" stroke-width="18"/>
+</svg>

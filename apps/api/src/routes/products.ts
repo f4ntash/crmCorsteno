@@ -10,6 +10,8 @@ import { SUPPORTED_IMAGE_TYPES } from '../services/assets';
 import { product3DConfigIssues, type Product3DConfig } from '@corsteno/types';
 import { normalizeCatalogCtaUrl } from '@corsteno/types';
 import { getProduct3D, getProduct3DModelAssets, publishProduct3D, updateProduct3DDraft, uploadProduct3DModel } from '../services/product-3d';
+import { getProductSurface, productSurfaceConfigIssuesForDb, publishProductSurface, updateProductSurfaceDraft } from '../services/product-surface';
+import type { ProductSurfaceConfig } from '@corsteno/types';
 import {
   adjustOrganizationProductStock,
   archiveOrganizationProduct,
@@ -68,13 +70,15 @@ function input(value: Record<string, unknown>, partial = false): Record<string, 
     ['description', (item) => optionalString(item) ?? ''],
     ['priceMinorUnits', (item) => item],
     ['currency', (item) => typeof item === 'string' ? item.trim().toUpperCase() : item],
+    ['priceUnit', (item) => item === null || item === undefined || item === '' ? null : typeof item === 'string' ? item.trim() : item],
+    ['metadata', (item) => item],
     ['stock', (item) => item],
     ['mainAssetUrl', (item) => item === null || item === undefined || item === '' ? null : typeof item === 'string' ? item.trim() : item],
     ['ctaLabel', (item) => optionalString(item)],
     ['ctaUrl', (item) => normalizeCatalogCtaUrl(item) ?? (item === null || item === undefined || item === '' ? null : item)],
   ];
   for (const [key, transform] of fields) {
-    const actual = read(key, key === 'priceMinorUnits' ? 'price_minor_units' : key === 'mainAssetUrl' ? 'main_asset_url' : key === 'ctaLabel' ? 'cta_label' : key === 'ctaUrl' ? 'cta_url' : '');
+    const actual = read(key, key === 'priceMinorUnits' ? 'price_minor_units' : key === 'mainAssetUrl' ? 'main_asset_url' : key === 'ctaLabel' ? 'cta_label' : key === 'ctaUrl' ? 'cta_url' : key === 'priceUnit' ? 'price_unit' : '');
     if (actual || !partial) result[key] = transform(actual ? value[actual] : key === 'currency' ? 'ARS' : key === 'description' ? '' : key === 'stock' || key === 'priceMinorUnits' ? 0 : null);
   }
   result.visible = true;
@@ -87,6 +91,8 @@ function complete(value: Record<string, unknown>) {
     description: value.description as string,
     priceMinorUnits: value.priceMinorUnits as number,
     currency: value.currency as string,
+    priceUnit: value.priceUnit as string | null,
+    metadata: value.metadata as import('@corsteno/types').CatalogProductMetadata | null,
     stock: value.stock as number,
     visible: true,
     mainAssetUrl: value.mainAssetUrl as string | null,
@@ -177,6 +183,39 @@ productRoutes.post('/:id/3d/publish', platformOnly, async (c) => {
   const result = await publishProduct3D(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
   if (result.issues.length) return c.json(error('La configuración 3D no está lista para publicar.', 'PUBLISH_NOT_READY', result.issues), 422);
   await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.3d.published', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, modelConfigured: Boolean(result.state?.publishedModelAssetId) } });
+  return c.json(result.state);
+});
+
+productRoutes.get('/:id/surface', read, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  return c.json(await getProductSurface(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin));
+});
+
+productRoutes.patch('/:id/surface', manage, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  if (product.status === 'archived') return c.json(error('Los productos archivados no se pueden editar.', 'PRODUCT_ARCHIVED'), 409);
+  const value = await body(c);
+  if (!value || !Object.prototype.hasOwnProperty.call(value, 'config')) return c.json(error('No hay configuración de superficie para guardar.'), 400);
+  const rawConfig = value.config;
+  if (rawConfig !== null) {
+    const issues = await productSurfaceConfigIssuesForDb(c.env.DB, product.organizationId, product.id, rawConfig, 'draftConfig');
+    if (issues.length) return c.json(error('Revisá la configuración de superficie.', 'VALIDATION_ERROR', issues), 400);
+  }
+  const before = await getProductSurface(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
+  const state = await updateProductSurfaceDraft(c.env.DB, product.organizationId, product.id, rawConfig as ProductSurfaceConfig | null, new URL(c.req.url).origin);
+  await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.surface.configuration.updated', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, enabled: Boolean(state.draftConfig?.enabled), changed: before.draftConfig !== state.draftConfig } });
+  return c.json(state);
+});
+
+productRoutes.post('/:id/surface/publish', manage, async (c) => {
+  const product = await getOrganizationProduct(c.env.DB, c.get('organization').id, c.req.param('id'), new URL(c.req.url).origin);
+  if (!product) return c.json(error('Producto no encontrado.', 'NOT_FOUND'), 404);
+  if (product.status === 'archived') return c.json(error('Los productos archivados no se pueden publicar.', 'PRODUCT_ARCHIVED'), 409);
+  const result = await publishProductSurface(c.env.DB, product.organizationId, product.id, new URL(c.req.url).origin);
+  if (result.issues.length) return c.json(error('La configuración de superficie no está lista para publicar.', 'PUBLISH_NOT_READY', result.issues), 422);
+  await recordActivityBestEffort(c.env.DB, { organizationId: product.organizationId, actorUserId: c.get('user').id }, { action: 'product.surface.configuration.published', resourceType: 'product', resourceId: product.id, metadata: { name: product.name, enabled: Boolean(result.state?.publishedConfig?.enabled) } });
   return c.json(result.state);
 });
 

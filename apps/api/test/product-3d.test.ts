@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from 'vitest';
 import app from '../src';
-import { defaultProduct3DConfig, product3DConfigIssues, parseProduct3DConfig, PRODUCT_3D_LIMITS } from '@corsteno/types';
+import { defaultProduct3DConfig, product3DConfigIssues, parseProduct3DConfig, PRODUCT_3D_LIMITS, productSurfaceConfigIssues, isProductSurfaceConfig } from '@corsteno/types';
 import { getProduct3D } from '../src/services/product-3d';
-import { MAX_MODEL_ASSET_BYTES, validateGlbFile } from '../src/services/assets';
+import { MAX_MODEL_ASSET_BYTES, validateGlbFile, validateSurfaceMaterialMapFile } from '../src/services/assets';
+import { productSurfaceConfigIssuesForDb, publicSurfaceConfig } from '../src/services/product-surface';
 
 function glbFile(name = 'model.glb', type = 'model/gltf-binary', json = '{"asset":{"version":"2.0"}}') {
   const jsonBytes = new TextEncoder().encode(json.padEnd(Math.ceil(json.length / 4) * 4, ' '));
@@ -64,6 +65,88 @@ describe('product 3D shared validation', () => {
     expect(parseProduct3DConfig(JSON.stringify(config))).toEqual(config);
     expect(product3DConfigIssues({ ...config, transform: { ...config.transform, scale: '1' } })).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PRODUCT_3D_SCALE_INVALID' })]));
     expect(product3DConfigIssues({ ...config, transform: { ...config.transform, scale: PRODUCT_3D_LIMITS.scaleMax + 1 } })).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'config.transform.scale' })]));
+  });
+});
+
+describe('product surface material capability', () => {
+  const config = {
+    schemaVersion: 1 as const,
+    enabled: true,
+    mode: 'texture' as const,
+    physicalWidthM: 0.6,
+    physicalHeightM: 1.2,
+    rotationDegrees: 0,
+    orientation: 'vertical' as const,
+    compatibleSurfaces: ['wall', 'floor'] as ('wall' | 'floor')[],
+    roughness: 0.7,
+    metalness: 0,
+    normalScale: 0.45,
+    fallbackColor: '#d7d1c6',
+    assets: { baseColorAssetId: 'asset-base', normalAssetId: 'asset-normal', roughnessAssetId: 'asset-rough' },
+  };
+
+  it('validates persisted configs with asset IDs and rejects arbitrary public URLs', () => {
+    expect(productSurfaceConfigIssues(config)).toEqual([]);
+    expect(isProductSurfaceConfig(config)).toBe(true);
+    expect(productSurfaceConfigIssues({ ...config, mode: 'solid', baseColor: '#d7d1c6', assets: undefined, normalScale: undefined })).toEqual([]);
+    expect(productSurfaceConfigIssues({ ...config, assets: { baseColorAssetId: config.assets.baseColorAssetId } })).toEqual([]);
+    expect(productSurfaceConfigIssues({ ...config, assets: { ...config.assets, baseColorAssetId: 'https://evil.example/map.webp' } })).toContain('config.assets.baseColorAssetId');
+    expect(productSurfaceConfigIssues({ ...config, compatibleSurfaces: [] })).toContain('config.compatibleSurfaces');
+    expect(productSurfaceConfigIssues({ ...config, roughness: Number.NaN })).toContain('config.roughness');
+    expect(productSurfaceConfigIssues({ ...config, physicalWidthM: -1 })).toContain('config.physicalWidthM');
+  });
+
+  it('sanitizes published output to public URLs and never exposes asset IDs', () => {
+    const publicConfig = publicSurfaceConfig(config, {
+      baseColor: { storageKey: 'organizations/org-a/assets/asset-base.webp' },
+      normal: { storageKey: 'organizations/org-a/assets/asset-normal.webp' },
+      roughness: { storageKey: 'organizations/org-a/assets/asset-rough.webp' },
+    }, 'https://api.example.com');
+    expect(publicConfig).toMatchObject({ mode: 'texture', assets: { baseColorTexture: 'https://api.example.com/assets/organizations/org-a/assets/asset-base.webp' } });
+    expect(publicConfig && 'assets' in publicConfig && 'baseColorAssetId' in publicConfig.assets).toBe(false);
+    expect(publicSurfaceConfig(config, { baseColor: null, normal: null, roughness: null }, 'https://api.example.com')).toMatchObject({ mode: 'solid', baseColor: '#d7d1c6', demoPlaceholder: true });
+    expect(publicSurfaceConfig({ ...config, enabled: false }, { baseColor: null, normal: null, roughness: null }, 'https://api.example.com')).toBeNull();
+  });
+
+  it('accepts only valid WebP PBR map signatures', async () => {
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    await expect(validateSurfaceMaterialMapFile(new File([webp], 'base.webp', { type: 'image/webp' }))).resolves.toMatchObject({ ok: true, mimeType: 'image/webp' });
+    await expect(validateSurfaceMaterialMapFile(new File(['not webp'], 'base.webp', { type: 'image/webp' }))).resolves.toMatchObject({ ok: false, status: 400 });
+    await expect(validateSurfaceMaterialMapFile(new File([webp], 'base.png', { type: 'image/png' }))).resolves.toMatchObject({ ok: false, status: 415 });
+  });
+
+  it('keeps asset references tenant-scoped', async () => {
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return {
+              async all<T>() {
+                return { results: [] as T[] };
+              },
+              async first<T>() {
+                return (sql.includes('FROM products') ? { id: 'product-a' } : null) as T;
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const issues = await productSurfaceConfigIssuesForDb(db, 'org-a', 'product-a', { ...config, assets: { ...config.assets, baseColorAssetId: 'asset-other-org' } });
+    expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PRODUCT_SURFACE_ASSET_INVALID', path: 'draftConfig.assets.baseColorAssetId' })]));
+  });
+});
+
+describe('product surface API authorization', () => {
+  it('blocks customer access to the organization material configuration', async () => {
+    const response = await request('/products/product-a/surface', authDb('user', 'viewer'));
+    expect(response.status).toBe(403);
+  });
+
+  it('allows an organization administrator to read an empty material state', async () => {
+    const operator = await request('/products/product-a/surface', authDb('user', 'admin'));
+    expect(operator.status).toBe(200);
+    expect(await operator.json()).toEqual(expect.objectContaining({ status: 'not_configured' }));
   });
 });
 

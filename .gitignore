@@ -7,3 +7,6 @@ dist/
 *.log
 tmp/finder-*
 **/__pycache__/
+.pnpm-store/
+**/.dev.vars
+**/.pytest_cache/

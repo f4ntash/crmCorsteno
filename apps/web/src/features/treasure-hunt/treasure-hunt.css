@@ -1,0 +1,22 @@
+.treasure-hunt-page .page-heading { align-items: flex-start; }
+.read-only-badge { border: 1px solid var(--border, #d8d9df); border-radius: 999px; color: var(--muted, #667085); font-size: .75rem; font-weight: 700; letter-spacing: .04em; padding: .45rem .75rem; text-transform: uppercase; }
+.treasure-hunt-list { display: grid; gap: 1rem; }
+.treasure-hunt-card { align-items: center; background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 1rem; display: grid; gap: 1rem; grid-template-columns: minmax(12rem, 1fr) auto; padding: 1.25rem; }
+.treasure-hunt-card h2 { margin: .2rem 0; }
+.treasure-hunt-card-main .eyebrow { margin: 0; }
+.muted { color: var(--muted, #667085); }
+.treasure-hunt-card-meta { display: flex; flex-wrap: wrap; gap: 1rem; grid-column: 1 / -1; }
+.treasure-hunt-card-meta span { display: grid; gap: .25rem; min-width: 8rem; }
+.treasure-hunt-card-meta small, .treasure-hunt-facts dt { color: var(--muted, #667085); font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.treasure-hunt-detail-grid { display: grid; gap: 1rem; }
+.treasure-hunt-section { padding: 1.25rem; }
+.treasure-hunt-facts { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.treasure-hunt-facts div { display: grid; gap: .25rem; }
+.treasure-hunt-facts dd { margin: 0; overflow-wrap: anywhere; }
+.treasure-hunt-steps, .treasure-hunt-versions { display: grid; gap: .75rem; margin: 0; padding: 0; }
+.treasure-hunt-steps li, .treasure-hunt-version { align-items: start; border-top: 1px solid var(--border, #e5e7eb); display: flex; gap: 1rem; justify-content: space-between; padding: .9rem 0 0; }
+.treasure-hunt-steps li:first-child, .treasure-hunt-version:first-child { border-top: 0; padding-top: 0; }
+.treasure-hunt-steps p, .treasure-hunt-version p { color: var(--muted, #667085); margin: .25rem 0 0; }
+.treasure-hunt-steps small { color: var(--muted, #667085); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.back-link { color: inherit; display: inline-block; margin-bottom: 1.25rem; text-decoration: none; }
+@media (max-width: 680px) { .treasure-hunt-card { grid-template-columns: 1fr; } .treasure-hunt-card .button { width: 100%; } .treasure-hunt-facts { grid-template-columns: 1fr; } }

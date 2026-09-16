@@ -159,6 +159,8 @@ export const catalogProducts = sqliteTable(
     description: text('description').notNull().default(''),
     priceMinorUnits: integer('price_minor_units').notNull().default(0),
     currency: text('currency').notNull().default('ARS'),
+    priceUnit: text('price_unit'),
+    metadata: text('metadata', { mode: 'json' }),
     stock: integer('stock').notNull().default(0),
     sortOrder: integer('sort_order').notNull().default(0),
     visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
@@ -182,6 +184,8 @@ export const catalogPublishedProducts = sqliteTable(
     description: text('description').notNull().default(''),
     priceMinorUnits: integer('price_minor_units').notNull().default(0),
     currency: text('currency').notNull().default('ARS'),
+    priceUnit: text('price_unit'),
+    metadata: text('metadata', { mode: 'json' }),
     stock: integer('stock').notNull().default(0),
     sortOrder: integer('sort_order').notNull().default(0),
     mainAssetUrl: text('main_asset_url'),
@@ -228,6 +232,8 @@ export const products = sqliteTable(
     description: text('description').notNull().default(''),
     priceMinorUnits: integer('price_minor_units').notNull().default(0),
     currency: text('currency').notNull().default('ARS'),
+    priceUnit: text('price_unit'),
+    metadata: text('metadata', { mode: 'json' }),
     stock: integer('stock').notNull().default(0),
     mainAssetUrl: text('main_asset_url'),
     ctaLabel: text('cta_label'),
@@ -278,6 +284,21 @@ export const product3dConfig = sqliteTable(
     publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
   },
   (t) => [index('product_3d_config_organization').on(t.organizationId, t.updatedAt, t.productId), index('product_3d_config_draft_asset').on(t.organizationId, t.draftModelAssetId), index('product_3d_config_published_asset').on(t.organizationId, t.publishedModelAssetId)],
+);
+export const productSurfaceConfig = sqliteTable(
+  'product_surface_config',
+  {
+    productId: text('product_id').primaryKey().references(() => products.id),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    draftConfig: text('draft_config'),
+    publishedConfig: text('published_config'),
+    draftVersion: integer('draft_version').notNull().default(1),
+    publishedVersion: integer('published_version'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('product_surface_config_organization').on(t.organizationId, t.updatedAt, t.productId)],
 );
 export const catalogExperienceProducts = sqliteTable(
   'catalog_experience_products',
