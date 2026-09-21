@@ -36,9 +36,21 @@ const eventLabels: Record<string, string> = {
   identity_required: 'Identidad requerida',
 };
 
+const actionLabels: Record<string, string> = {
+  photo_studio_opened: 'Photo Studio abierto',
+  photo_captured: 'Foto tomada',
+  photo_shared: 'Foto compartida',
+  passport_opened: 'Pasaporte abierto',
+  station_opened: 'Estación abierta',
+};
+
 export function readableEventLabel(value: string): string {
   const key = value.trim().toLowerCase().replaceAll(' ', '_');
   return eventLabels[key] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export { eventLabels };
+export function readableActionLabel(value: string): string {
+  return actionLabels[value] ?? value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export { actionLabels, eventLabels };

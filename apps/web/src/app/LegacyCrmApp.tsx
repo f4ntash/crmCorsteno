@@ -31,11 +31,13 @@ import { ChannelsPage } from '../features/channels/ChannelsPage';
 import { ChannelDetailPage } from '../features/channels/ChannelDetailPage';
 import { ProductsPage } from '../features/products/ProductsPage';
 import { LeadsPage } from '../features/leads/LeadsPage';
+import { TeamPage } from '../features/team/TeamPage';
 import { TreasureHuntDetailPage, TreasureHuntListPage } from '../features/treasure-hunt/TreasureHuntPages';
 import { TreasureHuntDraftPage } from '../features/treasure-hunt/TreasureHuntDraftPage';
-import { buildNavigation, canAccessTreasureHuntRoute, isExperienceAssignedToWorkspace, isWorkspaceProductAssigned, navigationHasKey } from './navigation';
+import { activeWorkspaceApplications, buildNavigation, canAccessTreasureHuntRoute, isExperienceAssignedToWorkspace, isWorkspaceProductAssigned, navigationHasKey } from './navigation';
 import type { Experience } from '../features/experiences/types';
 type LegacyJson = ReturnType<JSON['parse']>;
+import type { WorkspaceApplication } from './navigation';
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) {
   return apiRequest<T>(path, org, init);
 }
@@ -52,8 +54,10 @@ function Shell() {
     [o, setO] = useState(''),
     [workspaceMode, setWorkspaceMode] = useState(false),
     [workspaceExperiences, setWorkspaceExperiences] = useState<Experience[]>([]),
+    [workspaceApplications, setWorkspaceApplications] = useState<WorkspaceApplication[]>([]),
     [workspaceProductsLoading, setWorkspaceProductsLoading] = useState(false),
     [workspaceProductsOrganizationId, setWorkspaceProductsOrganizationId] = useState(''),
+    [treasureHuntAvailable, setTreasureHuntAvailable] = useState(false),
     [navigationOpen, setNavigationOpen] = useState(false);
   const n = useNavigate();
   const location = useLocation();
@@ -63,7 +67,7 @@ function Shell() {
   useEffect(() => {
     if (organizationInitializedRef.current) return;
     organizationInitializedRef.current = true;
-    get('/auth/me')
+    get('/auth/me', undefined, { cache: 'no-store' })
       .then((x: Me) => {
         setM(x);
         const isPlatformOperator = ['super_admin', 'corsteno_admin'].includes(x.user.platformRole);
@@ -80,23 +84,32 @@ function Shell() {
     const platformOperator = ['super_admin', 'corsteno_admin'].includes(m?.user.platformRole ?? '');
     const shouldLoadWorkspaceProducts = Boolean(m && o && (!platformOperator || workspaceMode));
     setWorkspaceExperiences([]);
+    setWorkspaceApplications([]);
     setWorkspaceProductsLoading(shouldLoadWorkspaceProducts);
     setWorkspaceProductsOrganizationId('');
+    setTreasureHuntAvailable(false);
     if (!shouldLoadWorkspaceProducts) return;
 
     let active = true;
-    void get<Experience[]>('/experiences', o)
-      .then((experiences) => {
-        if (active) {
-          setWorkspaceExperiences(experiences);
-          setWorkspaceProductsOrganizationId(o);
-        }
-      })
-      .catch(() => {
-        if (active) setWorkspaceExperiences([]);
+    void Promise.allSettled([
+      get<Experience[]>('/experiences', o),
+      get<WorkspaceApplication[]>('/applications', o, { cache: 'no-store' }),
+    ])
+      .then(([experiencesResult, applicationsResult]) => {
+        if (!active) return;
+        if (experiencesResult.status === 'fulfilled') setWorkspaceExperiences(experiencesResult.value);
+        if (applicationsResult.status === 'fulfilled') setWorkspaceApplications(applicationsResult.value);
+        setWorkspaceProductsOrganizationId(o);
       })
       .finally(() => {
         if (active) setWorkspaceProductsLoading(false);
+      });
+    void get<{ items: unknown[] }>('/admin/treasure-hunt/campaigns', o)
+      .then(() => {
+        if (active) setTreasureHuntAvailable(true);
+      })
+      .catch(() => {
+        if (active) setTreasureHuntAvailable(false);
       });
     return () => { active = false; };
   }, [m, o, workspaceMode]);
@@ -130,16 +143,23 @@ function Shell() {
   const canRedeem = currentPermissions.includes('claims.redeem');
   const isRedemptionOperator = canRedeem && !canManage;
   const workspaceProductTypes = new Set(workspaceExperiences.map((experience) => experience.type));
+  const activeApplications = activeWorkspaceApplications(workspaceApplications);
+  const workspaceApplicationTypes = new Set(activeApplications.map((application) => application.applicationType ?? 'generic'));
   const workspaceProductsReady = !workspaceProductsLoading && (!o || workspaceProductsOrganizationId === o);
   const visibleWorkspaceProductTypes = workspaceProductsReady ? workspaceProductTypes : new Set<string>();
+  const visibleWorkspaceApplicationTypes = workspaceProductsReady ? workspaceApplicationTypes : new Set<string>();
+  const visibleActiveApplications = workspaceProductsReady ? activeApplications : [];
   const workspaceDataLoading = !adminMode && Boolean(o) && !workspaceProductsReady;
-  const canReadTreasureHunt = canAccessTreasureHuntRoute({ workspace: Boolean(currentOrganization), permissions: currentPermissions });
+  const canReadTreasureHunt = canAccessTreasureHuntRoute({ workspace: Boolean(currentOrganization), permissions: currentPermissions, treasureHuntAvailable });
   const navigationItems = buildNavigation({
     mode: adminMode ? 'admin' : 'workspace',
     platformRole: m.user.platformRole,
     permissions: currentPermissions,
     workspace: Boolean(currentOrganization),
     productTypes: visibleWorkspaceProductTypes,
+    applicationTypes: visibleWorkspaceApplicationTypes,
+    activeApplications: visibleActiveApplications,
+    treasureHuntAvailable,
   });
   const canUseWorkspaceProduct = (type?: string) => workspaceProductsReady && isWorkspaceProductAssigned(workspaceProductTypes, type);
   const currentExperienceId = location.pathname.match(/^\/app\/experiences\/([^/]+)$/)?.[1] ?? '';
@@ -190,7 +210,7 @@ function Shell() {
            <h1>No tenés una organización asignada</h1>
            <p className="page-description">Tu cuenta todavía no tiene acceso a un espacio de trabajo. Pedile a un administrador que te incorpore a una organización activa.</p>
         </main> : workspaceDataLoading ? <WorkspaceProductsLoading /> : <Routes key={o || 'admin'}>
-           <Route index element={<Home org={o} organizationName={currentOrganization?.organizationName} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator && (!platformOperator || workspaceMode)} />} />
+           <Route index element={<Home org={o} organizationName={currentOrganization?.organizationName} isPlatformAdmin={platformOperator} canViewWorkspace={!isRedemptionOperator && (!platformOperator || workspaceMode)} canViewAnalytics={currentPermissions.includes('analytics.read')} showProductOperations={canAccess('experiences')} />} />
            <Route path="analytics" element={!canAccess('analytics') ? <Navigate to="/app" replace /> : <Analytics org={o} />} />
            <Route path="reports" element={!canAccess('reports') ? <Navigate to="/app" replace /> : <ReportsPage org={o} />} />
            <Route path="experiences" element={!canAccess('experiences') ? <Navigate to="/app" replace /> : <ExperiencesPage org={o} canCreate={platformOperator} />} />
@@ -210,7 +230,7 @@ function Shell() {
             <Route path="assets" element={<Navigate to="/app" replace />} />
             <Route path="channels" element={!canAccess('channels') ? <Navigate to="/app" replace /> : <ChannelsPage org={o} canManage={canManage} />} />
             <Route path="channels/:id" element={!canAccess('channels') ? <Navigate to="/app" replace /> : <ChannelDetailPage org={o} canManage={canManage} canAssignContentProfile={platformOperator} canManageAssets={platformOperator || currentPermissions.includes('assets.manage')} hasProductCatalog={workspaceProductTypes.has('product-catalog')} />} />
-           <Route path="team" element={<Navigate to="/app" replace />} />
+           <Route path="team" element={<TeamPage org={o} role={currentOrganization?.role ?? 'global_admin'} canManage={canManage} canAssignAdmin={platformOperator || currentOrganization?.role === 'owner'} />} />
           <Route
             path="*"
             element={

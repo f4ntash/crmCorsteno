@@ -10,8 +10,20 @@ export type NavigationItem = {
   requiredProduct: CrmProductType | null;
   requiredPermission: string | null;
   allowedMode: readonly NavigationMode[];
-  capabilities: readonly CrmProductType[];
+  capabilities: readonly string[];
 };
+
+export type WorkspaceApplication = {
+  id: string;
+  name: string;
+  status: string;
+  applicationType?: string | null;
+};
+
+/** `/applications` is the workspace capability source for Analytics. */
+export function activeWorkspaceApplications(applications: readonly WorkspaceApplication[]): WorkspaceApplication[] {
+  return applications.filter((application) => application.status.trim().toLowerCase() === 'active');
+}
 
 export type NavigationContext = {
   mode: 'admin' | 'workspace';
@@ -19,16 +31,31 @@ export type NavigationContext = {
   permissions: readonly string[];
   workspace: boolean;
   productTypes: ReadonlySet<string>;
+  /** Active application types are the source of product capabilities. */
+  applicationTypes?: ReadonlySet<string>;
+  activeApplications?: readonly WorkspaceApplication[];
+  treasureHuntAvailable?: boolean;
 };
 
 /**
- * Treasure Hunt is a read-only workspace module. Its route must be authorized
- * by the active organization and permission, independently of whether the
- * campaign list has finished loading or is empty.
+ * Treasure Hunt is a read-only workspace module. Its route requires both the
+ * organization permission and a successful capability probe of the configured
+ * Treasure Hunt service; an empty campaign list can still be a valid capability.
  */
-export function canAccessTreasureHuntRoute(context: Pick<NavigationContext, 'workspace' | 'permissions'>) {
-  return context.workspace && context.permissions.includes('crm.read');
+export function canAccessTreasureHuntRoute(context: Pick<NavigationContext, 'workspace' | 'permissions' | 'treasureHuntAvailable'>) {
+  return context.workspace && Boolean(context.treasureHuntAvailable) && context.permissions.includes('crm.read');
 }
+
+const analyticsNavigation: NavigationItem = {
+  key: 'analytics',
+  label: 'Analytics',
+  to: '/app/analytics',
+  adminOnly: false,
+  requiredProduct: null,
+  requiredPermission: 'analytics.read',
+  allowedMode: ['workspace'],
+  capabilities: ['analytics'],
+};
 
 type ProductNavigationItem = Omit<NavigationItem, 'capabilities' | 'adminOnly' | 'requiredProduct' | 'requiredPermission' | 'allowedMode'> & {
   adminOnly: false;
@@ -80,7 +107,7 @@ const treasureHuntNavigation: NavigationItem = {
   requiredProduct: null,
   requiredPermission: 'crm.read',
   allowedMode: ['workspace'],
-  capabilities: [],
+  capabilities: ['treasure-hunt'],
 };
 
 function hasPermission(context: NavigationContext, permission: string | null) {
@@ -116,15 +143,15 @@ export function buildNavigation(context: NavigationContext): NavigationItem[] {
   if (!context.workspace) return [{ key: 'summary', label: 'Inicio', to: '/app', adminOnly: false, requiredProduct: null, requiredPermission: null, allowedMode: ['workspace'], capabilities: [] }];
 
   const items = new Map<NavigationKey, NavigationItem>([['summary', { key: 'summary', label: 'Inicio', to: '/app', adminOnly: false, requiredProduct: null, requiredPermission: null, allowedMode: ['workspace'], capabilities: [] }]]);
+  const productTypes = workspaceProductTypes(context);
   for (const type of CRM_PRODUCT_TYPES) {
-    if (!context.productTypes.has(type)) continue;
+    if (!productTypes.has(type)) continue;
     for (const item of productNavigation[type]) {
       if (!item.adminOnly && item.allowedMode.includes('workspace') && item.requiredProduct && hasPermission(context, item.requiredPermission)) mergeProductItem(items, item);
     }
   }
-  // Route availability is determined by the active workspace and read permission.
-  // Campaign loading belongs to the page and must not hide or reject the route.
-  if (context.workspace && hasPermission(context, treasureHuntNavigation.requiredPermission)) items.set(treasureHuntNavigation.key, treasureHuntNavigation);
+  if (!items.has(analyticsNavigation.key) && (context.activeApplications?.length ?? 0) > 0 && hasPermission(context, analyticsNavigation.requiredPermission)) items.set(analyticsNavigation.key, analyticsNavigation);
+  if (canAccessTreasureHuntRoute(context)) items.set(treasureHuntNavigation.key, treasureHuntNavigation);
   return [...items.values()];
 }
 
@@ -134,6 +161,19 @@ function isPlatformOperator(role: string) {
 
 export function isWorkspaceProductAssigned(productTypes: ReadonlySet<string>, type: string | undefined): type is CrmProductType {
   return Boolean(type && isCrmProductType(type) && productTypes.has(type));
+}
+
+const applicationProductTypes: Readonly<Record<string, CrmProductType>> = {
+  roulette: 'roulette',
+  website: 'website',
+  ar: 'ar',
+  webar: 'ar',
+  'product-catalog': 'product-catalog',
+};
+
+export function workspaceProductTypes(context: Pick<NavigationContext, 'productTypes' | 'applicationTypes'>): ReadonlySet<CrmProductType> {
+  if (!context.applicationTypes) return new Set([...context.productTypes].filter((type): type is CrmProductType => isCrmProductType(type)));
+  return new Set([...context.applicationTypes].map((type) => applicationProductTypes[type]).filter((type): type is CrmProductType => Boolean(type)));
 }
 
 type ExperienceProductReference = { id: string; type: string };

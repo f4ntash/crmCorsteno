@@ -6,7 +6,7 @@ compatibility_date = "2024-12-30"
 ENVIRONMENT = "production"
 APP_VERSION = "0.0.1"
 WEB_ORIGINS = "https://crm.corsteno.com,https://cosquinrock.corsteno.com"
-PUBLIC_ORIGINS = "https://corsteno-runtime.matiasgerstner.workers.dev"
+PUBLIC_ORIGINS = "https://corsteno-runtime.matiasgerstner.workers.dev,https://corsteno.com"
 
 [[d1_databases]]
 binding = "DB"
@@ -38,7 +38,7 @@ dead_letter_queue = "corsteno-lead-jobs-dlq"
 ENVIRONMENT = "development"
 APP_VERSION = "0.0.1-dev"
 WEB_ORIGINS = "https://crm.corsteno.com,https://cosquinrock.corsteno.com"
-PUBLIC_ORIGINS = "https://corsteno-runtime.matiasgerstner.workers.dev"
+PUBLIC_ORIGINS = "https://corsteno-runtime.matiasgerstner.workers.dev,https://corsteno.com"
 
 [[env.development.d1_databases]]
 binding = "DB"

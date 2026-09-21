@@ -10,6 +10,7 @@ export const appDataRoutes = new Hono<{
   Bindings: Env;
   Variables: Variables;
 }>();
+appDataRoutes.use('*', async (c, next) => { c.header('Cache-Control', 'no-store'); await next(); });
 appDataRoutes.use('*', requireAuth, requireOrganization);
 appDataRoutes.use('*', async (c, next) => c.get('organization').role === 'operator' ? c.json({ error: { code: 'FORBIDDEN', message: 'Permission denied' } }, 403) : next());
 appDataRoutes.get('/dashboard/summary', async (c) => {

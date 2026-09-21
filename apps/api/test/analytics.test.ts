@@ -589,6 +589,20 @@ describe('Analytics recurrence, breakdown and activity', () => {
       );
     },
   );
+  it('returns reusable action and station property breakdowns', async () => {
+    const events = [
+      event(a1, { event: 'button_clicked', userId: 'u-action-1', sessionId: 's-action-1', occurredAt: NOW - 1, properties: { action: 'photo_studio_opened' } }),
+      event(a1, { event: 'button_clicked', userId: 'u-action-2', sessionId: 's-action-2', occurredAt: NOW - 2, properties: { action: 'photo_studio_opened' } }),
+      event(a1, { event: 'button_clicked', userId: 'u-action-3', sessionId: 's-action-3', occurredAt: NOW - 3, properties: { action: 'photo_shared' } }),
+      event(a1, { event: 'image_target_detected', userId: 'u-station-1', sessionId: 's-station-1', occurredAt: NOW - 4, properties: { stationId: 'station-centro', stationName: 'Estación Centro' } }),
+      event(a1, { event: 'image_target_detected', userId: 'u-station-2', sessionId: 's-station-2', occurredAt: NOW - 5, properties: { stationId: 'station-centro', stationName: 'Estación Centro' } }),
+      event(a1, { event: 'image_target_detected', userId: 'u-station-3', sessionId: 's-station-3', occurredAt: NOW - 6, properties: { stationId: 'station-rio', stationName: 'Estación Río' } }),
+    ];
+    const action = await request<{ items: Array<{ name: string; value: number }> }>('/analytics/breakdown?dimension=action&range=all&applicationId=a1-app', state(events));
+    const station = await request<{ items: Array<{ name: string; value: number }> }>('/analytics/breakdown?dimension=station&range=all&applicationId=a1-app', state(events));
+    expect(action.body.items).toEqual([{ name: 'photo_studio_opened', value: 2 }, { name: 'photo_shared', value: 1 }]);
+    expect(station.body.items).toEqual([{ name: 'Estación Centro', value: 2 }, { name: 'Estación Río', value: 1 }]);
+  });
   it('returns activity newest first and honors limit', async () => {
     const result = await request<Array<Record<string, unknown> & { occurredAt: number; applicationName: string }>>(
       '/analytics/activity?range=all&projectId=a1&limit=2',

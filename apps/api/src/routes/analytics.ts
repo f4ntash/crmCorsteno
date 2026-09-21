@@ -8,7 +8,7 @@ export { rouletteResultsCsv } from '../services/roulette-report';
 import { reportRangeOf, reportSinceIsoOf, reportSinceOf } from '../services/report-filters';
 import type { Env } from '../index';
 type Metric = 'users' | 'events' | 'games' | 'prizes';
-type Dimension = 'game' | 'prize' | 'result' | 'reason' | 'event';
+type Dimension = 'game' | 'prize' | 'result' | 'reason' | 'event' | 'action' | 'station';
 type Vars = {
   user: { id: string; email: string; name: string; platformRole: string };
   sessionId: string;
@@ -244,7 +244,7 @@ analyticsRoutes.get('/breakdown', async (c) => {
       } catch { /* fall through to the legacy event breakdown for older fixtures */ }
     }
   }
-  if (d !== 'game' && d !== 'prize' && d !== 'result' && d !== 'reason')
+  if (d !== 'game' && d !== 'prize' && d !== 'result' && d !== 'reason' && d !== 'action' && d !== 'station')
     return c.json(
       { error: { code: 'BAD_REQUEST', message: 'Invalid dimension' } },
       400,
@@ -257,7 +257,11 @@ analyticsRoutes.get('/breakdown', async (c) => {
   const m = new Map<string, number>();
   for (const row of rows.results) {
     try {
-      const v = (JSON.parse(row.properties) as Record<string, unknown>)[d];
+      const properties = JSON.parse(row.properties) as Record<string, unknown>;
+      const value = d === 'station'
+        ? properties.stationName ?? properties.stationId
+        : properties[d];
+      const v = value;
       if (typeof v === 'string') m.set(v, (m.get(v) ?? 0) + 1);
     } catch {
       continue;

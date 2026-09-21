@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { apiDownload, apiRequest } from '../../shared/api/client';
 import { downloadCsv } from '../reports/download';
 import { formatAnalyticsBucket, formatAnalyticsClock, formatAnalyticsTooltip, formatRecentEventTime } from './analytics-format';
-import { readableEventLabel } from './event-labels';
+import { readableActionLabel, readableEventLabel } from './event-labels';
 export { OperationsHome as Home } from './OperationsHome';
 
 type Project = { id: string; name: string };
@@ -130,6 +130,8 @@ export function Analytics({ org }: { org: string }) {
     [prizes, setPrizes] = useState<Item[]>([]),
     [results, setResults] = useState<Item[]>([]),
     [topEvents, setTopEvents] = useState<Item[]>([]),
+    [actions, setActions] = useState<Item[]>([]),
+    [stations, setStations] = useState<Item[]>([]),
     [blocked, setBlocked] = useState<Item[]>([]),
     [error, setError] = useState(false),
     [exporting, setExporting] = useState(false),
@@ -168,8 +170,10 @@ export function Analytics({ org }: { org: string }) {
       get(`/analytics/breakdown?${q}&dimension=result`, org),
       get(`/analytics/breakdown?${q}&dimension=event`, org),
       get(`/analytics/breakdown?${q}&dimension=reason`, org),
+      get(`/analytics/breakdown?${q}&dimension=action`, org),
+      get(`/analytics/breakdown?${q}&dimension=station`, org),
     ])
-      .then(([a, b, c, recentEvents, d, e, f, g, h, i]) => {
+      .then(([a, b, c, recentEvents, d, e, f, g, h, i, j, k]) => {
         setS(a);
         setUsers(b.points);
         setEvents(c.points);
@@ -180,6 +184,8 @@ export function Analytics({ org }: { org: string }) {
         setResults(g.items);
         setTopEvents(h.items);
         setBlocked(i.items);
+        setActions(j.items);
+        setStations(k.items);
       })
       .catch(() => setError(true));
   }, [org, range, project, application]);
@@ -314,6 +320,7 @@ export function Analytics({ org }: { org: string }) {
             />
           </div></section>
           <section className="analytics-section"><SectionHeading eyebrow="ACTIVIDAD" title="Actividad reciente" detail="Los eventos más recientes dentro del alcance y período seleccionados." />{recent.length ? <ol className="analytics-recent-list">{recent.map((item, index) => <li key={`${item.occurredAt}-${item.event}-${index}`}><time dateTime={new Date(item.occurredAt).toISOString()}><span className="analytics-recent-time-short">{formatAnalyticsClock(item.occurredAt)}</span><span className="analytics-recent-time-full">{formatRecentEventTime(item.occurredAt)}</span></time><strong>{readableLabel(item.event)}</strong><span className="analytics-recent-application">{item.applicationName}</span></li>)}</ol> : <StatusPanel kind="empty">Todavía no hay eventos en este período.</StatusPanel>}</section>
+          <section className="analytics-section"><SectionHeading eyebrow="DETALLE DE EXPERIENCIA" title="Acciones y estaciones" detail="Desglose reusable de propiedades enviadas por la experiencia seleccionada." /><div className="chart-grid"><Rank title="Acciones" items={actions} formatName={readableActionLabel} /><Rank title="Estaciones detectadas" items={stations} /></div></section>
           {(apps.find((a) => a.id === application)?.applicationType ??
             'generic') === 'game' && (
             <div className="chart-grid">
@@ -372,14 +379,14 @@ export function Analytics({ org }: { org: string }) {
     </main>
   );
 }
-export function Rank({ title, items }: { title: string; items: Item[] }) {
+export function Rank({ title, items, formatName = readableLabel }: { title: string; items: Item[]; formatName?: (value: string) => string }) {
   return (
     <section className="card breakdown-card">
       <div className="breakdown-heading"><h3>{title}</h3><span>{items.length ? `${items.length} categorías` : 'Sin datos'}</span></div>
       {items.length ? (
         items.map((i) => (
           <p className="rank" key={i.name}>
-            <span>{readableLabel(i.name)}</span>
+            <span>{formatName(i.name)}</span>
             <strong>{formatMetricValue(i.value)}</strong>
           </p>
         ))
