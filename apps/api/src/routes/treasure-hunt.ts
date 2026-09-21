@@ -13,6 +13,7 @@ export const treasureHuntRoutes = new Hono<{ Bindings: Env; Variables: Variables
 treasureHuntRoutes.use('*', requireAuth, requireOrganization);
 const readPermission = requireOrganizationPermission('crm.read') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 const managePermission = requireOrganizationPermission('crm.manage') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
+const redemptionPermission = requireOrganizationPermission('claims.redeem') as unknown as MiddlewareHandler<{ Bindings: Env; Variables: Variables }>;
 type UpstreamPermission = 'crm.read' | 'crm.manage';
 
 async function forward(c: Parameters<MiddlewareHandler>[0], path: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', permission: UpstreamPermission = 'crm.read') {
@@ -130,6 +131,35 @@ async function forwardCompiledArtifact(c: Parameters<MiddlewareHandler>[0], path
   }
 }
 
+async function forwardRedemption(c: Parameters<MiddlewareHandler>[0]) {
+  const baseUrl = c.env.TREASURE_HUNT_ADMIN_API_URL?.replace(/\/+$/, '');
+  const token = c.env.TREASURE_HUNT_REDEMPTION_TOKEN;
+  if (!baseUrl || !token) return c.json({ error: { code: 'TREASURE_HUNT_UNAVAILABLE', message: 'Treasure Hunt no está disponible en este momento.' } }, 503);
+  try {
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    const response = await fetch(`${baseUrl}/v1/admin/rewards/redeem`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': c.req.header('Content-Type') ?? 'application/json',
+        'X-Organization-Id': c.get('organization').id,
+        'X-PEC-Operator-Id': c.get('user').id,
+        'X-CRM-Permissions': 'rewards.redeem',
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+      body: await c.req.text(),
+    });
+    const responseBody = await response.text();
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    if (!response.ok && response.status >= 400 && response.status < 500) return new Response(responseBody, { status: response.status, headers: responseHeaders });
+    if (!response.ok) return c.json({ error: { code: 'TREASURE_HUNT_UNAVAILABLE', message: 'Treasure Hunt no está disponible en este momento.' } }, 503);
+    return new Response(responseBody, { status: response.status, headers: responseHeaders });
+  } catch {
+    return c.json({ error: { code: 'TREASURE_HUNT_UNAVAILABLE', message: 'Treasure Hunt no está disponible en este momento.' } }, 503);
+  }
+}
+
 treasureHuntRoutes.get('/campaigns', readPermission, (c) => forward(c, '/v1/admin/hunts'));
 treasureHuntRoutes.get('/campaigns/:id', readPermission, (c) => forward(c, `/v1/admin/hunts/${encodeURIComponent(c.req.param('id'))}`));
 treasureHuntRoutes.post('/campaigns', managePermission, (c) => forward(c, '/v1/admin/hunts', 'POST', 'crm.manage'));
@@ -143,3 +173,4 @@ treasureHuntRoutes.post('/campaigns/:id/draft/compile', managePermission, (c) =>
 treasureHuntRoutes.post('/campaigns/:id/draft/compile/:compilationId/artifact', managePermission, (c) => forwardCompiledArtifact(c, `/v1/admin/hunts/${encodeURIComponent(c.req.param('id'))}/draft/compile/${encodeURIComponent(c.req.param('compilationId'))}/artifact`));
 treasureHuntRoutes.get('/campaigns/:id/draft/compile/:compilationId', readPermission, (c) => forward(c, `/v1/admin/hunts/${encodeURIComponent(c.req.param('id'))}/draft/compile/${encodeURIComponent(c.req.param('compilationId'))}`, 'GET', 'crm.read'));
 treasureHuntRoutes.post('/campaigns/:id/publish', managePermission, (c) => forward(c, `/v1/admin/hunts/${encodeURIComponent(c.req.param('id'))}/publish`, 'POST', 'crm.manage'));
+treasureHuntRoutes.post('/rewards/redeem', redemptionPermission, forwardRedemption);

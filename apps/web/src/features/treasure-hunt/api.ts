@@ -22,8 +22,8 @@ export type TreasureHuntStep = { stepId: string; order: number; title: string; c
 export type TreasureHuntVersion = { id: string; version: number; name: string; description: string; progressionMode: string; publicationStatus: string; createdAt: string; publishedAt: string | null };
 export type TreasureHuntReward = { rewardId: string; type: string; name: string; displayValue: string; expiresInSeconds: number | null; status: string };
 export type TreasureHuntDraftIssue = { code: string; message: string; stepId?: string };
-export type TreasureHuntDraftTarget = { id: string; stepId: string; originalFilename: string; mimeType: string; byteSize: number; checksum: string; storageKey: string; status: string; physicalWidthCm: number; widthPx: number | null; heightPx: number | null; featureCount: number | null; createdAt: string; updatedAt: string };
-export type TreasureHuntDraftCompilation = { id: string; draftRevision: number; status: 'COMPILE_PENDING' | 'COMPILED' | 'FAILED'; artifactChecksum: string | null; artifactByteSize: number | null; compilerVersion: string | null; mapping: Array<{ stepId: string; order: number; targetIndex: number; storageKey?: string; physicalWidthCm?: number }>; errorMessage: string | null; compiledAt: string | null };
+export type TreasureHuntDraftTarget = { id: string; stepId: string; originalFilename: string; mimeType: string; byteSize: number; checksum: string; status: string; physicalWidthCm: number; widthPx: number | null; heightPx: number | null; featureCount: number | null; createdAt: string; updatedAt: string };
+export type TreasureHuntDraftCompilation = { id: string; draftRevision: number; status: 'COMPILE_PENDING' | 'COMPILED' | 'FAILED'; artifactChecksum: string | null; artifactByteSize: number | null; compilerVersion: string | null; mapping: Array<{ stepId: string; order: number; targetIndex: number; physicalWidthCm?: number }>; errorMessage: string | null; compiledAt: string | null };
 export type TreasureHuntDraftStep = { stepId: string; order: number; title: string; clue: string; triggerType: 'IMAGE_TARGET'; triggerId: string; targetRef: string | null; targetStatus: 'PENDING' | 'READY'; target: TreasureHuntDraftTarget | null };
 export type TreasureHuntDraftReward = { type: 'COUPON'; name: string; displayValue: string; expiresInSeconds: number | null };
 export type TreasureHuntDraft = {
@@ -81,7 +81,6 @@ export type TreasureHuntCompilationStatus = {
   draftRevision: number;
   status: 'COMPILE_PENDING' | 'COMPILED' | 'FAILED';
   jobStatus: 'PENDING' | 'COMPILING' | 'COMPILED' | 'FAILED' | 'CANCELLED';
-  artifactStorageKey: string | null;
   artifactChecksum: string | null;
   artifactByteSize: number | null;
   compilerVersion: string | null;

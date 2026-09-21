@@ -50,6 +50,7 @@ export interface Env {
   FINDER_SERVICE_SECRET?: string;
   TREASURE_HUNT_ADMIN_API_URL?: string;
   TREASURE_HUNT_ADMIN_TOKEN?: string;
+  TREASURE_HUNT_REDEMPTION_TOKEN?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

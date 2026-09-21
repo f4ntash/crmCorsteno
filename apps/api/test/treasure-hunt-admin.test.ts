@@ -17,7 +17,7 @@ function fixture(role = 'owner') {
       };
     },
   };
-  return { DB, ENVIRONMENT: 'test', APP_VERSION: 'test', TREASURE_HUNT_ADMIN_API_URL: 'http://127.0.0.1:8791', TREASURE_HUNT_ADMIN_TOKEN: 'server-only-token' };
+  return { DB, ENVIRONMENT: 'test', APP_VERSION: 'test', TREASURE_HUNT_ADMIN_API_URL: 'http://127.0.0.1:8791', TREASURE_HUNT_ADMIN_TOKEN: 'server-only-token', TREASURE_HUNT_REDEMPTION_TOKEN: 'redemption-server-only-token' };
 }
 
 function request(path: string, env: ReturnType<typeof fixture>, init?: RequestInit) {
@@ -77,6 +77,29 @@ describe('Treasure Hunt PEC server boundary', () => {
   it('enforces the existing read permission', async () => {
     const response = await request('/admin/treasure-hunt/campaigns', fixture('viewer'));
     expect(response.status).toBe(403);
+  });
+
+  it('forwards Treasure Hunt redemption through the authenticated CRM operator boundary', async () => {
+    const upstream = vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: 'REDEEMED' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', upstream);
+    const response = await request('/admin/treasure-hunt/rewards/redeem', fixture(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'reward-redemption-1' },
+      body: JSON.stringify({ token: 'grant-token' }),
+    });
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledWith('http://127.0.0.1:8791/v1/admin/rewards/redeem', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ token: 'grant-token' }),
+      headers: expect.objectContaining({
+        Authorization: 'Bearer redemption-server-only-token',
+        'X-Organization-Id': 'org-a',
+        'X-PEC-Operator-Id': 'user',
+        'X-CRM-Permissions': 'rewards.redeem',
+        'Idempotency-Key': 'reward-redemption-1',
+      }),
+    }));
+    expect(JSON.stringify(await response.json())).not.toContain('redemption-server-only-token');
   });
 
   it('forwards target upload, preview and compile through the authenticated server boundary', async () => {
