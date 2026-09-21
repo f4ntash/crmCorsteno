@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import { formatPublicationDate } from '../../shared/publication/status';
+import { compileTreasureHuntTargets } from './browserCompiler';
 import { treasureHuntApi, type TreasureHuntDraft, type TreasureHuntDraftInput, type TreasureHuntDraftStep } from './api';
 import './treasure-hunt-draft.css';
 
 type Props = { org: string; organizationName?: string; campaignId?: string };
 type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
+type CompilationState = 'idle' | 'preparing' | 'compiling' | 'uploading' | 'validating' | 'success' | 'error';
 
 function blankDraft(): TreasureHuntDraft {
   const now = new Date().toISOString();
@@ -30,7 +32,22 @@ function errorText(error: unknown) {
   if (error instanceof ApiError && error.code === 'DRAFT_STALE') return 'El borrador cambió en otra sesión. Recargá para continuar.';
   if (error instanceof ApiError && error.details && Array.isArray(error.details)) return (error.details as Array<{ message?: string }>).map((issue) => issue.message).filter(Boolean).join(' ');
   if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
   return 'No se pudo guardar el borrador. Intentá nuevamente.';
+}
+
+function compilationLabel(state: CompilationState, progress: { completed: number; total: number } | null) {
+  if (state === 'preparing') return 'Preparando compilación…';
+  if (state === 'compiling') return progress ? `Compilando objetivos · ${progress.completed}/${progress.total}` : 'Compilando objetivos…';
+  if (state === 'uploading') return 'Subiendo artifact…';
+  if (state === 'validating') return 'Validando artifact…';
+  if (state === 'success') return 'Artifact compilado y validado';
+  if (state === 'error') return 'La compilación requiere atención';
+  return 'Sin compilación para esta revisión';
+}
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Props) {
@@ -39,9 +56,12 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
   const [etag, setEtag] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(campaignId));
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'error' | 'success'>('error');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(campaignId ? 'clean' : 'dirty');
   const [busyStep, setBusyStep] = useState<string | null>(null);
-  const [compiling, setCompiling] = useState(false);
+  const [compilationState, setCompilationState] = useState<CompilationState>('idle');
+  const [compilationProgress, setCompilationProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [widthDraft, setWidthDraft] = useState<Record<string, string>>({});
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
 
@@ -53,8 +73,9 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
       if (!active) return;
       setDraft(result.data.draft);
       setEtag(result.etag);
+      setCompilationState(result.data.draft.compilation?.status === 'COMPILED' ? 'success' : 'idle');
       setSaveStatus('clean');
-    }).catch((error) => { if (active) setMessage(errorText(error)); }).finally(() => { if (active) setLoading(false); });
+    }).catch((error) => { if (active) { setMessage(errorText(error)); setMessageTone('error'); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [campaignId, org]);
 
@@ -80,9 +101,12 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
   }, [saveStatus]);
 
   const currentInput = useMemo(() => inputFromDraft(draft), [draft]);
+  const compiling = compilationState === 'preparing' || compilationState === 'compiling' || compilationState === 'uploading' || compilationState === 'validating';
   const update = <K extends keyof TreasureHuntDraft>(key: K, value: TreasureHuntDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
     setSaveStatus('dirty');
+    setCompilationState('idle');
+    setCompilationProgress(null);
     setMessage('');
   };
   const updateStep = (stepId: string, patch: Partial<TreasureHuntDraftStep>) => update('steps', draft.steps.map((step) => step.stepId === stepId ? { ...step, ...patch } : step));
@@ -101,7 +125,7 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
   };
   const save = async () => {
     setSaveStatus('saving');
-    setMessage('');
+    setMessage(''); setMessageTone('error');
     try {
       if (!draft.id) {
         const result = await treasureHuntApi.create(org, { name: draft.name, slug: draft.slug, description: draft.description, progressionMode: 'SEQUENTIAL' });
@@ -117,50 +141,84 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
       setEtag(result.etag);
       setSaveStatus('saved');
     } catch (error) {
-      setMessage(errorText(error));
+      setMessage(errorText(error)); setMessageTone('error');
       setSaveStatus('error');
     }
   };
 
   const upload = async (stepId: string, file: File | undefined) => {
     if (!file || !draft.id || !etag) return;
-    setBusyStep(stepId); setMessage('');
+    setBusyStep(stepId); setMessage(''); setMessageTone('error'); setCompilationState('idle');
     try {
       const width = Number(widthDraft[stepId] ?? 18);
       const result = await treasureHuntApi.uploadTarget(org, draft.campaignId, stepId, file, width, etag);
       setDraft(result.data.draft); setEtag(result.etag); setSaveStatus('clean');
-    } catch (error) { setMessage(errorText(error)); } finally { setBusyStep(null); }
+    } catch (error) { setMessage(errorText(error)); setMessageTone('error'); } finally { setBusyStep(null); }
   };
 
   const removeTarget = async (stepId: string) => {
     if (!draft.id || !etag) return;
-    setBusyStep(stepId); setMessage('');
+    setBusyStep(stepId); setMessage(''); setMessageTone('error'); setCompilationState('idle');
     try {
       const result = await treasureHuntApi.removeTarget(org, draft.campaignId, stepId, etag);
       setDraft(result.data.draft); setEtag(result.etag); setSaveStatus('clean');
-    } catch (error) { setMessage(errorText(error)); } finally { setBusyStep(null); }
+    } catch (error) { setMessage(errorText(error)); setMessageTone('error'); } finally { setBusyStep(null); }
   };
 
   const saveWidth = async (stepId: string) => {
     if (!draft.id || !etag) return;
     const width = Number(widthDraft[stepId]);
-    if (!Number.isFinite(width) || width <= 0) { setMessage('El ancho físico debe ser mayor que 0 cm.'); return; }
+    if (!Number.isFinite(width) || width <= 0) { setMessage('El ancho físico debe ser mayor que 0 cm.'); setMessageTone('error'); return; }
     const current = draft.steps.find((step) => step.stepId === stepId)?.target?.physicalWidthCm;
     if (current === width) return;
-    setBusyStep(stepId); setMessage('');
+    setBusyStep(stepId); setMessage(''); setMessageTone('error'); setCompilationState('idle');
     try {
       const result = await treasureHuntApi.updateTargetWidth(org, draft.campaignId, stepId, width, etag);
       setDraft(result.data.draft); setEtag(result.etag); setSaveStatus('clean');
-    } catch (error) { setMessage(errorText(error)); } finally { setBusyStep(null); }
+    } catch (error) { setMessage(errorText(error)); setMessageTone('error'); } finally { setBusyStep(null); }
   };
 
   const compile = async () => {
     if (!draft.id || !etag) return;
-    setCompiling(true); setMessage('');
+    setCompilationState('preparing'); setCompilationProgress(null); setMessage(''); setMessageTone('error');
     try {
-      const result = await treasureHuntApi.compile(org, draft.campaignId, etag);
-      setDraft(result.data.draft); setEtag(result.etag); setSaveStatus('clean');
-    } catch (error) { setMessage(errorText(error)); } finally { setCompiling(false); }
+      const result = await treasureHuntApi.startCompilation(org, draft.campaignId, etag);
+      const compilationEtag = result.etag ?? etag;
+      setEtag(compilationEtag);
+      if ('draft' in result.data) {
+        setDraft(result.data.draft); setSaveStatus('clean'); setCompilationState('success'); setMessage('El artifact ya estaba compilado para esta revisión.'); setMessageTone('success');
+        return;
+      }
+      if (result.data.result !== 'BROWSER_COMPILATION_REQUIRED' || result.data.targets.length !== draft.steps.length) throw new Error('La API devolvió un contexto de compilación inválido.');
+      setCompilationState('compiling');
+      const artifact = await compileTreasureHuntTargets(result.data.targets, (stepId) => treasureHuntApi.previewTarget(org, draft.campaignId, stepId), (progress) => setCompilationProgress({ completed: progress.completed, total: progress.total }));
+      if (artifact.byteLength > result.data.maxArtifactBytes) throw new Error('El artifact compilado supera el límite permitido.');
+      setCompilationState('uploading');
+      const uploaded = await treasureHuntApi.uploadCompiledArtifact(org, draft.campaignId, result.data.compilationId, artifact, compilationEtag);
+      setDraft(uploaded.data.draft); setEtag(uploaded.etag ?? compilationEtag); setSaveStatus('clean');
+      setCompilationState('validating');
+      let compiled = false;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const status = await treasureHuntApi.getCompilation(org, draft.campaignId, result.data.compilationId);
+        if (status.compilation.status === 'FAILED' || status.compilation.jobStatus === 'FAILED') throw new Error(status.compilation.errorMessage ?? 'El backend rechazó el artifact compilado.');
+        if (status.compilation.status === 'COMPILED' && status.compilation.jobStatus === 'COMPILED') { compiled = true; break; }
+        await sleep(250);
+      }
+      if (!compiled) throw new Error('La validación del artifact tardó demasiado. Consultá el borrador nuevamente.');
+      const refreshed = await treasureHuntApi.getDraft(org, draft.campaignId);
+      setDraft(refreshed.data.draft); setEtag(refreshed.etag ?? compilationEtag); setCompilationState('success'); setMessage('Objetivos compilados y validados por el backend.'); setMessageTone('success');
+    } catch (error) { setCompilationState('error'); setMessage(errorText(error)); setMessageTone('error'); }
+  };
+
+  const publish = async () => {
+    if (!draft.id || !etag || draft.readiness !== 'READY' || saveStatus === 'dirty' || compiling || publishing) return;
+    if (!window.confirm('Vas a publicar una nueva versión de esta búsqueda. ¿Querés continuar?')) return;
+    setPublishing(true); setMessage(''); setMessageTone('error');
+    try {
+      const result = await treasureHuntApi.publish(org, draft.campaignId, etag, `${draft.campaignId}:${draft.revision}`);
+      setMessage(`Versión publicada: v${result.version?.version ?? '—'}.`); setMessageTone('success');
+    } catch (error) { setMessage(errorText(error)); setMessageTone('error'); }
+    finally { setPublishing(false); }
   };
 
   if (loading) return <main className="page access-state"><span className="loading-mark" />Cargando borrador…</main>;
@@ -169,7 +227,7 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
       <div><button type="button" className="back-link treasure-hunt-back-button" onClick={leave}>← Búsqueda del Tesoro</button><p className="eyebrow">EDITOR DE BORRADOR</p><h1>{draft.id ? 'Editar borrador' : 'Nueva búsqueda del tesoro'}</h1><p className="page-description">{organizationName ?? 'Organización actual'} · Solo lectura para versiones publicadas.</p></div>
       <span className="read-only-badge">Borrador sin publicar</span>
     </div>
-    {message && <p className="error" role="alert">{message}</p>}
+    {message && <p className={messageTone === 'success' ? 'success' : 'error'} role={messageTone === 'success' ? 'status' : 'alert'}>{message}</p>}
     <section className="card treasure-hunt-editor-section">
       <div className="workspace-section-heading"><div><p className="eyebrow">GENERAL</p><h2>Datos de la campaña</h2></div><span className="treasure-hunt-editor-state">Secuencial</span></div>
       <div className="treasure-hunt-form-grid">
@@ -196,6 +254,7 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
       {draft.reward ? <div className="treasure-hunt-form-grid"><label>Tipo<select value="COUPON" disabled><option value="COUPON">Cupón</option></select></label><label>Nombre<input value={draft.reward.name} maxLength={160} onChange={(event) => update('reward', { ...draft.reward!, name: event.target.value })} /></label><label>Valor o texto<input value={draft.reward.displayValue} maxLength={500} onChange={(event) => update('reward', { ...draft.reward!, displayValue: event.target.value })} /></label><label>Expiración (horas)<input type="number" min={1} max={8760} value={draft.reward.expiresInSeconds === null ? '' : draft.reward.expiresInSeconds / 3600} onChange={(event) => update('reward', { ...draft.reward!, expiresInSeconds: event.target.value ? Number(event.target.value) * 3600 : null })} /><small>Horas después de obtenerlo.</small></label><button type="button" className="button button-quiet" onClick={() => update('reward', null)}>Quitar premio</button></div> : <div><p className="field-help">Esta campaña no tiene premio configurado.</p><button type="button" className="button button-secondary" onClick={() => update('reward', { type: 'COUPON', name: '', displayValue: '', expiresInSeconds: null })}>Configurar premio cupón</button></div>}
     </section>
     <section className={`treasure-hunt-draft-readiness ${draft.readiness === 'READY' ? 'is-ready' : ''}`} aria-live="polite"><strong>{draft.readiness === 'READY' ? 'Listo para publicar' : 'Borrador incompleto'}</strong>{draft.issues.length > 0 && <ul>{draft.issues.map((issue) => <li key={`${issue.code}-${issue.stepId ?? ''}`}>{issue.message}</li>)}</ul>}{draft.compilation?.status === 'COMPILED' && <small>Compilado para la revisión {draft.compilation.draftRevision} · {draft.compilation.compilerVersion}</small>}</section>
-    <div className="treasure-hunt-editor-actions"><span>{saveStatus === 'dirty' ? 'Cambios sin guardar' : saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? `Borrador guardado · ${formatPublicationDate(draft.updatedAt)}` : 'Sin cambios'}</span><button type="button" className="button button-secondary" onClick={leave}>Salir</button><button type="button" className="button button-secondary" disabled={!draft.id || saveStatus === 'dirty' || compiling || Boolean(busyStep) || draft.steps.some((step) => !step.target)} onClick={() => void compile()}>{compiling ? 'Compilando…' : 'Compilar objetivos'}</button><button type="button" className="button" disabled={saveStatus === 'saving' || compiling || Boolean(busyStep)} onClick={() => void save()}>{saveStatus === 'saving' ? 'Guardando…' : 'Guardar borrador'}</button></div>
+    <section className={`treasure-hunt-compilation-state ${compilationState === 'success' ? 'is-success' : compilationState === 'error' ? 'is-error' : ''}`} aria-live="polite"><strong>{compilationLabel(compilationState, compilationProgress)}</strong>{compilationState === 'compiling' && compilationProgress && <small>Procesando imágenes objetivo en el navegador.</small>}{compilationState === 'validating' && <small>El backend verifica estructura, checksum, mapping y revisión exacta.</small>}</section>
+    <div className="treasure-hunt-editor-actions"><span>{saveStatus === 'dirty' ? 'Cambios sin guardar' : saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? `Borrador guardado · ${formatPublicationDate(draft.updatedAt)}` : 'Sin cambios'}</span><button type="button" className="button button-secondary" onClick={leave}>Salir</button><button type="button" className="button button-secondary" disabled={!draft.id || saveStatus === 'dirty' || compiling || Boolean(busyStep) || draft.steps.some((step) => !step.target)} onClick={() => void compile()}>{compiling ? compilationLabel(compilationState, compilationProgress) : 'Compilar objetivos en el navegador'}</button><button type="button" className="button button-secondary" disabled={!draft.id || !etag || draft.readiness !== 'READY' || saveStatus === 'dirty' || compiling || publishing || Boolean(busyStep)} onClick={() => void publish()}>{publishing ? 'Publicando…' : 'Publicar versión'}</button><button type="button" className="button" disabled={saveStatus === 'saving' || compiling || publishing || Boolean(busyStep)} onClick={() => void save()}>{saveStatus === 'saving' ? 'Guardando…' : 'Guardar borrador'}</button></div>
   </main>;
 }

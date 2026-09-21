@@ -26,6 +26,11 @@
 .treasure-hunt-draft-readiness.is-ready { border-left-color: var(--success); }
 .treasure-hunt-draft-readiness ul { display: grid; gap: .35rem; margin: .5rem 0 0; padding-left: 1.2rem; color: var(--text-secondary); }
 .treasure-hunt-draft-readiness small { display: block; margin-top: .5rem; color: var(--text-secondary); }
+.treasure-hunt-compilation-state { display: grid; gap: .35rem; margin-top: .75rem; padding: .8rem 1.25rem; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); }
+.treasure-hunt-compilation-state small { color: var(--text-secondary); }
+.treasure-hunt-compilation-state.is-success { border-left-color: var(--success); }
+.treasure-hunt-compilation-state.is-error { border-left-color: var(--danger); }
+.treasure-hunt-page .success { color: var(--success); }
 .treasure-hunt-draft-validation { margin-top: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); }
 .treasure-hunt-draft-validation ul { display: grid; gap: .35rem; margin: .5rem 0 0; padding-left: 1.2rem; color: var(--text-secondary); }
 .treasure-hunt-editor-actions { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: 1rem; padding: .9rem 0; border-top: 1px solid var(--border); background: var(--bg); }

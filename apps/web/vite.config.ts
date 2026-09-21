@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_RUNTIME_BASE_URL': JSON.stringify(runtimeBaseUrl),
     },
     plugins: [react(), ...(mode === 'https' ? [basicSsl()] : [])],
+    optimizeDeps: { exclude: ['@tracear/sdk'] },
     server: { strictPort: mode === 'https' },
   };
 });
