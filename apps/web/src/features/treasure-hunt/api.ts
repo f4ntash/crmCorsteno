@@ -57,6 +57,43 @@ export type TreasureHuntDetail = Omit<TreasureHuntSummary, 'stepCount' | 'reward
 };
 
 export type TreasureHuntDraftInput = Omit<TreasureHuntDraft, 'id' | 'campaignId' | 'organizationId' | 'baseCampaignVersionId' | 'basePublishedVersion' | 'revision' | 'issues' | 'incomplete' | 'readiness' | 'compilation' | 'createdAt' | 'updatedAt'>;
+export type TreasureHuntBrowserCompilationTarget = {
+  stepId: string;
+  order: number;
+  physicalWidthCm: number | null;
+  mimeType?: string;
+  byteSize?: number;
+  checksum?: string;
+  widthPx?: number | null;
+  heightPx?: number | null;
+  url: string;
+};
+export type TreasureHuntCompilationStart = {
+  result: 'BROWSER_COMPILATION_REQUIRED';
+  compilationId: string;
+  draftRevision: number;
+  compilerVersion: string;
+  maxArtifactBytes: number;
+  targets: TreasureHuntBrowserCompilationTarget[];
+};
+export type TreasureHuntCompilationStatus = {
+  id: string;
+  draftRevision: number;
+  status: 'COMPILE_PENDING' | 'COMPILED' | 'FAILED';
+  jobStatus: 'PENDING' | 'COMPILING' | 'COMPILED' | 'FAILED' | 'CANCELLED';
+  artifactStorageKey: string | null;
+  artifactChecksum: string | null;
+  artifactByteSize: number | null;
+  compilerVersion: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  compiledAt: string | null;
+};
+export type TreasureHuntPublishResult = {
+  result: 'PUBLISHED' | 'ALREADY_PUBLISHED';
+  version?: { id: string; version: number; publishedAt: string | null };
+  draft?: { revision: number; status: string };
+};
 
 export const treasureHuntApi = {
   list: (organizationId: string) => apiRequest<{ items: TreasureHuntSummary[] }>('/admin/treasure-hunt/campaigns', organizationId),
@@ -72,6 +109,9 @@ export const treasureHuntApi = {
   },
   removeTarget: (organizationId: string, campaignId: string, stepId: string, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId, { method: 'DELETE', headers: { 'If-Match': etag } }),
   updateTargetWidth: (organizationId: string, campaignId: string, stepId: string, physicalWidthCm: number, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId, { method: 'PATCH', headers: { 'If-Match': etag }, body: JSON.stringify({ physicalWidthCm }) }),
-  compile: (organizationId: string, campaignId: string, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile`, organizationId, { method: 'POST', headers: { 'If-Match': etag } }),
+  startCompilation: (organizationId: string, campaignId: string, etag: string) => apiRequestWithMeta<TreasureHuntCompilationStart | { draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile`, organizationId, { method: 'POST', headers: { 'If-Match': etag } }),
+  uploadCompiledArtifact: (organizationId: string, campaignId: string, compilationId: string, artifact: ArrayBuffer, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile/${encodeURIComponent(compilationId)}/artifact`, organizationId, { method: 'POST', headers: { 'If-Match': etag, 'Content-Type': 'application/octet-stream' }, body: artifact }),
+  getCompilation: (organizationId: string, campaignId: string, compilationId: string) => apiRequest<{ compilation: TreasureHuntCompilationStatus }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile/${encodeURIComponent(compilationId)}`, organizationId),
+  publish: (organizationId: string, campaignId: string, etag: string, idempotencyKey: string) => apiRequest<TreasureHuntPublishResult>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/publish`, organizationId, { method: 'POST', headers: { 'If-Match': etag, 'Idempotency-Key': idempotencyKey } }),
   previewTarget: (organizationId: string, campaignId: string, stepId: string) => apiDownload(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId),
 };

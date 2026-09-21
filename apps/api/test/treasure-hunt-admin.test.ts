@@ -54,7 +54,7 @@ describe('Treasure Hunt PEC server boundary', () => {
     const draft = await request('/admin/treasure-hunt/campaigns/campaign-a/draft', fixture(), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ name: 'Demo', slug: 'demo', description: '', progressionMode: 'SEQUENTIAL', steps: [], reward: null }) });
     expect(draft.status).toBe(200);
     expect(draft.headers.get('ETag')).toBe('"1"');
-    expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft', expect.objectContaining({ method: 'PUT', body: expect.any(String), headers: expect.objectContaining({ 'If-Match': '"1"' }) }));
+    expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft', expect.objectContaining({ method: 'PUT', body: expect.any(String), headers: expect.objectContaining({ 'If-Match': '"1"', 'X-CRM-Permissions': 'crm.manage' }) }));
   });
 
   it('keeps draft writes unavailable to read-only memberships', async () => {
@@ -102,5 +102,35 @@ describe('Treasure Hunt PEC server boundary', () => {
     const compile = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile', fixture(), { method: 'POST', headers: { 'If-Match': '"2"' } });
     expect(compile.status).toBe(200);
     expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft/compile', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'If-Match': '"2"' }) }));
+  });
+
+  it('forwards browser compilation, artifact upload, status and publish without exposing the upstream credential', async () => {
+    const upstream = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: 'BROWSER_COMPILATION_REQUIRED', compilationId: 'compile-a', draftRevision: 3, compilerVersion: 'tracear-sdk-0.2.1-browser', maxArtifactBytes: 50 * 1024 * 1024, targets: [{ stepId: 'step-a', order: 1, url: 'http://worker.local/target' }] }), { status: 202, headers: { 'Content-Type': 'application/json', ETag: '"3"' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ draft: { revision: 3 } }), { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"3"' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ compilation: { id: 'compile-a', draftRevision: 3, status: 'COMPILED', jobStatus: 'COMPILED' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: 'PUBLISHED', version: { id: 'version-a', version: 1, publishedAt: '2026-09-21T00:00:00.000Z' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', upstream);
+
+    const start = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile', fixture(), { method: 'POST', headers: { 'If-Match': '"3"' } });
+    expect(start.status).toBe(202);
+    expect(start.headers.get('ETag')).toBe('"3"');
+    expect(upstream.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ method: 'POST', body: '', headers: expect.objectContaining({ 'X-CRM-Permissions': 'crm.manage', 'If-Match': '"3"' }) }));
+
+    const artifact = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile/compile-a/artifact', fixture(), { method: 'POST', headers: { 'If-Match': '"3"', 'Content-Type': 'application/octet-stream' }, body: new Uint8Array([84, 82, 80, 75]) });
+    expect(artifact.status).toBe(200);
+    const artifactCall = upstream.mock.calls[1]?.[1] as RequestInit;
+    expect(artifactCall.headers).toMatchObject({ 'Content-Type': 'application/octet-stream', 'X-CRM-Permissions': 'crm.manage', 'If-Match': '"3"' });
+    expect((await new Response(artifactCall.body).arrayBuffer()).byteLength).toBe(4);
+
+    const status = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile/compile-a', fixture());
+    expect(status.status).toBe(200);
+    expect(upstream.mock.calls[2]?.[1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ 'X-CRM-Permissions': 'crm.read' }) }));
+
+    const publish = await request('/admin/treasure-hunt/campaigns/campaign-a/publish', fixture(), { method: 'POST', headers: { 'If-Match': '"3"', 'Idempotency-Key': 'campaign-a:3' } });
+    expect(publish.status).toBe(200);
+    expect(upstream.mock.calls[3]?.[0]).toBe('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/publish');
+    expect(upstream.mock.calls[3]?.[1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ 'X-CRM-Permissions': 'crm.manage', 'If-Match': '"3"', 'Idempotency-Key': 'campaign-a:3' }) }));
+    expect(JSON.stringify(await publish.json())).not.toContain('server-only-token');
   });
 });
