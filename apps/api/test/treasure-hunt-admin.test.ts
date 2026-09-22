@@ -54,6 +54,7 @@ describe('Treasure Hunt PEC server boundary', () => {
     const draft = await request('/admin/treasure-hunt/campaigns/campaign-a/draft', fixture(), { method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' }, body: JSON.stringify({ name: 'Demo', slug: 'demo', description: '', progressionMode: 'SEQUENTIAL', steps: [], reward: null }) });
     expect(draft.status).toBe(200);
     expect(draft.headers.get('ETag')).toBe('"1"');
+    expect(draft.headers.get('Cache-Control')).toContain('no-transform');
     expect(upstream).toHaveBeenLastCalledWith('http://127.0.0.1:8791/v1/admin/hunts/campaign-a/draft', expect.objectContaining({ method: 'PUT', body: expect.any(String), headers: expect.objectContaining({ 'If-Match': '"1"', 'X-CRM-Permissions': 'crm.manage' }) }));
   });
 
@@ -138,6 +139,7 @@ describe('Treasure Hunt PEC server boundary', () => {
     const start = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile', fixture(), { method: 'POST', headers: { 'If-Match': '"3"' } });
     expect(start.status).toBe(202);
     expect(start.headers.get('ETag')).toBe('"3"');
+    expect(start.headers.get('Cache-Control')).toContain('no-transform');
     expect(upstream.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ method: 'POST', body: '', headers: expect.objectContaining({ 'X-CRM-Permissions': 'crm.manage', 'If-Match': '"3"' }) }));
 
     const artifact = await request('/admin/treasure-hunt/campaigns/campaign-a/draft/compile/compile-a/artifact', fixture(), { method: 'POST', headers: { 'If-Match': '"3"', 'Content-Type': 'application/octet-stream' }, body: new Uint8Array([84, 82, 80, 75]) });

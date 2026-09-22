@@ -40,7 +40,7 @@ async function forward(c: Parameters<MiddlewareHandler>[0], path: string, method
       body: requestBody,
     });
     const responseBody = await response.text();
-    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, no-transform' });
     const etag = response.headers.get('ETag');
     if (etag) responseHeaders.set('ETag', etag);
     if (response.status === 404) return c.json({ error: { code: 'NOT_FOUND', message: 'Campaña no encontrada.' } }, 404);
@@ -76,7 +76,7 @@ async function forwardTargetUpload(c: Parameters<MiddlewareHandler>[0], path: st
     if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
     const response = await fetch(`${baseUrl}${path}`, { method: 'POST', headers, body: await file.arrayBuffer() });
     const responseBody = await response.text();
-    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, no-transform' });
     const etag = response.headers.get('ETag');
     if (etag) responseHeaders.set('ETag', etag);
     if (response.status === 404) return c.json({ error: { code: 'NOT_FOUND', message: 'Campaña o paso no encontrado.' } }, 404);
@@ -119,7 +119,7 @@ async function forwardCompiledArtifact(c: Parameters<MiddlewareHandler>[0], path
     if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
     const response = await fetch(`${baseUrl}${path}`, { method: 'POST', headers, body: await c.req.arrayBuffer() });
     const responseBody = await response.text();
-    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    const responseHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, no-transform' });
     const etag = response.headers.get('ETag');
     if (etag) responseHeaders.set('ETag', etag);
     if (response.status === 404) return c.json({ error: { code: 'NOT_FOUND', message: 'Compilación no encontrada.' } }, 404);
