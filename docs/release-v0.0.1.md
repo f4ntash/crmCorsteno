@@ -1,5 +1,14 @@
 # Corsteno CRM v0.0.1
 
+## Treasure Hunt COR-191 — estado de release
+
+- [x] Configurar URL server-side del Worker Treasure Hunt.
+- [x] Cargar secrets server-side de administración y redemption.
+- [x] Deploy del API CRM productivo.
+- [x] Health check del API CRM y smoke del upstream productivo.
+- [ ] Validar sesión autenticada real de CRM/PEC en la UI.
+- [ ] Configurar DNS/custom domain, si corresponde.
+
 ## Alcance
 
 - API Cloudflare Worker + D1.

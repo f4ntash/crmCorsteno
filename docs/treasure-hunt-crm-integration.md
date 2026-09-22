@@ -1,5 +1,9 @@
 # Treasure Hunt · integración CRM
 
+## Estado COR-191 — 22/09/2026
+
+El proxy CRM y el Worker `corsteno-api` están desplegados en producción y apuntan al Worker productivo de Treasure Hunt. Los secrets server-side esperados están cargados por nombre; no se documentan valores. No se aplicaron migraciones al D1 existente del CRM ni se configuró DNS.
+
 ## Estado del flujo
 
 El CRM expone Búsqueda del Tesoro bajo `/admin/treasure-hunt/*` y mantiene la credencial del servicio exclusivamente en `apps/api`. El navegador sólo usa la sesión CRM y el `X-Organization-Id`; nunca recibe `TREASURE_HUNT_ADMIN_TOKEN`.
@@ -34,4 +38,4 @@ Los valores locales se mantienen en archivos ignorados por Git. Este cambio no a
 
 `TREASURE_HUNT_ADMIN_TOKEN` y `TREASURE_HUNT_REDEMPTION_TOKEN` son credenciales server-side distintas. El CRM nunca las devuelve al browser: para redemption deriva `X-PEC-Operator-Id` de la sesión autenticada, deriva `X-Organization-Id` del contexto activo y mapea el permiso CRM `claims.redeem` al permiso upstream `rewards.redeem`.
 
-El cambio se verificó con tests del límite server-side, typecheck, lint y build local. No implica deploy, DNS, migraciones D1/R2, configuración de producción ni compra de servicios externos. La disponibilidad efectiva en staging/producción requiere que el CRM desplegado tenga esas variables y que el Worker administrativo, almacenamiento y base de datos estén configurados por separado.
+El cambio se verificó con tests del límite server-side, typecheck, lint y build local. El smoke productivo validó el Worker administrativo/redemption directamente y el health del CRM; la validación de la sesión autenticada real de la UI CRM/PEC queda como gate manual. No se configuró DNS ni se modificó el D1 existente del CRM.
