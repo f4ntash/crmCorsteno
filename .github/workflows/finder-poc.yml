@@ -1,0 +1,70 @@
+name: Finder POC
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: 'Exact Finder lead_job id to process'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finder-poc-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  finder:
+    name: Run one Finder job
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+      CORSTENO_API_BASE_URL: ${{ secrets.FINDER_POC_API_BASE_URL }}
+      CF_ACCOUNT_ID: ${{ secrets.FINDER_POC_CF_ACCOUNT_ID }}
+      CF_FINDER_QUEUE_ID: ${{ secrets.FINDER_POC_CF_FINDER_QUEUE_ID }}
+      CF_QUEUES_API_TOKEN: ${{ secrets.FINDER_POC_CF_QUEUES_API_TOKEN }}
+      FINDER_SERVICE_SECRET: ${{ secrets.FINDER_POC_SERVICE_SECRET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Finder dependencies
+        run: python -m pip install --disable-pip-version-check -r services/finder/requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify non-production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CORSTENO_API_BASE_URL}" || -z "${CF_ACCOUNT_ID}" || -z "${CF_FINDER_QUEUE_ID}" || -z "${CF_QUEUES_API_TOKEN}" || -z "${FINDER_SERVICE_SECRET}" ]]; then
+            echo "Missing one or more FINDER_POC_* GitHub Actions secrets."
+            exit 1
+          fi
+          if [[ "${CORSTENO_API_BASE_URL}" == "https://api.corsteno.com" ]]; then
+            echo "Production API is not allowed in the Finder POC workflow."
+            exit 1
+          fi
+          if [[ "${CF_FINDER_QUEUE_ID}" == "8aeabeecddb84840801c152c3e1afb75" ]]; then
+            echo "Production Finder queue is not allowed in the Finder POC workflow."
+            exit 1
+          fi
+
+      - name: Verify Finder and Chromium
+        env:
+          PYTHONPATH: services/finder
+        run: python -m finder doctor
+
+      - name: Process requested job
+        env:
+          PYTHONPATH: services/finder
+        run: python -m finder runner pull-once --job-id "${JOB_ID}" --require-job

@@ -1,0 +1,20 @@
+name = "corsteno-api-finder-poc"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+workers_dev = true
+
+[vars]
+ENVIRONMENT = "finder-poc"
+APP_VERSION = "finder-poc"
+WEB_ORIGINS = ""
+PUBLIC_ORIGINS = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "corsteno-finder-poc-db"
+database_id = "ee5a298b-9494-4478-8f5d-e0752948335a"
+migrations_dir = "src/db/finder-poc-migrations"
+
+[[queues.producers]]
+binding = "FINDER_JOB_QUEUE"
+queue = "corsteno-finder-poc"

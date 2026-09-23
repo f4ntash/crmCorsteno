@@ -4,11 +4,49 @@ from pathlib import Path
 import unittest
 
 from finder.runner.api_client import sign_request
-from finder.runner.queue_client import decode_queue_body, parse_pull_response
-from finder.runner.runner import env_config, load_local_environment
+from finder.runner.queue_client import PulledMessage, decode_queue_body, parse_pull_response
+from finder.runner.runner import ExternalFinderRunner, env_config, load_local_environment
 
 
 class RunnerTests(unittest.TestCase):
+    class Queue:
+        def __init__(self, messages):
+            self.messages = messages
+            self.retried = []
+
+        def pull_once(self, **_kwargs):
+            return self.messages
+
+        def retry(self, lease_id, **kwargs):
+            self.retried.append((lease_id, kwargs))
+
+    def test_runner_can_restrict_pull_to_one_job_id(self):
+        queue = self.Queue([PulledMessage("message", "lease", 1, {"version": 1, "jobId": "other", "organizationId": "org"})])
+        runner = ExternalFinderRunner(queue, object())
+        with self.assertRaisesRegex(RuntimeError, "otro job"):
+            runner.pull_once(expected_job_id="wanted")
+        self.assertEqual(queue.retried, [("lease", {"delay_seconds": 30})])
+
+    def test_runner_can_require_a_matching_job_message(self):
+        runner = ExternalFinderRunner(self.Queue([]), object())
+        with self.assertRaisesRegex(RuntimeError, "No se encontró"):
+            runner.pull_once(expected_job_id="wanted", require_job=True)
+
+    def test_runner_acks_invalid_message_but_fails_required_job(self):
+        class InvalidQueue(self.Queue):
+            def __init__(self):
+                super().__init__([PulledMessage("message", "lease", 1, {"version": 1, "jobId": "", "organizationId": ""})])
+                self.acked = []
+
+            def ack(self, lease_id):
+                self.acked.append(lease_id)
+
+        queue = InvalidQueue()
+        runner = ExternalFinderRunner(queue, object())
+        with self.assertRaisesRegex(RuntimeError, "inválido"):
+            runner.pull_once(expected_job_id="wanted", require_job=True)
+        self.assertEqual(queue.acked, ["lease"])
+
     def test_cloudflare_json_body_is_base64_decoded(self):
         encoded = base64.b64encode(json.dumps({"version": 1, "jobId": "job", "organizationId": "org"}).encode()).decode()
         messages = parse_pull_response({"success": True, "result": {"messages": [{"id": "m", "lease_id": "l", "attempts": 1, "body": encoded, "metadata": {"CF-Content-Type": "json"}}]}})

@@ -52,10 +52,12 @@ class ExternalFinderRunner:
         self.headed = headed
         self.log = log
 
-    def pull_once(self) -> int:
+    def pull_once(self, *, expected_job_id: str | None = None, require_job: bool = False) -> int:
         self.log("[Runner] Pulling one Finder message")
         messages = self.queue.pull_once(batch_size=1, visibility_timeout_ms=120_000)
         if not messages:
+            if require_job:
+                raise RuntimeError("No se encontró el job solicitado en la cola de Finder.")
             self.log("[Runner] No messages")
             return 0
         message = messages[0]
@@ -64,7 +66,12 @@ class ExternalFinderRunner:
         if message.payload.get("version") != 1 or not job_id or not organization_id:
             self.log("[Runner] Invalid message; acknowledging stale payload")
             self.queue.ack(message.lease_id)
+            if expected_job_id and require_job:
+                raise RuntimeError("La cola entregó un mensaje inválido; fue confirmado sin ejecutarlo.")
             return 0
+        if expected_job_id and job_id != expected_job_id:
+            self.queue.retry(message.lease_id, delay_seconds=30)
+            raise RuntimeError("La cola entregó otro job; el mensaje fue reintentado sin ejecutarlo.")
         try:
             context = self.api.claim(job_id, organization_id)
             self.log(f"[Runner] Job state: {context.state}")

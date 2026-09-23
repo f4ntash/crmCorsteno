@@ -21,6 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
     runner = sub.add_parser("runner", help="run the external Finder integration")
     runner_sub = runner.add_subparsers(dest="runner_command", required=True)
     pull = runner_sub.add_parser("pull-once", help="pull and process at most one Finder job")
+    pull.add_argument("--job-id", help="only process this exact job id")
+    pull.add_argument("--require-job", action="store_true", help="fail when the requested job is not available")
     pull.add_argument("--headed", action="store_true", help="run Chromium visibly")
     dry = sub.add_parser("dry-run", help="discover a small number of candidates locally")
     dry.add_argument("--category", required=True, choices=SUPPORTED_CATEGORIES)
@@ -76,5 +78,11 @@ def main() -> int:
         return run_dry_run(args)
     if args.command == "runner" and args.runner_command == "pull-once":
         from .runner.runner import build_runner
-        return 0 if build_runner(headed=args.headed).pull_once() >= 0 else 1
+        if args.require_job and not args.job_id:
+            raise SystemExit("--require-job requiere --job-id")
+        try:
+            return 0 if build_runner(headed=args.headed).pull_once(expected_job_id=args.job_id, require_job=args.require_job) >= 0 else 1
+        except RuntimeError as exc:
+            print(f"[Runner] {exc}")
+            return 1
     return 2
