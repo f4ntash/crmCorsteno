@@ -50,3 +50,22 @@ migrations_dir = "src/db/migrations"
 [[env.development.r2_buckets]]
 binding = "EXPERIENCE_ASSETS"
 bucket_name = "corsteno-experience-assets"
+
+# Development queues are intentionally explicit and isolated from production.
+# LEAD_JOB_QUEUE is consumed by this Worker; FINDER_JOB_QUEUE is consumed by
+# the external Finder runner through Cloudflare Queues HTTP pull.
+[[env.development.queues.producers]]
+binding = "LEAD_JOB_QUEUE"
+queue = "corsteno-lead-jobs-development"
+
+[[env.development.queues.producers]]
+binding = "FINDER_JOB_QUEUE"
+queue = "corsteno-finder-jobs-development"
+
+[[env.development.queues.consumers]]
+queue = "corsteno-lead-jobs-development"
+max_batch_size = 5
+max_batch_timeout = 5
+max_concurrency = 1
+max_retries = 3
+dead_letter_queue = "corsteno-lead-jobs-development-dlq"

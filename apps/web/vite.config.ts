@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), ...(mode === 'https' ? [basicSsl()] : [])],
     optimizeDeps: { exclude: ['@tracear/sdk'] },
-    server: { strictPort: mode === 'https' },
+    // Never silently move the CRM to another port: the test browser and API
+    // CORS configuration must target the same local origin intentionally.
+    server: { strictPort: true },
   };
 });
