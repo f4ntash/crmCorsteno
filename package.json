@@ -22,6 +22,7 @@
     "analytics:reset-local": "tsx scripts/analytics-reset-local.ts",
     "demo:la-estacion": "tsx scripts/seed-la-estacion-demo.ts",
     "demo:la-estacion:reset": "tsx scripts/seed-la-estacion-demo.ts --local --reset",
+    "demo:stations": "tsx scripts/seed-stations-experiences-demo.ts",
     "credentials:create": "tsx scripts/create-application-credential.ts",
     "db:bootstrap:production": "tsx scripts/bootstrap-production.ts",
     "auth:reset-production-admin": "tsx scripts/reset-production-admin.ts",
