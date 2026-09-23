@@ -1,0 +1,140 @@
+.stage {
+  position: relative;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+}
+
+.resultActive {
+  height: auto;
+  min-height: 0;
+}
+
+.previewLayer {
+  position: relative;
+  opacity: 1;
+  transform: none;
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+
+.previewHidden {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+.resultLayer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+
+.resultActive .resultLayer {
+  position: relative;
+  inset: auto;
+  min-height: 0;
+}
+
+.resultVisible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.experience {
+  position: relative;
+  width: 100%;
+  align-self: start;
+  justify-self: stretch;
+  min-height: 0;
+  padding: 0 0 16px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 767px) {
+  .experience {
+    min-height: 100svh;
+  }
+}
+
+.resultScope {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.title {
+  width: min(900px, calc(100% - 32px));
+  margin: 18px auto 10px;
+  padding: 0;
+  box-sizing: border-box;
+  color: #f3f6f9;
+  text-align: center;
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+ .resultScope :global(.roulette-result-card) {
+  width: 100%;
+  max-width: 474px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 30px 26px;
+ }
+
+ .resultScope :global(.roulette-result-card > strong) {
+  font-size: 30px;
+  line-height: 1.1;
+ }
+
+ .resultScope :global(.roulette-result-card h2) {
+  font-size: 30px;
+  line-height: 1.15;
+ }
+
+ .resultScope :global(.roulette-result-card .result-neutral-copy) {
+  font-size: 16px;
+  line-height: 1.45;
+ }
+
+ .resultScope :global(.roulette-result-card > img) {
+  width: 112px;
+  height: 112px;
+ }
+
+ .resultScope :global(.claim-qr) {
+  width: 196px;
+  height: 196px;
+ }
+
+ .resultScope :global(.claim-code strong) {
+  font-size: 24px;
+  line-height: 1.2;
+ }
+
+ .resultScope :global(.claim-code button) {
+  min-height: 48px;
+  font-size: 16px;
+ }
+
+ .resultScope :global(.result-cta) {
+  min-height: 48px;
+  font-size: 16px;
+ }
+
+

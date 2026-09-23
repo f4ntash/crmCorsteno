@@ -1,0 +1,11 @@
+.threeExperience {
+  position: relative;
+  width: min(100%, 1800px);
+  max-width: none;
+  height: clamp(680px, 86svh, 840px);
+  min-height: 680px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: transparent;
+}

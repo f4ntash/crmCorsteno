@@ -1,8 +1,18 @@
-:root{font-family:system-ui,sans-serif;color:#e8eef4;background:#0d141b}body{margin:0}main{min-height:100vh;display:grid;place-items:center;padding:14px;box-sizing:border-box}main>h1,main>p{max-width:600px;text-align:center}.roulette-stage{width:min(100%,760px);display:grid;justify-items:center;gap:10px}.roulette-3d{width:100%;height:min(78vh,680px);min-height:380px;touch-action:none}.spin-cta{min-width:190px;min-height:56px;border:1px solid #f3c969;border-radius:999px;background:linear-gradient(135deg,#f3c969,#d79f3f);color:#111923;font:800 1.1rem system-ui,sans-serif;box-shadow:0 8px 26px #0006;cursor:pointer}.spin-cta:disabled{cursor:wait;opacity:.65}.roulette-result-card{display:grid;justify-items:center;gap:10px;width:min(100%,390px);padding:22px 20px;border:1px solid #f3c96988;border-radius:24px;background:linear-gradient(145deg,#182633ee,#0b1118ee);box-shadow:0 16px 48px #0008;text-align:center;animation:result-pop .42s ease-out}.roulette-result-card strong{color:#f3c969;letter-spacing:.12em}.roulette-result-card img{object-fit:contain;border-radius:18px;background:#fff;padding:8px}.roulette-result-card h2{margin:0;color:#f3f6f9}.result-prize-fallback{display:grid;place-items:center;width:112px;height:112px;border:1px solid #f3c969;border-radius:18px;color:#f3c969;font-weight:800}.result-neutral-copy{color:#b8c5d1}.result-cta{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;border-radius:999px;background:#f3c969;color:#111923;font-weight:800;text-decoration:none}.roulette-error{margin:0;color:#fca5a5}@keyframes result-pop{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.roulette-result-card{animation:none}}@media(max-width:520px){.roulette-3d{height:58vh;min-height:320px}.roulette-result-card{width:calc(100% - 20px);box-sizing:border-box}.result-cta{width:100%}}
+:root{font-family:system-ui,sans-serif;color:#e8eef4;background:#0d141b}body{margin:0}main{min-height:100vh;display:grid;place-items:center;padding:14px;box-sizing:border-box}main>h1,main>p{max-width:600px;text-align:center}.roulette-stage{width:min(100%,760px);display:grid;justify-items:center;gap:10px}.roulette-3d{width:100%;height:min(78vh,680px);min-height:380px;touch-action:none}.spin-cta{min-width:190px;min-height:56px;border:1px solid #f3c969;border-radius:999px;background:linear-gradient(135deg,#f3c969,#d79f3f);color:#111923;font:800 1.1rem system-ui,sans-serif;box-shadow:0 8px 26px #0006;cursor:pointer}.spin-cta:disabled{cursor:wait;opacity:.65}.roulette-result-card{display:grid;justify-items:center;gap:10px;width:min(100%,390px);padding:22px 20px;border:1px solid #f3c96988;border-radius:24px;background:linear-gradient(145deg,#182633ee,#0b1118ee);box-shadow:0 16px 48px #0008;text-align:center;animation:result-pop .42s ease-out}.roulette-result-card strong{color:#f3c969;letter-spacing:.12em}.roulette-result-card img{object-fit:contain;border-radius:18px;background:#fff;padding:8px}.roulette-result-card h2{margin:0;color:#f3f6f9}.result-prize-fallback{display:grid;place-items:center;width:112px;height:112px;border:1px solid #f3c969;border-radius:18px;color:#f3c969;font-weight:800}.result-neutral-copy{color:#b8c5d1}.result-cta{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;border-radius:999px;background:#f3c969;color:#111923;font-weight:800;text-decoration:none}.roulette-error{margin:0;color:#fca5a5}@keyframes result-pop{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.roulette-result-card{animation:none}}
 
 /* Keep the public 3D stage inside narrow viewport grid tracks. */
 main { grid-template-columns: minmax(0, 1fr); }
 .roulette-stage, .roulette-3d { min-width: 0; max-width: 100%; }
-@media (max-width: 520px) {
-  .roulette-3d { width: 92%; height: auto; min-height: 0; aspect-ratio: 1; }
+
+/* Public roulette pages should size to their content instead of the viewport. */
+main.runtime-experience-page {
+  align-items: start;
+  min-height: auto;
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  main.runtime-experience-page {
+    padding: 14px;
+  }
 }

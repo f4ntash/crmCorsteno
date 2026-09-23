@@ -30,7 +30,7 @@ function Viewer() {
   const experience = state.data.experience;
   const renderer = resolveRuntimeRenderer(experience.type);
   if (!renderer) return <AvailabilityState reason="unavailable" />;
-  return <main>{renderer.render({ type: experience.type, config: experience.config, slug, entitlements: experience.featureEntitlements, prizeAvailability: experience.prizeAvailability, recovery: experience.recovery, catalogProducts: experience.products })}</main>;
+  return <main className="runtime-experience-page">{renderer.render({ type: experience.type, config: experience.config, slug, entitlements: experience.featureEntitlements, prizeAvailability: experience.prizeAvailability, recovery: experience.recovery, catalogProducts: experience.products })}</main>;
 }
 
 function MissingSlugState() { return <main><h1>Falta el enlace de la experiencia.</h1><p>Usá un enlace público válido para abrir esta ruleta.</p></main>; }
