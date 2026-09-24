@@ -128,7 +128,7 @@ export function TreasureHuntDraftPage({ org, organizationName, campaignId }: Pro
     setMessage(''); setMessageTone('error');
     try {
       if (!draft.id) {
-        const result = await treasureHuntApi.create(org, { name: draft.name, slug: draft.slug, description: draft.description, progressionMode: 'SEQUENTIAL' });
+        const result = await treasureHuntApi.create(org, currentInput);
         setDraft(result.data.draft);
         setEtag(result.etag);
         setSaveStatus('saved');
