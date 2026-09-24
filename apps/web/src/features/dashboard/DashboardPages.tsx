@@ -40,10 +40,16 @@ function formatDateTime(value: number | string | null | undefined): string {
     ? 'Sin actividad'
     : formatRecentEventTime(date.getTime());
 }
-function formatPercentage(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value))
-    return '—';
-  return `${(value * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`;
+function formatPercentage(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return '—';
+  return `${(numberValue * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`;
+}
+function finiteNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 type LegacyJson = ReturnType<JSON['parse']>;
 async function get<T = LegacyJson>(path: string, org?: string, init?: RequestInit) { return apiRequest<T>(path, org, init); }
@@ -56,7 +62,7 @@ const metricLabels: Record<string, string> = {
 };
 const readableLabel = readableEventLabel;
 function typeLabel(type?: string) { return type === 'webar' ? 'WebAR' : type === 'game' ? 'Juego' : type === 'roulette' ? 'Ruleta' : type === 'product-catalog' ? 'Catálogo de productos' : 'General'; }
-function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { return <div className="analytics-kpi"><small>{label}</small><b>{formatMetricValue(value)}</b></div>; }
+function MetricCard({ label, value }: { label: string; value: number | string | null | undefined }) { const displayValue = typeof value === 'string' && value.endsWith('%') ? value : formatMetricValue(value); return <div className="analytics-kpi"><small>{label}</small><b>{displayValue}</b></div>; }
 function SectionHeading({ eyebrow, title, detail }: { eyebrow?: string; title: string; detail?: string }) { return <div className="analytics-section-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2>{detail && <p>{detail}</p>}</div></div>; }
 function StatusPanel({ kind, children }: { kind: 'loading' | 'empty' | 'error'; children: React.ReactNode }) { return <div className={`analytics-state analytics-state-${kind}`} role={kind === 'error' ? 'alert' : undefined}>{kind === 'loading' && <span className="loading-mark" />}{children}</div>; }
 function Funnel({ insight }: { insight: NonNullable<Summary['rouletteInsights']> }) {
@@ -64,8 +70,14 @@ function Funnel({ insight }: { insight: NonNullable<Summary['rouletteInsights']>
   return <div className="roulette-funnel">{steps.map((step, index) => <div className="roulette-funnel-step" key={step.label}><strong>{formatMetricValue(step.value)}</strong><span>{step.label}</span>{index > 0 && <small>{steps[index - 1]!.value ? formatPercentage(step.value / steps[index - 1]!.value) : '—'} desde anterior</small>}</div>)}</div>;
 }
 function RouletteCampaignInsights({ summary, prizes, blocked, events, ar, hourly }: { summary: NonNullable<Summary['rouletteInsights']>; prizes: RoulettePrizePerformance[]; blocked: Item[]; events: Point[]; ar: { open: number; sessions: number; placed: number }; hourly: boolean }) {
+  const completedSpins = finiteNumber(summary.completedSpins);
+  const prizesWon = finiteNumber(summary.prizesWon) ?? prizes.reduce((total, prize) => total + (finiteNumber(prize.wins ?? prize.value) ?? 0), 0);
+  const claimsGenerated = finiteNumber(summary.claimsGenerated);
+  const claimsRedeemed = finiteNumber(summary.claimsRedeemed);
+  const winRate = completedSpins && prizesWon !== null ? prizesWon / completedSpins : finiteNumber(summary.winRate);
+  const redemptionRate = claimsGenerated && claimsRedeemed !== null ? claimsRedeemed / claimsGenerated : finiteNumber(summary.redemptionRate);
   return <>
-    <section className="analytics-section"><SectionHeading eyebrow="CAMPAÑA" title="Resultados de la ruleta" detail="Qué ocurrió en el período seleccionado." /><div className="grid analytics-kpi-grid roulette-kpis"><MetricCard label="Participantes / usuarios únicos" value={summary.participants} /><MetricCard label="Giros completados" value={summary.completedSpins} /><MetricCard label="Tasa de premios" value={formatPercentage(summary.winRate)} /><MetricCard label="Premios ganados" value={summary.prizesWon} /><MetricCard label="Claims generados" value={summary.claimsApplicable ? summary.claimsGenerated : null} /><MetricCard label="Claims canjeados" value={summary.claimsApplicable ? summary.claimsRedeemed : null} /><MetricCard label="Tasa de canje" value={summary.claimsApplicable ? formatPercentage(summary.redemptionRate) : null} /><MetricCard label="Participaciones bloqueadas" value={summary.blockedParticipation} /></div><Funnel insight={summary} /></section>
+    <section className="analytics-section"><SectionHeading eyebrow="CAMPAÑA" title="Resultados de la ruleta" detail="Qué ocurrió en el período seleccionado." /><div className="grid analytics-kpi-grid roulette-kpis"><MetricCard label="Participantes / usuarios únicos" value={summary.participants} /><MetricCard label="Giros completados" value={summary.completedSpins} /><MetricCard label="Tasa de premios" value={formatPercentage(winRate)} /><MetricCard label="Premios ganados" value={summary.prizesWon} /><MetricCard label="Claims generados" value={summary.claimsApplicable ? summary.claimsGenerated : null} /><MetricCard label="Claims canjeados" value={summary.claimsApplicable ? summary.claimsRedeemed : null} /><MetricCard label="Tasa de canje" value={summary.claimsApplicable ? formatPercentage(redemptionRate) : null} /><MetricCard label="Participaciones bloqueadas" value={summary.blockedParticipation} /></div><Funnel insight={summary} /></section>
     <section className="analytics-section"><SectionHeading eyebrow="PREMIOS" title="Rendimiento por premio" detail="Resultados reales del período; no son probabilidades configuradas." />{prizes.length ? <div className="roulette-prize-table" role="table"><div className="roulette-prize-row roulette-prize-head" role="row"><span>Premio</span><span>Ganados</span><span>Parte de premios</span><span>Claims / canjes</span></div>{prizes.map((prize) => <div className="roulette-prize-row" role="row" key={prize.prizeId ?? prize.name}><span>{prize.name}</span><strong>{prize.wins ?? prize.value}</strong><span>{formatPercentage(prize.shareOfWins)}</span><span>{prize.claimsApplicable ? `${prize.claimsGenerated ?? 0} · ${prize.pending ?? 0} pendientes · ${prize.redeemed ?? 0} canjeados` : 'Sin datos de claims'}</span></div>)}</div> : <StatusPanel kind="empty">Todavía no hay premios ganados en este período.</StatusPanel>}</section>
     <section className="analytics-section"><SectionHeading eyebrow="ACTIVIDAD" title="Actividad de la campaña" detail="Actividad por hora o día según el período seleccionado." /><div className="chart-grid"><ChartBox title="Eventos de la ruleta" data={events} hourly={hourly} /><Rank title="Participaciones bloqueadas" items={blocked} /></div>{(ar.open || ar.sessions || ar.placed) > 0 && <div className="chart-grid"><Rank title="Actividad AR" items={[{ name: 'AR abierto', value: ar.open }, { name: 'Sesiones AR', value: ar.sessions }, { name: 'Ruleta colocada', value: ar.placed }]} /></div>}</section>
   </>;
