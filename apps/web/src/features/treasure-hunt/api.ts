@@ -93,6 +93,14 @@ export type TreasureHuntPublishResult = {
   version?: { id: string; version: number; publishedAt: string | null };
   draft?: { revision: number; status: string };
 };
+export type TreasureHuntRedemptionResult = {
+  result: 'VALID' | 'ALREADY_REDEEMED' | 'EXPIRED' | 'INVALID';
+  status?: 'REDEEMED' | 'ALREADY_REDEEMED' | 'EXPIRED' | 'INVALID';
+  grantId?: string;
+  redeemedAt?: string;
+  expiresAt?: string | null;
+  reward?: { name: string; displayValue: string };
+};
 
 export const treasureHuntApi = {
   list: (organizationId: string) => apiRequest<{ items: TreasureHuntSummary[] }>('/admin/treasure-hunt/campaigns', organizationId),
@@ -112,5 +120,6 @@ export const treasureHuntApi = {
   uploadCompiledArtifact: (organizationId: string, campaignId: string, compilationId: string, artifact: ArrayBuffer, etag: string) => apiRequestWithMeta<{ draft: TreasureHuntDraft }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile/${encodeURIComponent(compilationId)}/artifact`, organizationId, { method: 'POST', headers: { 'If-Match': etag, 'Content-Type': 'application/octet-stream' }, body: artifact }),
   getCompilation: (organizationId: string, campaignId: string, compilationId: string) => apiRequest<{ compilation: TreasureHuntCompilationStatus }>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/compile/${encodeURIComponent(compilationId)}`, organizationId),
   publish: (organizationId: string, campaignId: string, etag: string, idempotencyKey: string) => apiRequest<TreasureHuntPublishResult>(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/publish`, organizationId, { method: 'POST', headers: { 'If-Match': etag, 'Idempotency-Key': idempotencyKey } }),
+  redeemReward: (organizationId: string, token: string, idempotencyKey: string) => apiRequest<TreasureHuntRedemptionResult>('/treasure-hunt/rewards/redeem', organizationId, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify({ token }) }),
   previewTarget: (organizationId: string, campaignId: string, stepId: string) => apiDownload(`/admin/treasure-hunt/campaigns/${encodeURIComponent(campaignId)}/draft/steps/${encodeURIComponent(stepId)}/target`, organizationId),
 };

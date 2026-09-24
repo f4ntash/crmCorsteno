@@ -30,7 +30,7 @@ function errorMessage(error: unknown) {
   return 'No pudimos cargar Búsqueda del Tesoro. Intentá nuevamente.';
 }
 
-type TreasureHuntPageProps = { org: string; organizationName?: string; canManage?: boolean };
+type TreasureHuntPageProps = { org: string; organizationName?: string; canManage?: boolean; canRedeem?: boolean };
 
 export function TreasureHuntListPage({ org, canManage = false }: TreasureHuntPageProps) {
   const navigate = useNavigate();
@@ -78,11 +78,14 @@ export function TreasureHuntListPage({ org, canManage = false }: TreasureHuntPag
   </main>;
 }
 
-export function TreasureHuntDetailPage({ org, organizationName, canManage = false }: TreasureHuntPageProps) {
+export function TreasureHuntDetailPage({ org, organizationName, canManage = false, canRedeem = false }: TreasureHuntPageProps) {
   const { id = '' } = useParams();
   const [campaign, setCampaign] = useState<TreasureHuntDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [redemptionCode, setRedemptionCode] = useState('');
+  const [redemptionMessage, setRedemptionMessage] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
   const load = () => {
     if (!org || !id) return;
     setLoading(true);
@@ -96,6 +99,20 @@ export function TreasureHuntDetailPage({ org, organizationName, canManage = fals
   if (loading) return <main className="page access-state"><span className="loading-mark" />Cargando campaña…</main>;
   if (error || !campaign) return <main className="page empty"><h1>{error || 'Campaña no encontrada.'}</h1><Link className="button button-secondary" to="/app/treasure-hunt">Volver a campañas</Link></main>;
   const published = campaign.versions.find((version) => version.version === campaign.publishedVersion);
+  async function redeemReward() {
+    const token = redemptionCode.trim();
+    if (!token || redeeming) return;
+    setRedeeming(true);
+    setRedemptionMessage('');
+    try {
+      const result = await treasureHuntApi.redeemReward(org, token, `treasure-hunt-${id}-${crypto.randomUUID()}`);
+      setRedemptionMessage(result.result === 'VALID' ? `Canje confirmado · ${result.reward?.name ?? 'Premio'}` : result.result === 'ALREADY_REDEEMED' ? 'Este premio ya fue canjeado.' : result.result === 'EXPIRED' ? 'Este premio está vencido.' : 'Código de premio inválido.');
+    } catch (caught) {
+      setRedemptionMessage(caught instanceof ApiError ? caught.message : 'No se pudo completar el canje.');
+    } finally {
+      setRedeeming(false);
+    }
+  }
   return <main className="page treasure-hunt-page">
     <div className="page-heading">
       <div>
@@ -134,6 +151,15 @@ export function TreasureHuntDetailPage({ org, organizationName, canManage = fals
           <div><dt>Expiración</dt><dd>{campaign.reward.expiresInSeconds ? `${Math.round(campaign.reward.expiresInSeconds / 3600)} h` : 'Sin expiración'}</dd></div>
         </dl> : <p className="treasure-hunt-secondary">No hay premio configurado.</p>}
       </section>
+      {canRedeem && published && <section className="card treasure-hunt-section">
+        <div className="workspace-section-heading"><div><p className="eyebrow">OPERACIÓN</p><h2>Canjear premio</h2></div></div>
+        <p className="field-help">Pegá el código del premio emitido por el runtime. El canje se registra una sola vez.</p>
+        <form onSubmit={(event) => { event.preventDefault(); void redeemReward(); }}>
+          <label>Código del premio<input value={redemptionCode} onChange={(event) => setRedemptionCode(event.target.value)} placeholder="UUID del premio" /></label>
+          <button className="button" type="submit" disabled={redeeming || !redemptionCode.trim()}>{redeeming ? 'Canjeando…' : 'Canjear premio'}</button>
+        </form>
+        {redemptionMessage && <p className="field-help" role="status">{redemptionMessage}</p>}
+      </section>}
       <section className="card treasure-hunt-section">
         <div className="workspace-section-heading"><div><p className="eyebrow">VERSIONES</p><h2>Historial de versiones</h2></div></div>
         <div className="treasure-hunt-versions">{campaign.versions.map((version) => <div className="treasure-hunt-version" key={version.id}>
