@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rouletteReferenceCameraFitDistance } from './rouletteReferenceCamera';
+import { rouletteReferenceCameraDistance, rouletteReferenceCameraFitDistance } from './rouletteReferenceCamera';
 
 describe('responsive roulette camera fit', () => {
   it('backs the camera away for narrow portrait canvases', () => {
@@ -18,15 +18,16 @@ describe('responsive roulette camera fit', () => {
   it.each([
     { viewport: '390x844', canvasWidth: 347, canvasHeight: 726 },
     { viewport: '430x932', canvasWidth: 387, canvasHeight: 802 },
-    { viewport: '768x1024', canvasWidth: 740, canvasHeight: 840 },
-  ])('fits the complete Ruleta Demo wheel in its measured $viewport canvas', ({ canvasWidth, canvasHeight }) => {
-    const wheelBoundsRadius = 8.515;
-    const verticalHalfFov = Math.PI / 12;
-    const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * (canvasWidth / canvasHeight));
-    const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
-    const fitDistance = rouletteReferenceCameraFitDistance(canvasWidth, canvasHeight, wheelBoundsRadius, 30);
+  ])('compensates for the narrower mobile canvas to restore the previous scale for $viewport', ({ canvasWidth, canvasHeight }) => {
+    const boundsRadius = 8.515;
+    const fittedDistance = rouletteReferenceCameraFitDistance(canvasWidth, canvasHeight, boundsRadius, 30);
 
-    expect(Math.asin(wheelBoundsRadius / fitDistance)).toBeLessThan(limitingHalfFov);
-    expect(fitDistance).toBeLessThan(100);
+    expect(fittedDistance).toBeGreaterThan(48);
+    expect(rouletteReferenceCameraDistance(canvasWidth, canvasHeight, boundsRadius, 30)).toBe(54);
+  });
+
+  it('keeps the responsive fit for tablet canvases wider than mobile', () => {
+    const tablet = rouletteReferenceCameraFitDistance(740, 840, 8.515, 30);
+    expect(rouletteReferenceCameraDistance(740, 840, 8.515, 30)).toBeCloseTo(tablet);
   });
 });

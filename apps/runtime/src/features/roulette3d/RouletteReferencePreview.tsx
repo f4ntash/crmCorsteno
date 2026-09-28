@@ -13,7 +13,7 @@ import type { Roulette3DConfig } from "@corsteno/roulette-3d";
 import styles from "./RouletteReferencePreview.module.css";
 import { rouletteReferenceRotationToPlaceSegmentAtPointer } from "./rouletteReferenceAngles";
 import { advanceRouletteReferenceSpin } from "./rouletteReferenceSpin";
-import { rouletteReferenceCameraFitDistance } from "./rouletteReferenceCamera";
+import { MOBILE_CAMERA_DISTANCE, rouletteReferenceCameraDistance } from "./rouletteReferenceCamera";
 
 type RouletteReferencePreviewProps = Pick<Roulette3DConfig, "segments" | "prizes"> & {
   prizeAvailability?: Roulette3DConfig["prizeAvailability"];
@@ -143,7 +143,6 @@ function fitForcedLines(context, values, maxWidth, preferredFontSize, minimumFon
 }
 
 const DESKTOP_CAMERA_DISTANCE = 30;
-const MOBILE_CAMERA_DISTANCE = 48;
 const RESPONSIVE_CAMERA_MAX_WIDTH = 900;
 
 function placeCamera(camera, distance = DESKTOP_CAMERA_DISTANCE) {
@@ -765,7 +764,7 @@ const RouletteReferencePreview = forwardRef<RouletteReferencePreviewHandle, Roul
           const bounds = new THREE.Box3().setFromObject(wheelMachine);
           const sphere = bounds.getBoundingSphere(new THREE.Sphere());
           const target = sphere.center;
-          const nextFit = rouletteReferenceCameraFitDistance(container.clientWidth, container.clientHeight, sphere.radius, camera.fov);
+          const nextFit = rouletteReferenceCameraDistance(container.clientWidth, container.clientHeight, sphere.radius, camera.fov);
           const zoom = fittedDistance > 0
             ? THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) / fittedDistance, 0.92, 1.2)
             : 1;
