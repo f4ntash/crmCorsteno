@@ -9,3 +9,12 @@
   overflow: hidden;
   background: transparent;
 }
+
+@media (min-width: 1829px) and (min-height: 977px) {
+  .threeExperience {
+    width: min(100%, calc(1200px * 15 / 7), calc(86svh * 15 / 7));
+    height: auto;
+    aspect-ratio: 15 / 7;
+    min-height: 0;
+  }
+}
