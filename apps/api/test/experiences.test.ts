@@ -299,6 +299,21 @@ describe('experience publishing', () => {
     expect((env as any).__spins).toHaveLength(0);
     expect((await fetchWithContext(new Request('http://localhost/experiences/a/preview'), env)).status).toBe(401);
   });
+  it('serves the authenticated preview with CORS headers for the configured runtime origin', async () => {
+    const env = Object.assign(fixture(validDraft), {
+      ENVIRONMENT: 'production',
+      WEB_ORIGINS: 'https://crm.corsteno.com,https://cosquinrock.corsteno.com',
+      PUBLIC_ORIGINS: 'https://corsteno-runtime.matiasgerstner.workers.dev,https://corsteno.com',
+    });
+    const response = await request('/experiences/a/preview', env, {
+      headers: { Origin: 'https://corsteno.com' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://corsteno.com');
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(await response.json()).toEqual(expect.objectContaining({ config: JSON.parse(validDraft) }));
+  });
   it('rejects a draft asset reference from another organization at the API boundary', async () => {
     const env = fixture(validDraft);
     const forged = JSON.parse(validDraft);

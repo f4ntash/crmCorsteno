@@ -72,12 +72,16 @@ app.use('*', async (c, next) => {
   const configuredPublicOrigins = c.env.PUBLIC_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
   const publicSiteMatch = c.req.path.match(/^\/public\/v1\/sites\/([^/]+)(?:\/|$)/);
   const publicAssetRequest = c.req.path.startsWith('/assets/');
+  const roulettePreviewRequest = /^\/experiences\/[^/]+\/preview$/.test(c.req.path);
   let allowedOrigins =
     c.env.ENVIRONMENT === 'development'
       ? [...new Set([...developmentOrigins, ...configuredOrigins, ...configuredPublicOrigins])]
       : c.req.path.startsWith('/public/') || publicAssetRequest
         ? [...configuredOrigins, ...configuredPublicOrigins]
         : configuredOrigins;
+  if (roulettePreviewRequest) {
+    allowedOrigins = [...new Set([...allowedOrigins, ...configuredPublicOrigins])];
+  }
   const publicApiRequest = Boolean(publicSiteMatch);
   if (publicApiRequest) {
     let key = publicSiteMatch?.[1] ?? '';

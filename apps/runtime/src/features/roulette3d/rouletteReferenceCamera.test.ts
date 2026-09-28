@@ -14,4 +14,19 @@ describe('responsive roulette camera fit', () => {
     const landscape = rouletteReferenceCameraFitDistance(1280, 720, 9, 30);
     expect(square).toBeCloseTo(landscape);
   });
+
+  it.each([
+    { viewport: '390x844', canvasWidth: 375, canvasHeight: 726 },
+    { viewport: '430x932', canvasWidth: 415, canvasHeight: 802 },
+    { viewport: '768x1024', canvasWidth: 740, canvasHeight: 840 },
+  ])('fits the complete Ruleta Demo wheel in its measured $viewport canvas', ({ canvasWidth, canvasHeight }) => {
+    const wheelBoundsRadius = 8.515;
+    const verticalHalfFov = Math.PI / 12;
+    const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * (canvasWidth / canvasHeight));
+    const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
+    const fitDistance = rouletteReferenceCameraFitDistance(canvasWidth, canvasHeight, wheelBoundsRadius, 30);
+
+    expect(Math.asin(wheelBoundsRadius / fitDistance)).toBeLessThan(limitingHalfFov);
+    expect(fitDistance).toBeLessThan(100);
+  });
 });

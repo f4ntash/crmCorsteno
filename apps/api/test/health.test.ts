@@ -97,6 +97,25 @@ describe('development CORS', () => {
     expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Idempotency-Key');
   });
 
+  it('keeps the local runtime origin available for authenticated previews', async () => {
+    const response = await app.request(
+      '/experiences/experience-a/preview',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'http://localhost:5175',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'x-organization-id',
+        },
+      },
+      { ENVIRONMENT: 'development', APP_VERSION: 'test' },
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5175');
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+  });
+
   it('does not allow arbitrary origins with credentials', async () => {
     const response = await app.request(
       '/v1/events/batch',
@@ -184,5 +203,58 @@ describe('production CORS', () => {
     expect(response.status).toBe(204);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
     expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+  });
+
+  it.each([
+    'https://crm.corsteno.com',
+    'https://cosquinrock.corsteno.com',
+    'https://corsteno-runtime.matiasgerstner.workers.dev',
+    'https://corsteno.com',
+  ])('allows the configured CRM/runtime origin %s to preflight an authenticated preview', async (origin) => {
+    const response = await app.request(
+      '/experiences/experience-a/preview',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'x-organization-id',
+        },
+      },
+      {
+        ENVIRONMENT: 'production',
+        APP_VERSION: 'test',
+        WEB_ORIGINS: 'https://crm.corsteno.com,https://cosquinrock.corsteno.com',
+        PUBLIC_ORIGINS: 'https://corsteno-runtime.matiasgerstner.workers.dev,https://corsteno.com',
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('X-Organization-Id');
+  });
+
+  it('keeps runtime preview CORS restricted to configured origins', async () => {
+    const response = await app.request(
+      '/experiences/experience-a/preview',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://unknown.example',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'x-organization-id',
+        },
+      },
+      {
+        ENVIRONMENT: 'production',
+        APP_VERSION: 'test',
+        WEB_ORIGINS: 'https://crm.corsteno.com',
+        PUBLIC_ORIGINS: 'https://corsteno-runtime.matiasgerstner.workers.dev,https://corsteno.com',
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 });
