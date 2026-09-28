@@ -313,8 +313,16 @@ fieldset {
 
 .roulette-quick-actions a,
 .roulette-quick-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 40px;
+  box-sizing: border-box;
+  padding: 0 14px;
   border-radius: 6px;
+  font: inherit;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .prize-editor {

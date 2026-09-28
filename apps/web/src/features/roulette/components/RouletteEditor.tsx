@@ -204,15 +204,16 @@ function RouletteEditorContent({
 
   if (loading) return <div className="loading-state" aria-live="polite"><span className="loading-mark" />Cargando configuración…</div>;
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setValidationRequested(true);
     setMessage('');
     setError('');
-    if (!canEdit || !dirty || saving) return;
+    if (!canEdit || !dirty) return true;
+    if (saving) return false;
     if (!formValid) {
       setStep(firstInvalidStep);
       setError('Revisá los campos marcados antes de guardar.');
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -221,8 +222,10 @@ function RouletteEditorContent({
       onDraftSaved?.(draft);
       onUnpublishedChange?.(false);
       setMessage('Borrador guardado.');
+      return true;
     } catch (caught) {
       setError((caught as Error).message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -245,11 +248,30 @@ function RouletteEditorContent({
   }
 
   function openTest() {
-    if (dirty) {
-      setMessage('Guardá el borrador para probar los últimos cambios.');
+    if (saving) {
+      setMessage('Esperá a que termine de guardarse el borrador.');
       return;
     }
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+      setError('El navegador bloqueó la prueba. Permití las ventanas emergentes e intentá nuevamente.');
+      return;
+    }
+    previewWindow.opener = null;
+    setError('');
+    if (!dirty) {
+      previewWindow.location.replace(previewUrl);
+      return;
+    }
+    setMessage('Guardando el borrador antes de abrir la prueba…');
+    void save().then((saved) => {
+      if (!saved) {
+        previewWindow.close();
+        return;
+      }
+      setMessage('Borrador guardado. Abriendo la prueba…');
+      previewWindow.location.replace(previewUrl);
+    });
   }
 
   function updateContent(key: 'title' | 'intro' | 'spinButtonLabel' | 'winMessage' | 'noPrizeMessage', value: string) {
@@ -266,7 +288,7 @@ function RouletteEditorContent({
 
   function previewPanel() {
     return <section className="card roulette-preview-panel">
-      <div className="workspace-section-heading"><div><p className="eyebrow">VISTA PREVIA</p><h3>Experiencia pública</h3><p className="field-help">Previsualización del borrador; no publica cambios.</p></div><button type="button" className="secondary" onClick={openTest}>Probar experiencia</button></div>
+      <div className="workspace-section-heading"><div><p className="eyebrow">VISTA PREVIA</p><h3>Experiencia pública</h3><p className="field-help">Abre una prueba de la ruleta. Si hay cambios pendientes, se guardan como borrador antes de abrirla; no se publica.</p></div><button type="button" className="secondary" disabled={saving} onClick={openTest}>Probar experiencia</button></div>
       <div className="campaign-preview" style={{ backgroundColor: preview.backgroundColor, ...(preview.branding?.backgroundImageUrl ? { backgroundImage: `linear-gradient(#0d141bcc,#0d141bcc), url("${preview.branding.backgroundImageUrl}")` } : {}) }}>
         {preview.branding?.logoUrl && <img src={preview.branding.logoUrl} alt="Logo de la experiencia" />}
         <strong>{preview.content?.title || 'Ruleta de premios'}</strong>
@@ -308,7 +330,7 @@ function RouletteEditorContent({
     <section className="roulette-step-panel" hidden={step !== 'appearance'} aria-labelledby="roulette-step-appearance">
       <div className="step-panel-heading"><p className="eyebrow">PASO 4</p><h4 id="roulette-step-appearance">Apariencia</h4><p>Personalizá la experiencia pública con la marca y los textos que ya soporta Roulette.</p></div>
       <div className="roulette-appearance-grid"><div className="roulette-appearance-editor">
-        <section className="appearance-section"><div className="appearance-section-heading"><h5>Branding &amp; Content</h5></div><div className="branding-upload-grid"><div><span className="field-label">Logo</span><AssetPicker org={org} value={draft.branding?.logoUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, logoUrl: url } })} categories={['logo', 'image']} canUpload={canEdit && canManageAssets} disabled={!canEdit} label="Elegir logo" /></div><div><span className="field-label">Imagen de fondo</span><AssetPicker org={org} value={draft.branding?.backgroundImageUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, backgroundImageUrl: url } })} categories={['background', 'image']} canUpload={canEdit && canManageAssets} disabled={!canEdit} label="Elegir fondo" /></div></div><p className="field-help">Los campos vacíos usan los textos actuales del runtime. Los cambios se aplican al publicar.</p>
+        <section className="appearance-section"><div className="appearance-section-heading"><h5>Branding &amp; Content</h5><p className="field-help">El logo aparece sobre el título. La imagen cubre el fondo detrás de la ruleta; el color queda como respaldo. Ambos se ven en la prueba y en la experiencia pública.</p></div><div className="branding-upload-grid"><div><span className="field-label">Logo</span><AssetPicker org={org} value={draft.branding?.logoUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, logoUrl: url } })} categories={['logo', 'image']} canUpload={canEdit && canManageAssets} disabled={!canEdit} label="Elegir logo" /><small className="field-help">Se muestra encima del título.</small></div><div><span className="field-label">Imagen de fondo</span><AssetPicker org={org} value={draft.branding?.backgroundImageUrl} onChange={(url) => setDraft({ ...draft, branding: { ...draft.branding, backgroundImageUrl: url } })} categories={['background', 'image']} canUpload={canEdit && canManageAssets} disabled={!canEdit} label="Elegir fondo" /><small className="field-help">Cubre el fondo detrás de la rueda.</small></div></div><p className="field-help">Los cambios se guardan en el borrador y se muestran al probarlo; al publicar, quedan disponibles en el enlace público.</p>
           <div className="appearance-copy-fields">
             <CopyField label="Título de la experiencia" value={draft.content?.title ?? ''} placeholder="Ruleta de premios" maxLength={ROULETTE_LIMITS.title} error={validationRequested ? fieldError(fieldErrors, 'content.title') : undefined} disabled={!canEdit} onChange={(value) => updateContent('title', value)} />
             <CopyField label="Intro e instrucciones" value={draft.content?.intro ?? ''} placeholder="Girá la ruleta y descubrí tu premio." maxLength={ROULETTE_LIMITS.intro} multiline error={validationRequested ? fieldError(fieldErrors, 'content.intro') : undefined} disabled={!canEdit} onChange={(value) => updateContent('intro', value)} />

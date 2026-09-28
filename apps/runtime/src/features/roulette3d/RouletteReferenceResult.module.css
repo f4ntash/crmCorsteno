@@ -89,6 +89,18 @@
   overflow-wrap: anywhere;
 }
 
+.logo {
+  display: block;
+  width: min(220px, calc(100% - 40px));
+  max-height: 76px;
+  margin: 18px auto 0;
+  object-fit: contain;
+}
+
+.logo + .title {
+  margin-top: 10px;
+}
+
  .resultScope :global(.roulette-result-card) {
   width: 100%;
   max-width: 474px;

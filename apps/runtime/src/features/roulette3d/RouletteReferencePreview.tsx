@@ -13,6 +13,7 @@ import type { Roulette3DConfig } from "@corsteno/roulette-3d";
 import styles from "./RouletteReferencePreview.module.css";
 import { rouletteReferenceRotationToPlaceSegmentAtPointer } from "./rouletteReferenceAngles";
 import { advanceRouletteReferenceSpin } from "./rouletteReferenceSpin";
+import { rouletteReferenceCameraFitDistance } from "./rouletteReferenceCamera";
 
 type RouletteReferencePreviewProps = Pick<Roulette3DConfig, "segments" | "prizes"> & {
   prizeAvailability?: Roulette3DConfig["prizeAvailability"];
@@ -143,8 +144,7 @@ function fitForcedLines(context, values, maxWidth, preferredFontSize, minimumFon
 
 const DESKTOP_CAMERA_DISTANCE = 30;
 const MOBILE_CAMERA_DISTANCE = 48;
-const MOBILE_MIN_CAMERA_DISTANCE = 45;
-const MOBILE_MAX_CAMERA_DISTANCE = 56;
+const RESPONSIVE_CAMERA_MAX_WIDTH = 900;
 
 function placeCamera(camera, distance = DESKTOP_CAMERA_DISTANCE) {
   camera.position
@@ -689,7 +689,7 @@ const RouletteReferencePreview = forwardRef<RouletteReferencePreviewHandle, Roul
       if (!isActive || !container) return;
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(30, container.clientWidth / Math.max(container.clientHeight, 1), 1, 100);
-      const isMobile = container.clientWidth <= 767;
+      const isMobile = container.clientWidth <= RESPONSIVE_CAMERA_MAX_WIDTH;
       placeCamera(camera, isMobile ? MOBILE_CAMERA_DISTANCE : DESKTOP_CAMERA_DISTANCE);
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setClearColor(0x000000, 0);
@@ -730,8 +730,8 @@ const RouletteReferencePreview = forwardRef<RouletteReferencePreviewHandle, Roul
       controls.maxAzimuthAngle = Math.PI / 4;
       controls.minPolarAngle = Math.PI / 3;
       controls.maxPolarAngle = Math.PI / 1.8;
-      controls.minDistance = isMobile ? MOBILE_MIN_CAMERA_DISTANCE : 18;
-      controls.maxDistance = isMobile ? MOBILE_MAX_CAMERA_DISTANCE : 45;
+      controls.minDistance = 18;
+      controls.maxDistance = isMobile ? 90 : 45;
       controls.update();
       cleanupFns.push(() => controls.dispose());
 
@@ -757,6 +757,32 @@ const RouletteReferencePreview = forwardRef<RouletteReferencePreviewHandle, Roul
       );
       wheelMachineRef.current = wheelMachine;
       scene.add(wheelMachine);
+      if (isMobile) {
+        let fittedDistance = 0;
+        const fitMobileCamera = () => {
+          if (!controls || !container) return;
+          wheelMachine.updateWorldMatrix(true, true);
+          const bounds = new THREE.Box3().setFromObject(wheelMachine);
+          const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+          const target = sphere.center;
+          const nextFit = rouletteReferenceCameraFitDistance(container.clientWidth, container.clientHeight, sphere.radius, camera.fov);
+          const zoom = fittedDistance > 0
+            ? THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) / fittedDistance, 0.92, 1.2)
+            : 1;
+          const direction = camera.position.clone().sub(controls.target).normalize();
+          controls.target.copy(target);
+          camera.position.copy(target).add(direction.multiplyScalar(nextFit * zoom));
+          camera.lookAt(target);
+          controls.minDistance = nextFit * 0.92;
+          controls.maxDistance = nextFit * 1.2;
+          fittedDistance = nextFit;
+          controls.update();
+        };
+        fitMobileCamera();
+        const responsiveFitObserver = new ResizeObserver(fitMobileCamera);
+        responsiveFitObserver.observe(container);
+        cleanupFns.push(() => responsiveFitObserver.disconnect());
+      }
       if (pendingSpinRef.current !== null) {
         const pendingTarget = pendingSpinRef.current;
         pendingSpinRef.current = null;

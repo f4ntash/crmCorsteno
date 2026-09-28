@@ -54,9 +54,9 @@ export function ParticipationControls({
   }
 
   const fields: Array<{ key: ParticipationKey; label: string; help: string; placeholder?: string }> = [
-    { key: 'maxSpinsPerDevice', label: 'Límite por dispositivo', help: 'Cantidad máxima de giros desde un mismo dispositivo.', placeholder: 'Sin límite' },
-    { key: 'maxSpinsPerSession', label: 'Límite por sesión', help: 'Cantidad máxima de giros dentro de una sesión.', placeholder: 'Sin límite' },
-    { key: 'cooldownSeconds', label: 'Tiempo entre giros (segundos)', help: 'Esperá esta cantidad de segundos antes de permitir otro giro.', placeholder: '0' },
+    { key: 'maxSpinsPerDevice', label: 'Máximo de giros por dispositivo', help: 'Cuenta los giros de este dispositivo. Dejalo vacío para no limitarlo.', placeholder: 'Sin límite' },
+    { key: 'maxSpinsPerSession', label: 'Máximo de giros por sesión', help: 'Cuenta los giros de la sesión actual del navegador. Dejalo vacío para no limitarla.', placeholder: 'Sin límite' },
+    { key: 'cooldownSeconds', label: 'Espera mínima entre giros (segundos)', help: 'Pausa en segundos antes de permitir otro giro desde este dispositivo; 0 no agrega espera.', placeholder: '0' },
   ];
 
   return (

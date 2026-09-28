@@ -25,7 +25,7 @@ export type RuntimeRenderer = {
 const rouletteRuntimeRenderer: RuntimeRenderer = {
   type: 'roulette',
   render: ({ config, slug, entitlements, prizeAvailability, recovery }) => createElement(LazyRoulette3DView, {
-    config: resolveRuntimeConfig(config as Roulette3DConfig, entitlements),
+    config: resolveRuntimeConfig(config as Roulette3DConfig),
     slug,
     entitlements,
     prizeAvailability,

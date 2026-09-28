@@ -58,6 +58,7 @@ function Shell() {
     [workspaceProductsLoading, setWorkspaceProductsLoading] = useState(false),
     [workspaceProductsOrganizationId, setWorkspaceProductsOrganizationId] = useState(''),
     [treasureHuntAvailable, setTreasureHuntAvailable] = useState(false),
+    [treasureHuntHasCampaigns, setTreasureHuntHasCampaigns] = useState(false),
     [navigationOpen, setNavigationOpen] = useState(false);
   const n = useNavigate();
   const location = useLocation();
@@ -88,6 +89,7 @@ function Shell() {
     setWorkspaceProductsLoading(shouldLoadWorkspaceProducts);
     setWorkspaceProductsOrganizationId('');
     setTreasureHuntAvailable(false);
+    setTreasureHuntHasCampaigns(false);
     if (!shouldLoadWorkspaceProducts) return;
 
     let active = true;
@@ -105,8 +107,11 @@ function Shell() {
         if (active) setWorkspaceProductsLoading(false);
       });
     void get<{ items: unknown[] }>('/admin/treasure-hunt/campaigns', o)
-      .then(() => {
-        if (active) setTreasureHuntAvailable(true);
+      .then(({ items }) => {
+        if (active) {
+          setTreasureHuntAvailable(true);
+          setTreasureHuntHasCampaigns(items.length > 0);
+        }
       })
       .catch(() => {
         if (active) setTreasureHuntAvailable(false);
@@ -160,6 +165,7 @@ function Shell() {
     applicationTypes: visibleWorkspaceApplicationTypes,
     activeApplications: visibleActiveApplications,
     treasureHuntAvailable,
+    treasureHuntHasCampaigns,
   });
   const canUseWorkspaceProduct = (type?: string) => workspaceProductsReady && isWorkspaceProductAssigned(workspaceProductTypes, type);
   const currentExperienceId = location.pathname.match(/^\/app\/experiences\/([^/]+)$/)?.[1] ?? '';

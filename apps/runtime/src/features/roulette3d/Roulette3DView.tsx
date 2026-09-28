@@ -204,6 +204,7 @@ export function Roulette3DView({ config, slug, entitlements, prizeAvailability, 
   }
   return (
     <div className={referenceResultStyles.experience} style={experienceStyle}>
+      {config.branding?.logoUrl && <img className={referenceResultStyles.logo} src={config.branding.logoUrl} alt="Logo de la experiencia" />}
       {content.title && <h1 className={referenceResultStyles.title}>{content.title}</h1>}
       {referenceStage}
       <div ref={containerRef} aria-hidden="true" style={legacyEngineStyle} />

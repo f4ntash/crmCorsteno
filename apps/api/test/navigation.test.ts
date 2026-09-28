@@ -36,6 +36,7 @@ describe('product-scoped navigation', () => {
 
   it('shows only Roulette modules in a Roulette workspace', () => {
     expect(keys(['roulette'])).toEqual(['summary', 'experiences', 'analytics', 'reports', 'redeem']);
+    expect(keys(['roulette'], { treasureHuntAvailable: true })).not.toContain('treasure-hunt');
     expect(keys(['roulette'])).not.toContain('channels');
     expect(keys(['roulette'])).not.toContain('products');
     expect(keys(['roulette'])).not.toContain('leads');
@@ -67,6 +68,11 @@ describe('product-scoped navigation', () => {
     expect(result).toEqual([...new Set(result)]);
     expect(result).not.toContain('products');
     expect(result).not.toContain('leads');
+    expect(keys(['roulette', 'website'], { treasureHuntAvailable: true })).not.toContain('treasure-hunt');
+  });
+
+  it('keeps Treasure Hunt visible when a Roulette workspace also has campaigns', () => {
+    expect(keys(['roulette'], { treasureHuntAvailable: true, treasureHuntHasCampaigns: true })).toContain('treasure-hunt');
   });
 
   it('keeps an empty workspace on Inicio only', () => {

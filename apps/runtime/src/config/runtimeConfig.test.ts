@@ -6,11 +6,10 @@ const config = { schemaVersion: 1 as const, backgroundColor: '#111111', branding
 describe('runtime campaign configuration', () => {
   it('keeps legacy configs valid without branding or content', () => {
     const legacy = { schemaVersion: 1 as const, backgroundColor: '#111111', prizes: [], segments: [] };
-    expect(resolveRuntimeConfig(legacy, { features: [], maxActiveExperiences: 0 })).toEqual(legacy);
+    expect(resolveRuntimeConfig(legacy)).toEqual(legacy);
   });
 
-  it('only exposes campaign branding to custom-branding entitlements', () => {
-    expect(resolveRuntimeConfig(config, { features: [], maxActiveExperiences: 1 })).not.toHaveProperty('branding');
-    expect(resolveRuntimeConfig(config, { features: ['custom_branding'], maxActiveExperiences: 3 })).toEqual(config);
+  it('preserves campaign branding and content as stored', () => {
+    expect(resolveRuntimeConfig(config)).toEqual(config);
   });
 });

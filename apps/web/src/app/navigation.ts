@@ -35,6 +35,8 @@ export type NavigationContext = {
   applicationTypes?: ReadonlySet<string>;
   activeApplications?: readonly WorkspaceApplication[];
   treasureHuntAvailable?: boolean;
+  /** A campaign proves Treasure Hunt is part of a workspace that also owns Roulette. */
+  treasureHuntHasCampaigns?: boolean;
 };
 
 /**
@@ -151,7 +153,11 @@ export function buildNavigation(context: NavigationContext): NavigationItem[] {
     }
   }
   if (!items.has(analyticsNavigation.key) && (context.activeApplications?.length ?? 0) > 0 && hasPermission(context, analyticsNavigation.requiredPermission)) items.set(analyticsNavigation.key, analyticsNavigation);
-  if (canAccessTreasureHuntRoute(context)) items.set(treasureHuntNavigation.key, treasureHuntNavigation);
+  // Treasure Hunt has no product assignment in CRM. In a Roulette workspace,
+  // an organization-scoped campaign is the available signal for coexistence.
+  if (canAccessTreasureHuntRoute(context) && (!productTypes.has('roulette') || context.treasureHuntHasCampaigns)) {
+    items.set(treasureHuntNavigation.key, treasureHuntNavigation);
+  }
   return [...items.values()];
 }
 
