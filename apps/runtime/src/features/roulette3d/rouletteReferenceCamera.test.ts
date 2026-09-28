@@ -16,8 +16,8 @@ describe('responsive roulette camera fit', () => {
   });
 
   it.each([
-    { viewport: '390x844', canvasWidth: 375, canvasHeight: 726 },
-    { viewport: '430x932', canvasWidth: 415, canvasHeight: 802 },
+    { viewport: '390x844', canvasWidth: 347, canvasHeight: 726 },
+    { viewport: '430x932', canvasWidth: 387, canvasHeight: 802 },
     { viewport: '768x1024', canvasWidth: 740, canvasHeight: 840 },
   ])('fits the complete Ruleta Demo wheel in its measured $viewport canvas', ({ canvasWidth, canvasHeight }) => {
     const wheelBoundsRadius = 8.515;

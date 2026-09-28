@@ -6,6 +6,7 @@ import './claim.css';
 import { availabilityMessage } from './config/runtimeState';
 import { resolveRuntimeRenderer } from './renderers/registry';
 import { PreviewViewer } from './features/preview/PreviewViewer';
+import { RouletteExperiencePage } from './features/roulette3d/RouletteExperiencePage';
 import { SurfaceVisualizerErrorBoundary } from './features/surface-visualizer/state/SurfaceVisualizerErrorBoundary';
 
 const SurfaceVisualizerRoute = lazy(() => import('./features/surface-visualizer/SurfaceVisualizerRoute').then(({ SurfaceVisualizerRoute: route }) => ({ default: route })));
@@ -30,7 +31,9 @@ function Viewer() {
   const experience = state.data.experience;
   const renderer = resolveRuntimeRenderer(experience.type);
   if (!renderer) return <AvailabilityState reason="unavailable" />;
-  return <main className="runtime-experience-page">{renderer.render({ type: experience.type, config: experience.config, slug, entitlements: experience.featureEntitlements, prizeAvailability: experience.prizeAvailability, recovery: experience.recovery, catalogProducts: experience.products })}</main>;
+  const renderedExperience = renderer.render({ type: experience.type, config: experience.config, slug, entitlements: experience.featureEntitlements, prizeAvailability: experience.prizeAvailability, recovery: experience.recovery, catalogProducts: experience.products });
+  if (experience.type === 'roulette') return <RouletteExperiencePage>{renderedExperience}</RouletteExperiencePage>;
+  return <main className="runtime-experience-page">{renderedExperience}</main>;
 }
 
 function MissingSlugState() { return <main><h1>Falta el enlace de la experiencia.</h1><p>Usá un enlace público válido para abrir esta ruleta.</p></main>; }

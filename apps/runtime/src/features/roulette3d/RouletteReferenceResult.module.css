@@ -101,52 +101,21 @@
   margin-top: 10px;
 }
 
- .resultScope :global(.roulette-result-card) {
-  width: 100%;
-  max-width: 474px;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  padding: 30px 26px;
- }
+@media (max-width: 520px) {
+  .resultScope :global(.roulette-result-card) {
+    width: calc(100% - 20px);
+    box-sizing: border-box;
+  }
 
- .resultScope :global(.roulette-result-card > strong) {
-  font-size: 30px;
-  line-height: 1.1;
- }
+  .resultScope :global(.result-cta) {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
 
- .resultScope :global(.roulette-result-card h2) {
-  font-size: 30px;
-  line-height: 1.15;
- }
-
- .resultScope :global(.roulette-result-card .result-neutral-copy) {
-  font-size: 16px;
-  line-height: 1.45;
- }
-
- .resultScope :global(.roulette-result-card > img) {
-  width: 112px;
-  height: 112px;
- }
-
- .resultScope :global(.claim-qr) {
-  width: 196px;
-  height: 196px;
- }
-
- .resultScope :global(.claim-code strong) {
-  font-size: 24px;
-  line-height: 1.2;
- }
-
- .resultScope :global(.claim-code button) {
-  min-height: 48px;
-  font-size: 16px;
- }
-
- .resultScope :global(.result-cta) {
-  min-height: 48px;
-  font-size: 16px;
- }
-
-
+@media (max-width: 400px) {
+  .resultScope :global(.claim-qr) {
+    width: 160px;
+    height: 160px;
+  }
+}

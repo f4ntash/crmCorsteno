@@ -16,3 +16,23 @@ main.runtime-experience-page {
     padding: 14px;
   }
 }
+
+.roulette-page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.roulette-page-toolbar-spacer {
+  display: block;
+}
+
+.roulette-preview-return {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
