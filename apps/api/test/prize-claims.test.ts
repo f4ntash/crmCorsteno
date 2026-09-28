@@ -5,10 +5,9 @@ import { validDraftConfig } from '../src/routes/experiences';
 const segments = Array.from({ length: 6 }, (_, index) => ({ id: `segment-${index}`, color: '#D6B25E', prizeId: 'prize-1' }));
 
 describe('roulette prize claims', () => {
-  it('generates human-friendly high-entropy codes', () => {
+  it('generates alternating letter-number codes', () => {
     const code = generateClaimCode();
-    expect(code).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$/);
-    expect(code).not.toMatch(/[01ILO]/);
+    expect(code).toMatch(/^[A-Z][0-9][A-Z][0-9][A-Z][0-9][A-Z][0-9]$/);
   });
   it('accepts optional redemption configuration and preserves legacy prizes', () => {
     const base = { schemaVersion: 1, backgroundColor: '#111111', segments };

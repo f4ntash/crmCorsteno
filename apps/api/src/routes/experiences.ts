@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
+import { normalizeRedeemableClaimCode } from '@corsteno/types';
 import { requireAuth, requireOrganization, requireOrganizationPermission } from '../auth/middleware';
 import type { Env } from '../index';
 import { getEffectiveExperienceStatus, type PersistedExperienceStatus } from '../services/experience-status';
@@ -87,8 +88,8 @@ experienceRoutes.post('/claims/redeem', async (c) => {
   const userId = c.get('user').id;
   let body: { code?: unknown };
   try { body = await c.req.json(); } catch { return c.json(bad('Invalid JSON body'), 400); }
-  const code = typeof body.code === 'string' ? body.code.trim().toUpperCase().replace(/\s+/g, '') : '';
-  if (!code || code.length > 64) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
+  const code = typeof body.code === 'string' ? normalizeRedeemableClaimCode(body.code) : null;
+  if (!code) return c.json(bad('El código debe tener el formato A1B2C3D4.'), 400);
   const claim = await c.env.DB.prepare('SELECT id,experience_id experienceId,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE code=? AND organization_id=?').bind(code, organizationId).first<Record<string, unknown>>();
   if (!claim) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
   if (claim.status !== 'active') return c.json({ error: { code: 'CLAIM_ALREADY_REDEEMED', message: 'Este código ya fue canjeado.' } }, 409);
@@ -105,8 +106,8 @@ experienceRoutes.post('/claims/redeem', async (c) => {
 });
 
 experienceRoutes.get('/claims/lookup', async (c) => {
-  const code = c.req.query('code')?.trim().toUpperCase().replace(/\s+/g, '') ?? '';
-  if (!code || code.length > 64) return c.json({ error: { code: 'NOT_FOUND', message: 'Código inválido.' } }, 404);
+  const code = normalizeRedeemableClaimCode(c.req.query('code') ?? '');
+  if (!code) return c.json(bad('El código debe tener el formato A1B2C3D4.'), 400);
   const claim = await c.env.DB.prepare('SELECT id,experience_id experienceId,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE code=? AND organization_id=?').bind(code, c.get('organization').id).first<Record<string, unknown>>();
   if (!claim) return c.json({ error: { code: 'NOT_FOUND', message: 'No encontramos un claim con ese código.' } }, 404);
   return c.json({ experienceId: claim.experienceId, claim: presentClaim(claim) });
@@ -122,7 +123,12 @@ experienceRoutes.get('/:id/claims', async (c) => {
   const offset = Math.max(Number(query.offset) || 0, 0);
   const values: (string | number)[] = [organizationId, experienceId];
   let where = 'organization_id=? AND experience_id=?';
-  if (query.code) { where += ' AND code=?'; values.push(query.code.trim().toUpperCase()); }
+  if (query.code !== undefined) {
+    const code = normalizeRedeemableClaimCode(query.code);
+    if (!code) return c.json(bad('El código debe tener el formato A1B2C3D4.'), 400);
+    where += ' AND code=?';
+    values.push(code);
+  }
   if (query.status === 'active' || query.status === 'redeemed') { where += ' AND status=?'; values.push(query.status); }
   if (query.prizeId) { where += ' AND prize_id=?'; values.push(query.prizeId); }
   const rows = await c.env.DB.prepare(`SELECT id,code,prize_id prizeId,prize_name prizeName,status,created_at createdAt,redeemed_at redeemedAt FROM roulette_prize_claims WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset).all<Record<string, unknown>>();
@@ -138,6 +144,9 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
   const userId = c.get('user').id;
   const experience = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first();
   if (!experience) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
+  const claim = await c.env.DB.prepare('SELECT code,status FROM roulette_prize_claims WHERE id=? AND experience_id=? AND organization_id=?').bind(c.req.param('claimId'), experienceId, organizationId).first<{ code: string; status: string }>();
+  if (!claim) return c.json({ error: { code: 'NOT_FOUND', message: 'Claim not found' } }, 404);
+  if (!normalizeRedeemableClaimCode(claim.code)) return c.json(bad('El código debe tener el formato A1B2C3D4.'), 400);
   if (!subscriptionHasFeature(await getExperienceEntitlements(c.env.DB, experienceId, organizationId), 'redemption_claims')) return c.json({ error: { code: 'FEATURE_NOT_AVAILABLE', message: 'Redemption claims are not included in this plan' } }, 403);
   const update = await c.env.DB.prepare("UPDATE roulette_prize_claims SET status='redeemed', redeemed_at=CURRENT_TIMESTAMP, redeemed_by=? WHERE id=? AND experience_id=? AND organization_id=? AND status='active'").bind(userId, c.req.param('claimId'), experienceId, organizationId).run();
   if (!update.meta?.changes) {

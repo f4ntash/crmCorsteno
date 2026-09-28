@@ -153,6 +153,7 @@ export function AccessPeriodPanel({
                 type="datetime-local"
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
+                onInput={(e) => setStartsAt(e.currentTarget.value)}
               />
             </label>
             <label>
@@ -161,6 +162,7 @@ export function AccessPeriodPanel({
                 type="datetime-local"
                 value={endsAt}
                 onChange={(e) => setEndsAt(e.target.value)}
+                onInput={(e) => setEndsAt(e.currentTarget.value)}
               />
             </label>
             <label>

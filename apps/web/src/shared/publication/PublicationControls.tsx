@@ -17,14 +17,16 @@ export type PublicationControlsProps = {
   readinessIssues?: PublicationReadinessIssue[];
   startsAt?: string | null;
   endsAt?: string | null;
-  canEditAvailability?: boolean;
-  availabilitySaving?: boolean;
-  onSaveAvailability?: (startsAt: string | null, endsAt: string | null) => void | boolean | Promise<void | boolean>;
   publicUrl?: string;
   onTest?: () => void;
   qrAction?: ReactNode;
   onPause?: () => void | Promise<void>;
   onUnpublish?: () => void | Promise<void>;
+  canEditAvailability?: boolean;
+  availabilitySaving?: boolean;
+  onSaveAvailability?: (startsAt: string | null, endsAt: string | null) => void | boolean | Promise<void | boolean>;
+  canResume?: boolean;
+  showAvailability?: boolean;
   showStatus?: boolean;
   readOnly?: boolean;
   message?: string;
@@ -41,14 +43,16 @@ export function PublicationControls({
   readinessIssues = [],
   startsAt = null,
   endsAt = null,
-  canEditAvailability = false,
-  availabilitySaving = false,
-  onSaveAvailability,
   publicUrl,
   onTest,
   qrAction,
   onPause,
   onUnpublish,
+  canEditAvailability = false,
+  availabilitySaving = false,
+  onSaveAvailability,
+  canResume = false,
+  showAvailability = true,
   showStatus = true,
   readOnly = false,
   message,
@@ -57,7 +61,7 @@ export function PublicationControls({
   const view = publicationStatusView(status, accessStatus);
   const statusExplanation = publicationStatusExplanation(status, startsAt, endsAt, accessStatus);
   const localTimeZone = getBrowserTimeZone();
-  const canChangeAvailability = Boolean(onSaveAvailability && canEditPublicationAvailability(canEditAvailability, readOnly));
+  const canChangeAvailability = Boolean(showAvailability && onSaveAvailability && canEditPublicationAvailability(canEditAvailability, readOnly));
   const [startInput, setStartInput] = useState(() => toDateTimeLocal(startsAt));
   const [endInput, setEndInput] = useState(() => toDateTimeLocal(endsAt));
   const [availabilityError, setAvailabilityError] = useState('');
@@ -131,13 +135,14 @@ export function PublicationControls({
   }
 
   const actionBusy = publishing || availabilitySaving || localAction;
+
   return <section className="publication-control" aria-label="Publicación y disponibilidad">
     {showStatus && <div className="publication-control-heading"><div><p className="eyebrow">PUBLICACIÓN</p><h3>Disponibilidad</h3></div><span className={`status status-${view.status}`}>{view.label}</span></div>}
     {!showStatus && <p className="eyebrow">PUBLICACIÓN</p>}
     <p className="publication-status-explanation">{statusExplanation}</p>
     {hasUnpublishedChanges && <p className="publication-change-note">Hay cambios de configuración sin publicar.</p>}
-    {(startsAt || endsAt || onSaveAvailability) && <div className="publication-dates"><span><small>Inicio</small>{startsAt ? formatPublicationDate(startsAt) : 'Inmediato'}</span><span><small>Fin</small>{endsAt ? formatPublicationDate(endsAt) : 'Sin vencimiento'}</span></div>}
-    {onSaveAvailability && <p className="publication-timezone">Hora local: {localTimeZone}</p>}
+    {showAvailability && (startsAt || endsAt || onSaveAvailability) && <div className="publication-dates"><span><small>Inicio</small>{startsAt ? formatPublicationDate(startsAt) : 'Inmediato'}</span><span><small>Fin</small>{endsAt ? formatPublicationDate(endsAt) : 'Sin vencimiento'}</span></div>}
+    {showAvailability && onSaveAvailability && <p className="publication-timezone">Hora local: {localTimeZone}</p>}
     {canChangeAvailability && (startsAt || endsAt) && <div className="publication-quick-actions" aria-label="Acciones rápidas de disponibilidad">
       {startsAt && view.status === 'scheduled' && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void startNow()}>Empezar ahora</button>}
       {startsAt && view.status !== 'scheduled' && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void clearStart()}>Quitar fecha de inicio</button>}
@@ -149,7 +154,7 @@ export function PublicationControls({
     {(error || availabilityError) && <p className="error" role="alert">{error || availabilityError}</p>}
     {(message || availabilityMessage || copyMessage) && <p className="publication-feedback" role="status">{message || availabilityMessage || copyMessage}</p>}
     <div className="publication-actions">
-      {canPublish && onPublish && !readOnly && <button type="button" disabled={!hasUnpublishedChanges || actionBusy} onClick={() => void onPublish()}>{publishing ? 'Publicando…' : 'Publicar'}</button>}
+      {canPublish && onPublish && !readOnly && <button type="button" disabled={(!hasUnpublishedChanges && !canResume) || actionBusy} onClick={() => void onPublish()}>{publishing ? 'Publicando…' : canResume ? 'Reanudar' : 'Publicar'}</button>}
       {onPause && !readOnly && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void onPause()}>Pausar</button>}
       {onUnpublish && !readOnly && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void onUnpublish()}>Retirar publicación</button>}
       {publicUrl && <><a className="secondary publication-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir experiencia</a><button type="button" className="secondary" disabled={actionBusy} onClick={() => void copyPublicUrl()}>Copiar enlace</button></>}

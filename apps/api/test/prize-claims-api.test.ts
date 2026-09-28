@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import app from '../src';
 
-function environment(role = 'owner', organizationId = 'org-a') {
+function environment(role = 'owner', organizationId = 'org-a', claimCode = 'A1B2C3D4') {
   let status = 'active';
   const claim = {
     id: 'claim-1',
     experienceId: 'experience-1',
-    code: 'ABCD2345-EFGH6789',
+    code: claimCode,
     prizeId: 'prize-1',
     prizeName: 'Remera',
     status: 'active',
@@ -93,9 +93,9 @@ async function request(
 describe('roulette prize claim operations', () => {
   it('looks up a claim without redeeming it', async () => {
     const env = environment();
-    const response = await request('/experiences/claims/lookup?code=abcd2345-efgh6789', env);
+    const response = await request('/experiences/claims/lookup?code=a1b2c3d4', env);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ experienceId: 'experience-1', claim: expect.objectContaining({ status: 'active', code: 'ABCD2345-EFGH6789' }) });
+    expect(await response.json()).toEqual({ experienceId: 'experience-1', claim: expect.objectContaining({ status: 'active', code: 'A1B2C3D4' }) });
     expect((await request('/experiences/experience-1/claims/claim-1/redeem', env, { method: 'POST' })).status).toBe(200);
   });
   it('lists, redeems exactly once, and rejects a second redemption', async () => {
@@ -127,20 +127,20 @@ describe('roulette prize claim operations', () => {
       request(path, env, { method: 'POST' }),
     ]);
     expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
-    const lookup = await request('/experiences/claims/lookup?code=abcd2345-efgh6789', env);
+    const lookup = await request('/experiences/claims/lookup?code=a1b2c3d4', env);
     expect(lookup.status).toBe(200);
     expect((await lookup.json() as { claim: { status: string } }).claim.status).toBe('redeemed');
   });
   it('redeems a claim entered by code atomically under simultaneous requests', async () => {
     const env = environment();
-    const requestByCode = () => request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'ABCD2345-EFGH6789' }) });
+    const requestByCode = () => request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'A1B2C3D4' }) });
     const results = await Promise.all([requestByCode(), requestByCode()]);
     expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
     expect((await results.find((result) => result.status === 200)!.json() as { status: string }).status).toBe('redeemed');
   });
   it('requires manage permission and keeps tenant isolation', async () => {
     const operator = environment('operator');
-    expect((await request('/experiences/claims/lookup?code=abcd2345-efgh6789', operator)).status).toBe(200);
+    expect((await request('/experiences/claims/lookup?code=a1b2c3d4', operator)).status).toBe(200);
     expect((await request('/experiences/experience-1/claims/claim-1/redeem', operator, { method: 'POST' })).status).toBe(200);
     expect((await request('/experiences/experience-1', operator)).status).toBe(403);
     expect((await request('/experiences/experience-1/claims', operator)).status).toBe(403);
@@ -162,5 +162,21 @@ describe('roulette prize claim operations', () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  it.each(['ABCD2345-EFGH6789', 'CANONICAL-00000001'])('keeps previously issued %s claims searchable and redeemable', async (legacyCode) => {
+    const env = environment('owner', 'org-a', legacyCode);
+    const lookup = await request('/experiences/claims/lookup?code=' + legacyCode.toLowerCase(), env);
+    expect(lookup.status).toBe(200);
+    expect((await lookup.json() as { claim: { code: string } }).claim.code).toBe(legacyCode);
+    expect((await request('/experiences/experience-1/claims/claim-1/redeem', env, { method: 'POST' })).status).toBe(200);
+  });
+
+  it('rejects searches and redemptions when the code format is invalid', async () => {
+    const env = environment();
+    expect((await request('/experiences/claims/lookup?code=ABCD1234', env)).status).toBe(400);
+    expect((await request('/experiences/experience-1/claims?code=1234ABCD', env)).status).toBe(400);
+    expect((await request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'A1-B2-C3-D4' }) })).status).toBe(400);
+    expect((await request('/experiences/claims/lookup?code=A1B2C3D4', env)).status).toBe(200);
   });
 });

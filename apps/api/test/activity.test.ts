@@ -19,7 +19,7 @@ function fixture(options: { role?: string; platformRole?: string; activity?: Act
             if (sql.includes('JOIN memberships m ON')) return args[0] === 'org-a' ? { id: 'org-a', name: 'Org A', slug: 'org-a', role: options.role ?? 'member' } : null;
             if (sql.includes('FROM memberships m')) return { role: 'member', status: 'active', name: 'Target', email: 'target@test.local' };
             if (sql.includes('COUNT(*) count')) return { count: 2 };
-            if (sql.includes('FROM roulette_prize_claims') && sql.includes('code=?')) return { id: 'claim-1', experienceId: 'experience-1', code: 'WIN-1', prizeId: 'prize-1', prizeName: 'Café gratis', status: 'active', createdAt: 1, redeemedAt: null };
+            if (sql.includes('FROM roulette_prize_claims') && sql.includes('code=?')) return { id: 'claim-1', experienceId: 'experience-1', code: 'A1B2C3D4', prizeId: 'prize-1', prizeName: 'Café gratis', status: 'active', createdAt: 1, redeemedAt: null };
             if (sql.includes('FROM experiences')) return { id: 'experience-1', name: 'Campaign', status: 'draft', startsAt: null, endsAt: null, draftConfig: null, publishedConfig: null };
             return null;
           };
@@ -103,7 +103,7 @@ describe('organization activity infrastructure', () => {
   it('logs successful experience updates and claim redemptions with server-side actor context', async () => {
     const env = fixture({ role: 'admin' });
     expect((await request('/experiences/experience-1', env, { method: 'PATCH', body: JSON.stringify({ name: 'Updated campaign' }) })).status).toBe(200);
-    expect((await request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'WIN-1' }) })).status).toBe(200);
+    expect((await request('/experiences/claims/redeem', env, { method: 'POST', body: JSON.stringify({ code: 'A1B2C3D4' }) })).status).toBe(200);
     expect(env.activity.map((item) => item.action)).toEqual(['experience.updated', 'claim.redeemed']);
     expect(env.activity.every((item) => item.organization_id === 'org-a' && item.actor_user_id === 'actor')).toBe(true);
     expect(env.activity.some((item) => item.metadata.includes('device') || item.metadata.includes('session'))).toBe(false);

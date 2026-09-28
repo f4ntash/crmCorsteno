@@ -141,7 +141,7 @@ export function ExperiencesPage({
               <span className={`status access-status status-${item.access_status ?? 'legacy_unrestricted'}`}>
                 {accessStatuses[item.access_status ?? 'legacy_unrestricted']}
               </span>
-              <div className="experience-dates">
+              {item.type !== 'roulette' && <div className="experience-dates">
                 <span>
                   <small>Inicio</small>
                   {experienceDate(item.starts_at, 'Inicio inmediato')}
@@ -150,7 +150,7 @@ export function ExperiencesPage({
                   <small>Fin</small>
                   {experienceDate(item.ends_at, 'Sin vencimiento')}
                 </span>
-              </div>
+              </div>}
               <Link className="button button-secondary configure" to={`/app/experiences/${item.id}`}>
                 Abrir
               </Link>

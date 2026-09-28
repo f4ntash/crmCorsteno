@@ -5,6 +5,20 @@ export function normalizeClaimCode(value: string): string | null {
   return code && code.length <= 64 && /^[A-Z0-9-]+$/.test(code) ? code : null;
 }
 
+const NEW_REDEEMABLE_CODE = /^[A-Za-z][0-9][A-Za-z][0-9][A-Za-z][0-9][A-Za-z][0-9]$/;
+const GENERATED_LEGACY_CODE = /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$/;
+const SEEDED_LEGACY_CODE = /^CANONICAL-[0-9]{8}$/;
+
+export function normalizeRedeemableClaimCode(value: string): string | null {
+  if (NEW_REDEEMABLE_CODE.test(value)) return value.toUpperCase();
+
+  // Keep previously issued 8-8 codes and canonical demo claims redeemable.
+  const legacyCode = value.trim().toUpperCase().replace(/\s+/g, '');
+  return GENERATED_LEGACY_CODE.test(legacyCode) || SEEDED_LEGACY_CODE.test(legacyCode)
+    ? legacyCode
+    : null;
+}
+
 export function encodeClaimQrPayload(code: string): string {
   const normalized = normalizeClaimCode(code);
   if (!normalized) throw new Error('Invalid claim code');
