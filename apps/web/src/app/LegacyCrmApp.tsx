@@ -228,7 +228,7 @@ function Shell() {
             <Route path="leads" element={!adminMode || !canAccess('leads') ? <Navigate to="/app" replace /> : <LeadsPage org={o} canEdit={adminMode || canManage} internal />} />
             <Route path="experiences/:id" element={!workspaceProductsReady ? <WorkspaceProductsLoading /> : !canAccess('experiences') || !currentExperienceAssigned ? <Navigate to="/app" replace /> : <ExperienceDetailPage org={o} permissions={currentPermissions} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
             <Route path="commercial" element={!adminMode || !canAccess('commercial') ? <Navigate to="/app" replace /> : <CommercialPage org={o} canManageCatalog={isPlatformCommercialAdmin(m.user.platformRole)} />} />
-            <Route path="subscriptions" element={!adminMode || !canAccess('subscriptions') ? <Navigate to="/app" replace /> : <SubscriptionsPage org={o} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
+            <Route path="subscriptions" element={!adminMode || !canAccess('subscriptions') ? <Navigate to="/app" replace /> : <SubscriptionsPage org={o} organizations={m.memberships} canManage={true} canManageCommercial={isPlatformCommercialAdmin(m.user.platformRole)} />} />
             <Route path="onboarding" element={!adminMode ? <Navigate to="/app" replace /> : <ClientOnboardingPage />} />
             <Route path="redeem" element={!canAccess('redeem') ? <Navigate to="/app" replace /> : <RedeemPage org={o} canRedeem />} />
             <Route path="activity" element={<Navigate to="/app" replace />} />

@@ -24,14 +24,17 @@ function statusLabel(status: Subscription['effectiveStatus']) {
 }
 export function SubscriptionsPage({
   org,
+  organizations = [],
   canManage,
   canManageCommercial = false,
 }: {
   org: string;
+  organizations?: Array<{ organizationId: string; organizationName: string; ownerEmail?: string }>;
   canManage: boolean;
   canManageCommercial?: boolean;
 }) {
-  const [plans, setPlans] = useState<Plan[]>([]),
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState(org),
+    [plans, setPlans] = useState<Plan[]>([]),
     [experiences, setExperiences] = useState<
       Array<{ id: string; name: string }>
     >([]),
@@ -47,10 +50,10 @@ export function SubscriptionsPage({
   async function load() {
     try {
       const [nextPlans, subscriptions, nextExperiences] = await Promise.all([
-        commercialApi.plans(org),
-        commercialApi.subscriptions(org),
+        commercialApi.plans(selectedOrganizationId),
+        commercialApi.subscriptions(selectedOrganizationId),
         import('../../experiences/api').then(({ experiencesApi }) =>
-          experiencesApi.list(org),
+          experiencesApi.list(selectedOrganizationId),
         ),
       ]);
       setPlans(nextPlans);
@@ -59,7 +62,7 @@ export function SubscriptionsPage({
       const paymentEntries = await Promise.all(
         subscriptions.map(
           async (item) =>
-            [item.id, await commercialApi.payments(item.id, org)] as const,
+            [item.id, await commercialApi.payments(item.id, selectedOrganizationId)] as const,
         ),
       );
       setPayments(Object.fromEntries(paymentEntries));
@@ -69,15 +72,23 @@ export function SubscriptionsPage({
     }
   }
   useEffect(() => {
-    if (org) void load();
+    setSelectedOrganizationId(org);
   }, [org]);
+  useEffect(() => {
+    setItems([]);
+    setPlans([]);
+    setExperiences([]);
+    setPayments({});
+    setError('');
+    if (selectedOrganizationId) void load();
+  }, [selectedOrganizationId]);
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!planId || !selected.length || !startsAt || saving) return;
     setSaving(true);
     setError('');
     try {
-      await commercialApi.createSubscription(org, {
+      await commercialApi.createSubscription(selectedOrganizationId, {
         plan_id: planId,
         experience_ids: selected,
         starts_at: new Date(startsAt).toISOString(),
@@ -95,7 +106,7 @@ export function SubscriptionsPage({
   async function renew(item: Subscription) {
     setError('');
     try {
-      await commercialApi.renew(item.id, org, crypto.randomUUID());
+      await commercialApi.renew(item.id, selectedOrganizationId, crypto.randomUUID());
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -119,7 +130,7 @@ export function SubscriptionsPage({
     try {
       await commercialApi.offlinePayment(
         item.id,
-        org,
+        selectedOrganizationId,
         { payment_method: paymentMethod, note },
         crypto.randomUUID(),
       );
@@ -141,7 +152,7 @@ export function SubscriptionsPage({
     }
     setError('');
     try {
-      await commercialApi.grant(item.id, org, {
+      await commercialApi.grant(item.id, selectedOrganizationId, {
         grant_type: 'support_extension',
         starts_at: new Date(Math.max(Date.now(), new Date(item.currentPeriodEnd).getTime())).toISOString(),
         ends_at: endsAt.toISOString(),
@@ -160,7 +171,7 @@ export function SubscriptionsPage({
     )
       return;
     try {
-      await commercialApi.cancel(item.id, org);
+      await commercialApi.cancel(item.id, selectedOrganizationId);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -170,7 +181,7 @@ export function SubscriptionsPage({
     if (!window.confirm('El acceso de las experiencias asociadas se bloqueará inmediatamente. ¿Suspender esta suscripción?')) return;
     setError('');
     try {
-      await commercialApi.suspend(item.id, org);
+      await commercialApi.suspend(item.id, selectedOrganizationId);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -179,18 +190,25 @@ export function SubscriptionsPage({
   async function reactivate(item: Subscription) {
     setError('');
     try {
-      await commercialApi.reactivate(item.id, org);
+      await commercialApi.reactivate(item.id, selectedOrganizationId);
       await load();
     } catch (e) {
       setError((e as Error).message);
     }
   }
-  if (!org) {
+  if (!selectedOrganizationId) {
     return (
       <main className="page subscriptions-page">
         <div className="empty">
-          <h2>Seleccioná un workspace cliente</h2>
-          <p>Las suscripciones pertenecen a una organización cliente. Elegí un workspace para consultarlas o administrarlas.</p>
+          <h2>Seleccioná una organización cliente</h2>
+          <p>Las suscripciones pertenecen a una organización. Elegí cuál querés consultar o administrar.</p>
+          <label>
+            Organización
+            <select aria-label="Organización de suscripciones" value={selectedOrganizationId} onChange={(event) => setSelectedOrganizationId(event.target.value)}>
+              <option value="">Elegí una organización</option>
+              {organizations.map((organization) => <option key={organization.organizationId} value={organization.organizationId}>{organization.organizationName}{organization.ownerEmail ? ` · ${organization.ownerEmail}` : ''}</option>)}
+            </select>
+          </label>
         </div>
       </main>
     );
