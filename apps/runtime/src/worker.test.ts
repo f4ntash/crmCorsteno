@@ -47,7 +47,7 @@ describe('Corsteno runtime Worker routes', () => {
   it('serves asset requests from Hunter Pages through the /h route', async () => {
     const assets = { fetch: vi.fn(async () => new Response('unexpected')) };
     const fetchExternal = vi.fn<(request: Request) => Promise<Response>>(async () => new Response(
-      'import("/assets/lazy-chunk.js");',
+      'import("/assets/lazy-chunk.js"); const deps = ["assets/TraceARDemo.css"];',
       { status: 200, headers: { 'Content-Type': 'application/javascript', 'Content-Length': '30' } },
     ));
 
@@ -57,9 +57,11 @@ describe('Corsteno runtime Worker routes', () => {
       fetchExternal,
     );
     const upstreamRequest = fetchExternal.mock.calls[0]?.[0];
+    const body = await response.text();
 
     expect(upstreamRequest?.url).toBe('https://corsteno-treasure-hunt.pages.dev/assets/main.js');
-    expect(await response.text()).toContain('import("/h/assets/lazy-chunk.js")');
+    expect(body).toContain('import("/h/assets/lazy-chunk.js")');
+    expect(body).toContain('"/h/assets/TraceARDemo.css"');
     expect(response.headers.get('content-length')).toBeNull();
   });
 

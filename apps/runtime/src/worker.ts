@@ -17,7 +17,10 @@ function upstreamPath(pathname: string) {
 }
 
 function rewrittenAssetBody(body: string) {
-  return body.replaceAll('/assets/', '/h/assets/');
+  return body
+    .replaceAll('/assets/', '/h/assets/')
+    .replaceAll('"assets/', '"/h/assets/')
+    .replaceAll("'assets/", "'/h/assets/");
 }
 
 export async function handleRuntimeRequest(
