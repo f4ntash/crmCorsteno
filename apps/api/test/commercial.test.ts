@@ -35,7 +35,7 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
             const sub = state.subscriptions.find((s) => s.id === args[0] && s.organizationId === args[1]);
             if (!sub) return null;
             const plan = state.plans.find((p) => p.id === sub.planId)!;
-            return { ...sub, planCode: plan.code, planName: plan.name, planDescription: plan.description, pricingMode: plan.pricingMode, active: plan.active, availableForSale: plan.availableForSale };
+            return { ...sub, status: sub.suspendedAt ? 'suspended' : sub.status, planCode: plan.code, planName: plan.name, planDescription: plan.description, pricingMode: plan.pricingMode, active: plan.active, availableForSale: plan.availableForSale };
           }
           return null;
         };
@@ -49,7 +49,7 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
         };
         statement.run = async () => {
           if (sql.includes('UPDATE auth_sessions')) return { meta: { changes: 1 } };
-          if (sql.startsWith('INSERT INTO subscriptions')) { state.subscriptions.push({ id: args[0], organizationId: args[1], planId: args[2], status: args[3], startsAt: args[4], currentPeriodStart: args[5], currentPeriodEnd: args[6], cancelAtPeriodEnd: args[7], priceAmountMinor: args[8], currency: args[9], billingInterval: args[10], billingIntervalCount: args[11], includedAccessDays: args[12], featureEntitlementsJson: args[13] }); }
+          if (sql.startsWith('INSERT INTO subscriptions')) { state.subscriptions.push({ id: args[0], organizationId: args[1], planId: args[2], status: args[3], suspendedAt: null, startsAt: args[4], currentPeriodStart: args[5], currentPeriodEnd: args[6], cancelAtPeriodEnd: args[7], priceAmountMinor: args[8], currency: args[9], billingInterval: args[10], billingIntervalCount: args[11], includedAccessDays: args[12], featureEntitlementsJson: args[13] }); }
           if (sql.startsWith('INSERT') && sql.includes('subscription_periods')) { state.periods.push({ id: args[0], subscriptionId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], status: args[5], idempotencyKey: args[6] ?? null, createdAt: '2026-01-01' }); }
           if (sql.startsWith('INSERT') && sql.includes('subscription_experiences')) state.links.push({ subscriptionId: args[0], experienceId: args[1], organizationId: args[2] });
           if (sql.startsWith('INSERT') && sql.includes('experience_access_periods')) state.access.push({ id: args[0], experienceId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], source: args[5], subscriptionPeriodId: args[8] });
@@ -57,9 +57,16 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
           if (sql.startsWith('UPDATE subscriptions')) {
             const sub = state.subscriptions.find((s) => s.id === args[args.length - 2]);
             if (sub) {
-              if (sql.includes('cancel_at_period_end=1')) sub.cancelAtPeriodEnd = 1;
-              else if (sql.includes("status='suspended'")) sub.status = 'suspended';
-              else if (sql.includes("status='active'")) { sub.status = 'active'; sub.cancelAtPeriodEnd = 0; }
+              if (sql.includes('suspended_at=CURRENT_TIMESTAMP')) sub.suspendedAt = new Date().toISOString();
+              else if (sql.includes('suspended_at=NULL')) { sub.suspendedAt = null; sub.status = 'active'; sub.cancelAtPeriodEnd = 0; }
+              else if (sql.includes('cancel_at_period_end=1')) sub.cancelAtPeriodEnd = 1;
+              else if (sql.includes("SET status='active',current_period_start=?") && sql.includes('current_period_end=CASE')) {
+                sub.currentPeriodStart = args[0];
+                if (new Date(args[1]).getTime() > new Date(sub.currentPeriodEnd).getTime()) sub.currentPeriodEnd = args[1];
+                sub.cancelAtPeriodEnd = 0;
+              } else if (sql.includes("SET status='active',current_period_start=?")) {
+                sub.currentPeriodStart = args[0]; sub.currentPeriodEnd = args[1]; sub.cancelAtPeriodEnd = 0;
+              } else if (sql.includes("status='active'")) { sub.status = 'active'; sub.cancelAtPeriodEnd = 0; }
               else if (sql.includes('SET status=?') && sql.includes('current_period_end=CASE')) {
                 sub.status = args[0]; sub.currentPeriodStart = args[1];
                 if (new Date(args[2]).getTime() > new Date(sub.currentPeriodEnd).getTime()) sub.currentPeriodEnd = args[2];
@@ -127,9 +134,11 @@ describe('commercial plans and subscriptions', () => {
     expect((await reactivated.json() as any)).toMatchObject({ status: 'active', cancelAtPeriodEnd: 0, effectiveStatus: 'active' });
     const suspended = await request(`/subscriptions/${subscription.id}/suspend`, env, { method: 'POST' });
     expect((await suspended.json() as any).effectiveStatus).toBe('suspended');
+    expect(env.__state.subscriptions[0]).toMatchObject({ status: 'active', suspendedAt: expect.any(String) });
     const historyLength = env.__state.periods.length;
     const resumed = await request(`/subscriptions/${subscription.id}/reactivate`, env, { method: 'POST' });
     expect((await resumed.json() as any).effectiveStatus).toBe('active');
+    expect(env.__state.subscriptions[0]).toMatchObject({ status: 'active', suspendedAt: null });
     expect(env.__state.periods).toHaveLength(historyLength);
     expect(env.__state.access.length).toBe(2);
   });

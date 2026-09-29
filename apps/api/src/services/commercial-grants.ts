@@ -12,11 +12,10 @@ export async function grantSubscriptionPeriod(db: D1Database, subscription: Gran
   const grantId = crypto.randomUUID(); const periodId = crypto.randomUUID();
   const currentPeriodEnd = new Date(subscription.currentPeriodEnd);
   const currentPeriodStart = currentPeriodEnd.getTime() < Date.now() ? startsAt : new Date(subscription.currentPeriodStart);
-  const status = subscription.status === 'suspended' ? 'suspended' : 'active';
   const statements: D1PreparedStatement[] = [
     db.prepare('INSERT INTO commercial_grants (id,organization_id,subscription_id,grant_type,starts_at,ends_at,note,created_by) VALUES (?,?,?,?,?,?,?,?)').bind(grantId, subscription.organizationId, subscription.id, type, startsAt.toISOString(), endsAt.toISOString(), note, createdBy),
     db.prepare('INSERT INTO subscription_periods (id,subscription_id,organization_id,starts_at,ends_at,status,idempotency_key) VALUES (?,?,?,?,?,?,?)').bind(periodId, subscription.id, subscription.organizationId, startsAt.toISOString(), endsAt.toISOString(), 'active', `grant:${grantId}`),
-    db.prepare('UPDATE subscriptions SET status=?,current_period_start=?,current_period_end=CASE WHEN current_period_end>? THEN current_period_end ELSE ? END,cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(status, currentPeriodStart.toISOString(), endsAt.toISOString(), endsAt.toISOString(), subscription.id, subscription.organizationId),
+    db.prepare("UPDATE subscriptions SET status='active',current_period_start=?,current_period_end=CASE WHEN current_period_end>? THEN current_period_end ELSE ? END,cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?").bind(currentPeriodStart.toISOString(), endsAt.toISOString(), endsAt.toISOString(), subscription.id, subscription.organizationId),
   ];
   for (const experience of subscription.experiences) statements.push(db.prepare('INSERT INTO experience_access_periods (id,experience_id,organization_id,starts_at,ends_at,source,created_by,note,subscription_period_id,commercial_grant_id) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(), experience.id, subscription.organizationId, startsAt.toISOString(), endsAt.toISOString(), 'promotion', createdBy, note, periodId, grantId));
   await db.batch(statements); return grantId;

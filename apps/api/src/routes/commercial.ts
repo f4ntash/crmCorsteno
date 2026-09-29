@@ -41,7 +41,7 @@ function isPlatformOperator(platformRole: string) { return ['super_admin', 'cors
 function presentPeriod(row: Record<string, unknown>): SubscriptionPeriod { return { id: String(row.id), subscriptionId: String(row.subscriptionId), organizationId: String(row.organizationId), startsAt: String(row.startsAt), endsAt: String(row.endsAt), status: String(row.status), idempotencyKey: row.idempotencyKey as string | null, createdAt: String(row.createdAt) }; }
 
 async function getSubscription(db: D1Database, id: string, organizationId: string) {
-  const row = await db.prepare(`SELECT s.id,s.organization_id organizationId,s.plan_id planId,s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.price_amount_minor priceAmountMinor,s.currency,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays,s.feature_entitlements_json featureEntitlementsJson,p.code planCode,p.name planName,p.description planDescription,p.pricing_mode pricingMode FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND s.organization_id=?`).bind(id, organizationId).first<Subscription>();
+  const row = await db.prepare(`SELECT s.id,s.organization_id organizationId,s.plan_id planId,CASE WHEN s.suspended_at IS NOT NULL THEN 'suspended' ELSE s.status END status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.price_amount_minor priceAmountMinor,s.currency,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays,s.feature_entitlements_json featureEntitlementsJson,p.code planCode,p.name planName,p.description planDescription,p.pricing_mode pricingMode FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND s.organization_id=?`).bind(id, organizationId).first<Subscription>();
   if (!row) return null;
   const periods = await db.prepare('SELECT id,subscription_id subscriptionId,organization_id organizationId,starts_at startsAt,ends_at endsAt,status,idempotency_key idempotencyKey,created_at createdAt FROM subscription_periods WHERE subscription_id=? AND organization_id=? ORDER BY starts_at DESC, id DESC').bind(id, organizationId).all<Record<string, unknown>>();
   const experiences = await db.prepare('SELECT e.id,e.name,e.slug,e.type FROM subscription_experiences se JOIN experiences e ON e.id=se.experience_id WHERE se.subscription_id=? AND se.organization_id=? ORDER BY e.created_at DESC').bind(id, organizationId).all<{ id: string; name: string; slug: string; type?: string }>();
@@ -171,7 +171,7 @@ commercialRoutes.post('/subscriptions/:id/suspend', async (c) => {
   const organizationId = c.get('organization').id;
   const subscription = await getSubscription(c.env.DB, c.req.param('id'), organizationId);
   if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
-  await c.env.DB.prepare("UPDATE subscriptions SET status='suspended',updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?").bind(subscription.id, organizationId).run();
+  await c.env.DB.prepare('UPDATE subscriptions SET suspended_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?').bind(subscription.id, organizationId).run();
   return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
 });
 
@@ -179,7 +179,7 @@ commercialRoutes.post('/subscriptions/:id/reactivate', async (c) => {
   const organizationId = c.get('organization').id;
   const subscription = await getSubscription(c.env.DB, c.req.param('id'), organizationId);
   if (!subscription) return c.json({ error: { code: 'NOT_FOUND', message: 'Subscription not found' } }, 404);
-  await c.env.DB.prepare("UPDATE subscriptions SET status='active',cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?").bind(subscription.id, organizationId).run();
+  await c.env.DB.prepare("UPDATE subscriptions SET suspended_at=NULL,status='active',cancel_at_period_end=0,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?").bind(subscription.id, organizationId).run();
   return c.json(await getSubscription(c.env.DB, subscription.id, organizationId));
 });
 

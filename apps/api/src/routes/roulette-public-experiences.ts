@@ -91,13 +91,13 @@ function admittedSpinInsert(db: D1Database, input: {
   const args: unknown[] = [input.experienceId, input.organizationId, input.publishedConfig];
   conditions.push(`(
     EXISTS (SELECT 1 FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id
-      WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=? AND s.status='active'
+      WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=? AND s.status='active' AND s.suspended_at IS NULL
       AND julianday(s.starts_at)<=julianday('now') AND julianday(s.current_period_start)<=julianday('now') AND julianday(s.current_period_end)>julianday('now'))
     OR (NOT EXISTS (SELECT 1 FROM subscription_experiences se WHERE se.experience_id=? AND se.organization_id=?) AND (
       (NOT EXISTS (SELECT 1 FROM experience_access_periods ap WHERE ap.experience_id=? AND ap.organization_id=?)
         AND EXISTS (SELECT 1 FROM experiences e WHERE e.id=? AND e.organization_id=? AND e.commercial_access_required=0))
       OR EXISTS (SELECT 1 FROM experience_access_periods ap LEFT JOIN subscription_periods sp ON sp.id=ap.subscription_period_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id
-        WHERE ap.experience_id=? AND ap.organization_id=? AND julianday(ap.starts_at)<=julianday('now') AND julianday(ap.ends_at)>julianday('now') AND (s.id IS NULL OR s.status='active'))
+        WHERE ap.experience_id=? AND ap.organization_id=? AND julianday(ap.starts_at)<=julianday('now') AND julianday(ap.ends_at)>julianday('now') AND (s.id IS NULL OR (s.status='active' AND s.suspended_at IS NULL)))
     ))
   )`);
   args.push(input.experienceId, input.organizationId, input.organizationId, input.experienceId, input.organizationId, input.experienceId, input.organizationId, input.experienceId, input.organizationId, input.experienceId, input.organizationId);

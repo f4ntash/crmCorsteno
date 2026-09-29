@@ -39,7 +39,7 @@ export async function getExperienceEntitlements(db: D1Database, experienceId: st
   try {
     const experience = await db.prepare('SELECT type,commercial_access_required commercialAccessRequired FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ type: string; commercialAccessRequired?: number }>();
     if (experience?.type === 'roulette') {
-      const rows = await db.prepare(`SELECT s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.feature_entitlements_json featureEntitlementsJson
+      const rows = await db.prepare(`SELECT CASE WHEN s.suspended_at IS NOT NULL THEN 'suspended' ELSE s.status END status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.feature_entitlements_json featureEntitlementsJson
         FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id
         WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=?`).bind(experienceId, organizationId, organizationId).all<{
           status: 'pending' | 'active' | 'suspended' | 'cancelled' | 'expired';
@@ -60,7 +60,7 @@ export async function getExperienceEntitlements(db: D1Database, experienceId: st
       }
       return { ...ROULETTE_BASE_ENTITLEMENTS, features: [...ROULETTE_BASE_ENTITLEMENTS.features], maxActiveExperiences };
     }
-    const rows = await db.prepare("SELECT s.feature_entitlements_json featureEntitlementsJson FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending')").bind(experienceId, organizationId, organizationId).all<{ featureEntitlementsJson: string | null }>();
+    const rows = await db.prepare("SELECT s.feature_entitlements_json featureEntitlementsJson FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending') AND s.suspended_at IS NULL").bind(experienceId, organizationId, organizationId).all<{ featureEntitlementsJson: string | null }>();
     if (!rows.results.length || rows.results.some((row) => row.featureEntitlementsJson === null)) return { ...LEGACY_FULL_ACCESS, features: [...LEGACY_FULL_ACCESS.features] };
     const featureSet = new Set<CommercialFeature>();
     let maxActiveExperiences: number | null = 0;
@@ -77,7 +77,7 @@ export async function getExperienceEntitlements(db: D1Database, experienceId: st
 /** Returns the maximum active/pending plan capacity for new entitled experiences. */
 export async function getOrganizationExperienceLimit(db: D1Database, organizationId: string) {
   try {
-    const rows = await db.prepare("SELECT feature_entitlements_json featureEntitlementsJson FROM subscriptions WHERE organization_id=? AND status IN ('active','pending')").bind(organizationId).all<{ featureEntitlementsJson: string | null }>();
+    const rows = await db.prepare("SELECT feature_entitlements_json featureEntitlementsJson FROM subscriptions WHERE organization_id=? AND status IN ('active','pending') AND suspended_at IS NULL").bind(organizationId).all<{ featureEntitlementsJson: string | null }>();
     if (!rows.results.length) return null;
     let limit = 0;
     for (const row of rows.results) {
@@ -92,7 +92,7 @@ export async function getOrganizationExperienceLimit(db: D1Database, organizatio
 export async function canCreateOrganizationExperience(db: D1Database, organizationId: string) {
   const limit = await getOrganizationExperienceLimit(db, organizationId);
   if (limit === null) return { allowed: true as const, current: 0, limit: null };
-  const row = await db.prepare("SELECT COUNT(DISTINCT se.experience_id) count FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending')").bind(organizationId, organizationId).first<{ count: number }>();
+  const row = await db.prepare("SELECT COUNT(DISTINCT se.experience_id) count FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending') AND s.suspended_at IS NULL").bind(organizationId, organizationId).first<{ count: number }>();
   const current = Number(row?.count ?? 0);
   return { allowed: current < limit, current, limit };
 }

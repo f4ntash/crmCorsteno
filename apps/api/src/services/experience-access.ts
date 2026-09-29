@@ -39,7 +39,7 @@ export async function getExperienceAccessPeriods(
 ) {
   const rows = await db
     .prepare(
-      `SELECT ap.id, ap.experience_id experienceId, ap.organization_id organizationId, ap.starts_at startsAt, ap.ends_at endsAt, ap.source, ap.created_at createdAt, ap.created_by createdBy, ap.note, ap.subscription_period_id subscriptionPeriodId, s.status subscriptionStatus, p.name planName
+      `SELECT ap.id, ap.experience_id experienceId, ap.organization_id organizationId, ap.starts_at startsAt, ap.ends_at endsAt, ap.source, ap.created_at createdAt, ap.created_by createdBy, ap.note, ap.subscription_period_id subscriptionPeriodId, CASE WHEN s.suspended_at IS NOT NULL THEN 'suspended' ELSE s.status END subscriptionStatus, p.name planName
     FROM experience_access_periods ap LEFT JOIN subscription_periods sp ON sp.id=ap.subscription_period_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN plans p ON p.id=s.plan_id
     WHERE ap.experience_id=? AND ap.organization_id=? ORDER BY ap.starts_at ASC, ap.created_at ASC, ap.id ASC`,
     )
