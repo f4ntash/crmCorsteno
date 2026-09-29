@@ -28,6 +28,12 @@
 .treasure-hunt-step-trigger span { color: var(--text-secondary); font-size: .8rem; font-weight: 600; }
 .treasure-hunt-step-trigger small { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .68rem; overflow-wrap: anywhere; }
 .treasure-hunt-draft-summary { background: var(--surface-2); }
+.treasure-hunt-public-url { display: grid; gap: .3rem; margin-top: .25rem; min-width: 0; }
+.treasure-hunt-public-url small { color: var(--text-secondary); font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.treasure-hunt-public-url a { color: var(--text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9rem; overflow-wrap: anywhere; text-underline-offset: .2em; }
+.treasure-hunt-public-actions { flex-wrap: wrap; justify-content: flex-start; margin-top: .9rem; }
+.treasure-hunt-public-actions > * { min-height: 44px; }
+.treasure-hunt-public-experience > .publication-feedback { margin-bottom: 0; }
 .back-link { color: inherit; display: inline-block; margin-bottom: 1.25rem; text-decoration: none; }
 @media (max-width: 680px) {
   .treasure-hunt-card { grid-template-columns: 1fr; }
@@ -37,6 +43,8 @@
   .treasure-hunt-card-meta { gap: .75rem; }
   .treasure-hunt-card-meta span { flex: 1 1 8rem; }
   .treasure-hunt-facts { grid-template-columns: 1fr; }
+  .treasure-hunt-public-actions { align-items: stretch; }
+  .treasure-hunt-public-actions > * { flex: 1 1 8rem; text-align: center; }
   .treasure-hunt-steps li, .treasure-hunt-version { align-items: stretch; flex-direction: column; gap: .5rem; }
   .treasure-hunt-step-trigger { justify-items: start; text-align: left; }
   .treasure-hunt-card-status { justify-items: start; }

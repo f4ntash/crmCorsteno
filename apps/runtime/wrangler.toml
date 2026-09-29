@@ -1,4 +1,5 @@
 name = "corsteno-runtime"
+main = "src/worker.ts"
 compatibility_date = "2024-12-30"
 workers_dev = true
 
@@ -10,6 +11,12 @@ zone_name = "corsteno.com"
 pattern = "corsteno.com/test/*"
 zone_name = "corsteno.com"
 
+[[routes]]
+pattern = "corsteno.com/h/*"
+zone_name = "corsteno.com"
+
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = ["/h/*"]

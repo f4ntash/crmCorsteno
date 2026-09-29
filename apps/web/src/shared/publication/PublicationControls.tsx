@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { canEditPublicationAvailability, formatPublicationDate, fromDateTimeLocal, getBrowserTimeZone, publicationStatusExplanation, publicationStatusView, toDateTimeLocal, validateAvailabilityWindow } from './status';
+import { copyPublicExperienceUrl, PublicExperienceActions } from './PublicExperienceActions';
 
 export type PublicationReadinessIssue = {
   code?: string;
@@ -122,16 +123,8 @@ export function PublicationControls({
   }
 
   async function copyPublicUrl() {
-    if (!publicUrl || !navigator.clipboard) {
-      setCopyMessage('No se pudo copiar el enlace.');
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(publicUrl);
-      setCopyMessage('Enlace copiado.');
-    } catch {
-      setCopyMessage('No se pudo copiar el enlace.');
-    }
+    if (!publicUrl) return;
+    setCopyMessage(await copyPublicExperienceUrl(publicUrl) ? 'Enlace copiado.' : 'No se pudo copiar el enlace.');
   }
 
   const actionBusy = publishing || availabilitySaving || localAction;
@@ -157,8 +150,9 @@ export function PublicationControls({
       {canPublish && onPublish && !readOnly && <button type="button" disabled={(!hasUnpublishedChanges && !canResume) || actionBusy} onClick={() => void onPublish()}>{publishing ? 'Publicando…' : canResume ? 'Reanudar' : 'Publicar'}</button>}
       {onPause && !readOnly && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void onPause()}>Pausar</button>}
       {onUnpublish && !readOnly && <button type="button" className="secondary" disabled={actionBusy} onClick={() => void onUnpublish()}>Retirar publicación</button>}
-      {publicUrl && <><a className="secondary publication-link" href={publicUrl} target="_blank" rel="noreferrer">Abrir experiencia</a><button type="button" className="secondary" disabled={actionBusy} onClick={() => void copyPublicUrl()}>Copiar enlace</button></>}
-      {qrAction}
+      {publicUrl
+        ? <PublicExperienceActions publicUrl={publicUrl} onCopy={copyPublicUrl} qrAction={qrAction} disabled={actionBusy} className={null} />
+        : qrAction}
       {onTest && <button type="button" className="secondary" disabled={actionBusy} onClick={onTest}>Probar experiencia</button>}
     </div>
   </section>;

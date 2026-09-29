@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import { formatPublicationDate } from '../../shared/publication/status';
+import { TreasureHuntPublicExperience } from './TreasureHuntPublicExperience';
 import { treasureHuntApi, type TreasureHuntDetail, type TreasureHuntSummary } from './api';
 import './treasure-hunt.css';
 
@@ -134,6 +135,7 @@ export function TreasureHuntDetailPage({ org, organizationName, canManage = fals
         </dl>
         {campaign.description && <p className="field-help">{campaign.description}</p>}
       </section>
+      <TreasureHuntPublicExperience slug={campaign.slug} published={campaign.publishedVersion !== null} />
       {campaign.draft && <section className="card treasure-hunt-section treasure-hunt-draft-summary"><div className="workspace-section-heading"><div><p className="eyebrow">BORRADOR</p><h2>{campaign.draft.draftStatus}</h2></div><span className={campaign.draft.draftIncomplete ? 'status status-paused' : 'status status-published'}>{campaign.draft.draftIncomplete ? 'Incompleto' : 'Guardado'}</span></div><p className="field-help">Revisión {campaign.draft.draftRevision} · {campaign.draft.draftIssueCount ? `${campaign.draft.draftIssueCount} observaciones pendientes.` : 'Sin observaciones pendientes.'}</p></section>}
       <section className="card treasure-hunt-section">
         <div className="workspace-section-heading"><div><p className="eyebrow">RECORRIDO</p><h2>{campaign.steps.length} {campaign.steps.length === 1 ? 'paso' : 'pasos'}</h2></div></div>
