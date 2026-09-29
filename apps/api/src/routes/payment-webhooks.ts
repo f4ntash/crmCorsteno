@@ -6,7 +6,8 @@ import { renewSubscription } from '../services/commercial-renewal';
 type WebhookSubscription = {
   id: string;
   organizationId: string;
-  status: 'pending' | 'active' | 'cancelled' | 'expired';
+  status: 'pending' | 'active' | 'suspended' | 'cancelled' | 'expired';
+  currentPeriodStart: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: number;
   billingInterval: 'monthly' | 'yearly' | 'one_time';
@@ -36,7 +37,7 @@ paymentWebhookRoutes.post('/webhooks/mercado-pago', async (c) => {
     await c.env.DB.prepare("UPDATE commercial_payments SET provider_payment_id=?,provider_status='amount_mismatch',status='rejected',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").bind(providerPaymentId, payment.id).run();
     return c.json({ received: true, status: 'rejected' });
   }
-  const subscription = await c.env.DB.prepare('SELECT s.id,s.organization_id organizationId,s.status,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays FROM subscriptions s WHERE s.id=? AND s.organization_id=?').bind(payment.subscriptionId, payment.organizationId).first<WebhookSubscription>();
+  const subscription = await c.env.DB.prepare('SELECT s.id,s.organization_id organizationId,s.status,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.billing_interval billingInterval,s.billing_interval_count billingIntervalCount,s.included_access_days includedAccessDays FROM subscriptions s WHERE s.id=? AND s.organization_id=?').bind(payment.subscriptionId, payment.organizationId).first<WebhookSubscription>();
   if (!subscription) return c.json({ received: true });
   const experiences = await c.env.DB.prepare('SELECT experience_id id FROM subscription_experiences WHERE subscription_id=? AND organization_id=?').bind(payment.subscriptionId, payment.organizationId).all<{ id: string }>();
   const paymentUpdate = c.env.DB.prepare("UPDATE commercial_payments SET provider_payment_id=?,provider_status=?,status='approved',paid_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").bind(providerPaymentId, providerPayment.providerStatus, providerPayment.paidAt ?? new Date().toISOString(), payment.id);

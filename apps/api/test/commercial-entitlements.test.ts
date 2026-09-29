@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_COMMERCIAL_FEATURES, COMMERCIAL_PLAN_DEFINITIONS, getCommercialEntitlements } from '@corsteno/types';
-import { LEGACY_FULL_ACCESS, parseSubscriptionEntitlements, subscriptionHasFeature } from '../src/services/commercial-entitlements';
+import { getExperienceEntitlements, LEGACY_FULL_ACCESS, ROULETTE_BASE_ENTITLEMENTS, parseSubscriptionEntitlements, subscriptionHasFeature } from '../src/services/commercial-entitlements';
+
+function rouletteEntitlementsDb(status: 'active' | 'suspended', end: string, featureEntitlementsJson = '{"features":[],"maxActiveExperiences":1}') {
+  return {
+    prepare(sql: string) {
+      return { bind() { return {
+        async first() { return { type: 'roulette', commercialAccessRequired: 1 }; },
+        async all() { return { results: sql.includes('FROM subscription_experiences') ? [{ status, startsAt: '2026-09-01T00:00:00.000Z', currentPeriodStart: '2026-09-01T00:00:00.000Z', currentPeriodEnd: end, cancelAtPeriodEnd: 0, featureEntitlementsJson }] : [] }; },
+      }; } };
+    },
+  } as unknown as D1Database;
+}
 
 describe('commercial plan feature configuration', () => {
   it('keeps the three plans ordered by increasing capability', () => {
@@ -27,5 +38,19 @@ describe('commercial plan feature configuration', () => {
     expect(parseSubscriptionEntitlements('{broken')).toEqual({ features: [], maxActiveExperiences: 0 });
     expect(parseSubscriptionEntitlements(JSON.stringify({ features: ['roulette', 'not-a-feature'], maxActiveExperiences: 1 })).features).toEqual(['roulette']);
     expect(ALL_COMMERCIAL_FEATURES).toHaveLength(11);
+  });
+  it('includes branding and advanced analytics for Roulette with unlimited experiences', () => {
+    expect(ROULETTE_BASE_ENTITLEMENTS.features).toContain('custom_branding');
+    expect(ROULETTE_BASE_ENTITLEMENTS.features).toContain('advanced_analytics');
+    expect(ROULETTE_BASE_ENTITLEMENTS.features).toContain('redemption_claims');
+    expect(ROULETTE_BASE_ENTITLEMENTS.maxActiveExperiences).toBeNull();
+  });
+  it('grants the base Roulette features only while its subscription is active', async () => {
+    const active = await getExperienceEntitlements(rouletteEntitlementsDb('active', '2026-10-31T00:00:00.000Z'), 'exp-a', 'org-a');
+    const suspended = await getExperienceEntitlements(rouletteEntitlementsDb('suspended', '2026-10-31T00:00:00.000Z'), 'exp-a', 'org-a');
+    expect(active.features).toContain('custom_branding');
+    expect(active.features).toContain('advanced_analytics');
+    expect(active.maxActiveExperiences).toBe(1);
+    expect(suspended.features).toEqual([]);
   });
 });

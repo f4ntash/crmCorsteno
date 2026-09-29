@@ -15,6 +15,13 @@ function localToday() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
+function dateInputValue(value: string) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+function statusLabel(status: Subscription['effectiveStatus']) {
+  return ({ pending: 'Pendiente', active: 'Activo', suspended: 'Suspendido', expired: 'Vencido', cancelled: 'Cancelado' })[status];
+}
 export function SubscriptionsPage({
   org,
   canManage,
@@ -94,15 +101,6 @@ export function SubscriptionsPage({
       setError((e as Error).message);
     }
   }
-  async function checkout(item: Subscription) {
-    setError('');
-    try {
-      const result = await commercialApi.checkout(item.id, org);
-      window.location.assign(result.checkoutUrl);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
   async function offline(item: Subscription) {
     if (offlineSaving) return;
     const paymentMethod = window.prompt(
@@ -132,15 +130,21 @@ export function SubscriptionsPage({
       setOfflineSaving(null);
     }
   }
-  async function grant(item: Subscription) {
-    const duration = Number(window.prompt('Días de cortesía', '30'));
+  async function extend(item: Subscription) {
+    const endDate = window.prompt('Nuevo vencimiento (AAAA-MM-DD)', dateInputValue(item.currentPeriodEnd));
     const note = window.prompt('Motivo');
-    if (!Number.isInteger(duration) || duration < 1 || !note) return;
+    if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !note) return;
+    const endsAt = new Date(`${endDate}T23:59:59.999`);
+    if (!Number.isFinite(endsAt.getTime()) || endsAt <= new Date(item.currentPeriodEnd)) {
+      setError('El nuevo vencimiento debe ser posterior al vencimiento actual.');
+      return;
+    }
     setError('');
     try {
       await commercialApi.grant(item.id, org, {
-        grant_type: 'courtesy',
-        duration_days: duration,
+        grant_type: 'support_extension',
+        starts_at: new Date(Math.max(Date.now(), new Date(item.currentPeriodEnd).getTime())).toISOString(),
+        ends_at: endsAt.toISOString(),
         note,
       });
       await load();
@@ -162,6 +166,25 @@ export function SubscriptionsPage({
       setError((e as Error).message);
     }
   }
+  async function suspend(item: Subscription) {
+    if (!window.confirm('El acceso de las experiencias asociadas se bloqueará inmediatamente. ¿Suspender esta suscripción?')) return;
+    setError('');
+    try {
+      await commercialApi.suspend(item.id, org);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function reactivate(item: Subscription) {
+    setError('');
+    try {
+      await commercialApi.reactivate(item.id, org);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   if (!org) {
     return (
       <main className="page subscriptions-page">
@@ -178,7 +201,7 @@ export function SubscriptionsPage({
         <div>
           <p className="eyebrow">COMERCIAL</p>
           <h1>Suscripciones</h1>
-          <p className="page-description">Accesos, períodos y pagos de la organización seleccionada.</p>
+          <p className="page-description">Accesos y períodos de la organización seleccionada.</p>
         </div>
         {canManage && (
           <button
@@ -209,12 +232,19 @@ export function SubscriptionsPage({
                 </p>
               </div>
               <span className={`status status-${item.effectiveStatus}`}>
-                {item.effectiveStatus}
+                {statusLabel(item.effectiveStatus)}
               </span>
               <div>
-                <small>Período actual</small>
+                <small>Inicio del plan</small>
                 <br />
-                {displayDate(item.currentPeriodStart)} →{' '}
+                {displayDate(item.startsAt)}
+                <br />
+                <small>Inicio del período actual</small>
+                <br />
+                {displayDate(item.currentPeriodStart)}
+                <br />
+                <small>Próximo vencimiento</small>
+                <br />
                 {displayDate(item.currentPeriodEnd)}
               </div>
               <div>
@@ -232,12 +262,7 @@ export function SubscriptionsPage({
               </div>
               {canManage && (
                 <div className="modal-actions">
-                  {!item.cancelAtPeriodEnd && item.priceAmountMinor > 0 && (
-                    <button type="button" onClick={() => void checkout(item)}>
-                      Generar pago con Mercado Pago
-                    </button>
-                  )}
-                  {canManageCommercial && !item.cancelAtPeriodEnd && (
+                  {canManageCommercial && (
                     <>
                       <button
                         type="button"
@@ -250,9 +275,9 @@ export function SubscriptionsPage({
                       <button
                         type="button"
                         className="secondary"
-                        onClick={() => void grant(item)}
+                        onClick={() => void extend(item)}
                       >
-                        Otorgar cortesía
+                        Extender vencimiento
                       </button>
                       <button
                         type="button"
@@ -261,9 +286,19 @@ export function SubscriptionsPage({
                       >
                         Renovación manual
                       </button>
+                      {item.effectiveStatus !== 'suspended' && item.effectiveStatus !== 'cancelled' && item.effectiveStatus !== 'expired' && (
+                        <button type="button" className="secondary" onClick={() => void suspend(item)}>
+                          Suspender
+                        </button>
+                      )}
+                      {(item.effectiveStatus === 'suspended' || item.effectiveStatus === 'cancelled' || !!item.cancelAtPeriodEnd) && (
+                        <button type="button" className="secondary" onClick={() => void reactivate(item)}>
+                          Reactivar
+                        </button>
+                      )}
                     </>
                   )}
-                  {!item.cancelAtPeriodEnd && (
+                  {!item.cancelAtPeriodEnd && item.effectiveStatus !== 'cancelled' && item.effectiveStatus !== 'expired' && item.effectiveStatus !== 'suspended' && (
                     <button
                       type="button"
                       className="secondary"

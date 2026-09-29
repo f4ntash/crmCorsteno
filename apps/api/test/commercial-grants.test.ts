@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { grantPeriod } from '../src/services/commercial-grants';
 
-const subscription = { id: 's', organizationId: 'o', currentPeriodEnd: '2026-10-01T00:00:00.000Z', billingInterval: 'monthly' as const, billingIntervalCount: 1, includedAccessDays: null, experiences: [{ id: 'e1' }, { id: 'e2' }] };
+const subscription = { id: 's', organizationId: 'o', status: 'active' as const, currentPeriodStart: '2026-09-01T00:00:00.000Z', currentPeriodEnd: '2026-10-01T00:00:00.000Z', billingInterval: 'monthly' as const, billingIntervalCount: 1, includedAccessDays: null, experiences: [{ id: 'e1' }, { id: 'e2' }] };
 
 describe('commercial grant periods', () => {
   it('uses the latest commercial end as the base for a courtesy extension', () => {

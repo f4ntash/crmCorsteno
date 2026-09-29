@@ -9,6 +9,8 @@ describe('experience commercial access status', () => {
     expect(getEffectiveExperienceAccessStatus([], now)).toBe(
       'legacy_unrestricted',
     ));
+  it('blocks a new commercial experience until an access period exists', () =>
+    expect(getEffectiveExperienceAccessStatus([], now, true)).toBe('no_access'));
   it('returns scheduled for a future period', () =>
     expect(
       getEffectiveExperienceAccessStatus(
@@ -23,6 +25,8 @@ describe('experience commercial access status', () => {
         now,
       ),
     ).toBe('active'));
+  it('blocks a suspended subscription period immediately', () =>
+    expect(getEffectiveExperienceAccessStatus([{ ...period('2026-09-01T00:00:00.000Z', '2026-09-30T00:00:00.000Z'), subscriptionStatus: 'suspended' }], now)).toBe('suspended'));
   it('returns expired when all periods have ended', () =>
     expect(
       getEffectiveExperienceAccessStatus(

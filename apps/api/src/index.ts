@@ -12,7 +12,6 @@ import { requireAuth, requireOrganization } from './auth/middleware';
 import { publicExperienceRoutes } from './routes/public-experiences';
 import { roulettePublicExperienceRoutes } from './routes/roulette-public-experiences';
 import { commercialRoutes } from './routes/commercial';
-import { paymentWebhookRoutes } from './routes/payment-webhooks';
 import { assetRoutes } from './routes/assets';
 import { attentionRoutes } from './routes/attention';
 import { reportsRoutes } from './routes/reports';
@@ -116,7 +115,6 @@ app.route('/channels', channelContentRoutes);
 app.route('/public', publicExperienceRoutes);
 app.route('/public', roulettePublicExperienceRoutes);
 app.route('/public', publicSiteRoutes);
-app.route('/', paymentWebhookRoutes);
 app.route('/', commercialRoutes);
 app.get('/assets/*', async (c) => {
   const key = c.req.path.slice('/assets/'.length);

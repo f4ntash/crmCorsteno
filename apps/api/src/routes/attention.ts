@@ -24,10 +24,11 @@ type ExperienceRow = {
   publishedConfig: string | null;
   startsAt: string | null;
   endsAt: string | null;
+  commercialAccessRequired: number;
   updatedAt: string | number | null;
 };
 
-type AccessPeriodRow = { experienceId: string; startsAt: string; endsAt: string };
+type AccessPeriodRow = { experienceId: string; startsAt: string; endsAt: string; subscriptionPeriodId?: string | null; subscriptionStatus?: string | null };
 type InventoryRow = { experienceId: string; prizeId: string; stockMode: 'limited' | 'unlimited'; stockAvailable: number | null };
 type ClaimRow = { experienceId: string; pendingClaims: number };
 
@@ -95,10 +96,10 @@ attentionRoutes.get('/', async (c) => {
   if (severity !== undefined && !['info', 'warning', 'critical'].includes(severity)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid attention severity' } }, 400);
   const type = c.req.query('type');
   if (type !== undefined && !/^[a-z][a-z0-9_.-]{1,79}$/.test(type)) return c.json({ error: { code: 'BAD_REQUEST', message: 'Invalid attention type' } }, 400);
-  const experiences = await c.env.DB.prepare('SELECT id,name,type,status,draft_config draftConfig,published_config publishedConfig,starts_at startsAt,ends_at endsAt,updated_at updatedAt FROM experiences WHERE organization_id=? ORDER BY created_at DESC,id DESC').bind(organizationId).all<ExperienceRow>();
+  const experiences = await c.env.DB.prepare('SELECT id,name,type,status,draft_config draftConfig,published_config publishedConfig,starts_at startsAt,ends_at endsAt,commercial_access_required commercialAccessRequired,updated_at updatedAt FROM experiences WHERE organization_id=? ORDER BY created_at DESC,id DESC').bind(organizationId).all<ExperienceRow>();
   const firstClass = await firstClassProductsAvailable(c.env.DB);
   const [access, inventory, claims, catalogProducts] = await Promise.all([
-    c.env.DB.prepare('SELECT experience_id experienceId,starts_at startsAt,ends_at endsAt FROM experience_access_periods WHERE organization_id=? ORDER BY starts_at ASC,id ASC').bind(organizationId).all<AccessPeriodRow>(),
+    c.env.DB.prepare('SELECT ap.experience_id experienceId,ap.starts_at startsAt,ap.ends_at endsAt,ap.subscription_period_id subscriptionPeriodId,s.status subscriptionStatus FROM experience_access_periods ap LEFT JOIN subscription_periods sp ON sp.id=ap.subscription_period_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id WHERE ap.organization_id=? ORDER BY ap.starts_at ASC,ap.id ASC').bind(organizationId).all<AccessPeriodRow>(),
     c.env.DB.prepare("SELECT i.experience_id experienceId,i.prize_id prizeId,i.stock_mode stockMode,i.stock_available stockAvailable FROM experience_prize_inventory i JOIN experiences e ON e.id=i.experience_id AND e.organization_id=? WHERE e.type='roulette'").bind(organizationId).all<InventoryRow>(),
     c.env.DB.prepare("SELECT experience_id experienceId,SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) pendingClaims FROM roulette_prize_claims WHERE organization_id=? AND experience_id IN (SELECT id FROM experiences WHERE organization_id=? AND type='roulette') GROUP BY experience_id").bind(organizationId, organizationId).all<ClaimRow>(),
     firstClass
@@ -112,7 +113,7 @@ attentionRoutes.get('/', async (c) => {
     type: row.type,
     status: row.status,
     effectiveStatus: getEffectiveExperienceStatus(row.status, row.startsAt, row.endsAt),
-    accessStatus: getEffectiveExperienceAccessStatus(groupedAccess.get(row.id) ?? []),
+    accessStatus: getEffectiveExperienceAccessStatus(groupedAccess.get(row.id) ?? [], Date.now(), Number(row.commercialAccessRequired) === 1),
     startsAt: row.startsAt,
     endsAt: row.endsAt,
     updatedAt: row.updatedAt,

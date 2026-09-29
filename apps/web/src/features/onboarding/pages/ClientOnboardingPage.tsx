@@ -6,7 +6,7 @@ import { experiencesApi } from '../../experiences/api';
 import type { ExperienceTemplate } from '../../experiences/types';
 import { publicExperienceUrl } from '../../../shared/runtime/publicExperienceUrl';
 
-type Mode = 'later' | 'offline' | 'free' | 'courtesy' | 'configure';
+type Mode = 'offline' | 'free' | 'courtesy' | 'configure';
 type Created = {
   organizationId: string;
   experienceId: string;
@@ -267,7 +267,6 @@ export function ClientOnboardingPage() {
                   onChange={(e) => setMode(e.target.value as Mode)}
                 >
                   <option value="configure">Solo configurar ahora</option>
-                  <option value="later">Mercado Pago más adelante</option>
                   <option value="offline">
                     Efectivo / transferencia más adelante
                   </option>

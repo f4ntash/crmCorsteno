@@ -1,10 +1,19 @@
 import { ALL_COMMERCIAL_FEATURES, getCommercialEntitlements, type CommercialEntitlements, type CommercialFeature } from '@corsteno/types';
+import { getEffectiveSubscriptionStatus } from './subscription-periods';
 
 export const LEGACY_FULL_ACCESS: CommercialEntitlements = {
   features: [...ALL_COMMERCIAL_FEATURES],
   maxActiveExperiences: null,
 };
 const NO_ACCESS: CommercialEntitlements = { features: [], maxActiveExperiences: 0 };
+export const ROULETTE_BASE_ENTITLEMENTS: CommercialEntitlements = {
+  features: [...ALL_COMMERCIAL_FEATURES],
+  maxActiveExperiences: null,
+};
+
+export function rouletteEntitlementsFromSnapshot(value: unknown): CommercialEntitlements {
+  return { ...ROULETTE_BASE_ENTITLEMENTS, maxActiveExperiences: parseSubscriptionEntitlements(value).maxActiveExperiences };
+}
 
 export function parseSubscriptionEntitlements(value: unknown): CommercialEntitlements {
   if (value === null || value === undefined || value === '') return { ...LEGACY_FULL_ACCESS, features: [...LEGACY_FULL_ACCESS.features] };
@@ -28,6 +37,29 @@ export function entitlementsForPlan(planCode: string) {
 
 export async function getExperienceEntitlements(db: D1Database, experienceId: string, organizationId: string): Promise<CommercialEntitlements> {
   try {
+    const experience = await db.prepare('SELECT type,commercial_access_required commercialAccessRequired FROM experiences WHERE id=? AND organization_id=?').bind(experienceId, organizationId).first<{ type: string; commercialAccessRequired?: number }>();
+    if (experience?.type === 'roulette') {
+      const rows = await db.prepare(`SELECT s.status,s.starts_at startsAt,s.current_period_start currentPeriodStart,s.current_period_end currentPeriodEnd,s.cancel_at_period_end cancelAtPeriodEnd,s.feature_entitlements_json featureEntitlementsJson
+        FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id
+        WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=?`).bind(experienceId, organizationId, organizationId).all<{
+          status: 'pending' | 'active' | 'suspended' | 'cancelled' | 'expired';
+          startsAt: string;
+          currentPeriodStart: string;
+          currentPeriodEnd: string;
+          cancelAtPeriodEnd: number;
+          featureEntitlementsJson: string | null;
+        }>();
+      if (!rows.results.length) return Number(experience.commercialAccessRequired) === 1 ? { ...NO_ACCESS, features: [] } : { ...LEGACY_FULL_ACCESS, features: [...LEGACY_FULL_ACCESS.features] };
+      const activeRows = rows.results.filter((row) => getEffectiveSubscriptionStatus(row.status, row.startsAt, row.currentPeriodStart, row.currentPeriodEnd, row.cancelAtPeriodEnd) === 'active');
+      if (!activeRows.length) return { ...NO_ACCESS, features: [] };
+      let maxActiveExperiences: number | null = 0;
+      for (const row of activeRows) {
+        const limit = parseSubscriptionEntitlements(row.featureEntitlementsJson).maxActiveExperiences;
+        if (limit === null) { maxActiveExperiences = null; break; }
+        maxActiveExperiences = Math.max(maxActiveExperiences, limit);
+      }
+      return { ...ROULETTE_BASE_ENTITLEMENTS, features: [...ROULETTE_BASE_ENTITLEMENTS.features], maxActiveExperiences };
+    }
     const rows = await db.prepare("SELECT s.feature_entitlements_json featureEntitlementsJson FROM subscription_experiences se JOIN subscriptions s ON s.id=se.subscription_id WHERE se.experience_id=? AND se.organization_id=? AND s.organization_id=? AND s.status IN ('active','pending')").bind(experienceId, organizationId, organizationId).all<{ featureEntitlementsJson: string | null }>();
     if (!rows.results.length || rows.results.some((row) => row.featureEntitlementsJson === null)) return { ...LEGACY_FULL_ACCESS, features: [...LEGACY_FULL_ACCESS.features] };
     const featureSet = new Set<CommercialFeature>();

@@ -15,10 +15,10 @@ type DbState = {
 function fixture(role = 'owner', platformRole = 'corsteno_admin') {
   const state: DbState = {
     plans: [
-      { id: 'plan-month', code: 'monthly', name: 'Monthly', description: 'Example', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 125000, currency: 'ARS', active: 1, pricingMode: 'paid', availableForSale: 1 },
+      { id: 'plan-month', code: 'starter', name: 'Monthly', description: 'Example', billingInterval: 'monthly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 125000, currency: 'ARS', active: 1, pricingMode: 'paid', availableForSale: 1 },
       { id: 'plan-off', code: 'off', name: 'Inactive', description: null, billingInterval: 'yearly', billingIntervalCount: 1, includedAccessDays: null, priceAmountMinor: 1, currency: 'USD', active: 0, pricingMode: 'paid', availableForSale: 0 },
     ],
-    experiences: [{ id: 'exp-a', organization_id: 'org-a', name: 'A', slug: 'a' }, { id: 'exp-b', organization_id: 'org-b', name: 'B', slug: 'b' }],
+    experiences: [{ id: 'exp-a', organization_id: 'org-a', name: 'A', slug: 'a', type: 'roulette' }, { id: 'exp-b', organization_id: 'org-b', name: 'B', slug: 'b', type: 'roulette' }],
     subscriptions: [], periods: [], links: [], access: [], payments: [],
   };
   const db = {
@@ -44,17 +44,29 @@ function fixture(role = 'owner', platformRole = 'corsteno_admin') {
           if (sql.includes('SELECT id FROM subscriptions')) return { results: state.subscriptions.filter((s) => s.organizationId === args[0]).map((s) => ({ id: s.id })) };
           if (sql.includes('FROM subscription_periods')) return { results: state.periods.filter((p) => p.subscriptionId === args[0] && p.organizationId === args[1]) };
           if (sql.includes('FROM subscription_experiences')) return { results: state.links.filter((l) => l.subscriptionId === args[0] && l.organizationId === args[1]).map((l) => state.experiences.find((e) => e.id === l.experienceId)).filter(Boolean) };
-          if (sql.includes('FROM experiences')) return { results: state.experiences.filter((e) => e.organization_id === args[0] && args.slice(1).includes(e.id)).map((e) => ({ id: e.id })) };
+          if (sql.includes('FROM experiences')) return { results: state.experiences.filter((e) => e.organization_id === args[0] && args.slice(1).includes(e.id)).map((e) => ({ id: e.id, type: e.type })) };
           return { results: [] };
         };
         statement.run = async () => {
           if (sql.includes('UPDATE auth_sessions')) return { meta: { changes: 1 } };
-          if (sql.startsWith('INSERT INTO subscriptions')) { state.subscriptions.push({ id: args[0], organizationId: args[1], planId: args[2], status: args[3], startsAt: args[4], currentPeriodStart: args[5], currentPeriodEnd: args[6], cancelAtPeriodEnd: args[7], priceAmountMinor: args[8], currency: args[9], billingInterval: args[10], billingIntervalCount: args[11], includedAccessDays: args[12] }); }
+          if (sql.startsWith('INSERT INTO subscriptions')) { state.subscriptions.push({ id: args[0], organizationId: args[1], planId: args[2], status: args[3], startsAt: args[4], currentPeriodStart: args[5], currentPeriodEnd: args[6], cancelAtPeriodEnd: args[7], priceAmountMinor: args[8], currency: args[9], billingInterval: args[10], billingIntervalCount: args[11], includedAccessDays: args[12], featureEntitlementsJson: args[13] }); }
           if (sql.startsWith('INSERT') && sql.includes('subscription_periods')) { state.periods.push({ id: args[0], subscriptionId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], status: args[5], idempotencyKey: args[6] ?? null, createdAt: '2026-01-01' }); }
           if (sql.startsWith('INSERT') && sql.includes('subscription_experiences')) state.links.push({ subscriptionId: args[0], experienceId: args[1], organizationId: args[2] });
           if (sql.startsWith('INSERT') && sql.includes('experience_access_periods')) state.access.push({ id: args[0], experienceId: args[1], organizationId: args[2], startsAt: args[3], endsAt: args[4], source: args[5], subscriptionPeriodId: args[8] });
           if (sql.startsWith('INSERT') && sql.includes('commercial_payments')) state.payments.push({ id: args[0], organizationId: args[1], subscriptionId: args[2], idempotencyKey: args[11] });
-          if (sql.startsWith('UPDATE subscriptions')) { const sub = state.subscriptions.find((s) => s.id === args[args.length - 2]); if (sub) { if (sql.includes('cancel_at_period_end=1')) sub.cancelAtPeriodEnd = 1; else { sub.currentPeriodStart = args[0]; sub.currentPeriodEnd = args[1]; sub.status = 'active'; sub.cancelAtPeriodEnd = 0; } } }
+          if (sql.startsWith('UPDATE subscriptions')) {
+            const sub = state.subscriptions.find((s) => s.id === args[args.length - 2]);
+            if (sub) {
+              if (sql.includes('cancel_at_period_end=1')) sub.cancelAtPeriodEnd = 1;
+              else if (sql.includes("status='suspended'")) sub.status = 'suspended';
+              else if (sql.includes("status='active'")) { sub.status = 'active'; sub.cancelAtPeriodEnd = 0; }
+              else if (sql.includes('SET status=?') && sql.includes('current_period_end=CASE')) {
+                sub.status = args[0]; sub.currentPeriodStart = args[1];
+                if (new Date(args[2]).getTime() > new Date(sub.currentPeriodEnd).getTime()) sub.currentPeriodEnd = args[2];
+                sub.cancelAtPeriodEnd = 0;
+              } else if (sql.includes('SET status=?')) { sub.status = args[0]; sub.currentPeriodStart = args[1]; sub.currentPeriodEnd = args[2]; sub.cancelAtPeriodEnd = 0; }
+            }
+          }
           return { meta: { changes: 1 } };
         };
         return statement;
@@ -87,7 +99,10 @@ describe('commercial plans and subscriptions', () => {
     const body = await created.json() as any;
     expect(body.priceAmountMinor).toBe(125000);
     expect(body.currentPeriodEnd).toBe('2026-10-10T00:00:00.000Z');
-    expect(env.__state.access).toEqual([expect.objectContaining({ source: 'subscription', experienceId: 'exp-a' })]);
+    expect(body.featureEntitlements.features).toContain('custom_branding');
+    expect(body.featureEntitlements.features).toContain('advanced_analytics');
+    expect(body.featureEntitlements.maxActiveExperiences).toBe(1);
+    expect(env.__state.access).toEqual([expect.objectContaining({ source: 'subscription', experienceId: 'exp-a', startsAt: '2026-09-10T00:00:00.000Z', endsAt: '2026-10-10T00:00:00.000Z', subscriptionPeriodId: env.__state.periods[0].id })]);
     expect((await request('/subscriptions', env, { method: 'POST', body: JSON.stringify({ plan_id: 'plan-off', experience_ids: ['exp-a'], starts_at: '2026-09-10T00:00:00Z' }) })).status).toBe(400);
   });
 
@@ -97,17 +112,40 @@ describe('commercial plans and subscriptions', () => {
     expect((await app.fetch(new Request('http://localhost/plans'), fixture())).status).toBe(401);
   });
 
-  it('renews idempotently and cancels without deleting current entitlement', async () => {
+  it('renews idempotently, suspends immediately, and reactivates without deleting history', async () => {
     const env = fixture();
-    const created = await request('/subscriptions', env, { method: 'POST', body: JSON.stringify({ plan_id: 'plan-month', experience_ids: ['exp-a'], starts_at: '2099-09-10T00:00:00Z' }) });
+    const created = await request('/subscriptions', env, { method: 'POST', body: JSON.stringify({ plan_id: 'plan-month', experience_ids: ['exp-a'], starts_at: new Date().toISOString() }) });
     const subscription = await created.json() as any;
     const first = await request(`/subscriptions/${subscription.id}/renew`, env, { method: 'POST', headers: { 'Idempotency-Key': 'renew-1' } });
     expect(first.status).toBe(200);
+    expect((await first.json() as any).effectiveStatus).toBe('active');
     const count = env.__state.periods.length;
     expect((await request(`/subscriptions/${subscription.id}/renew`, env, { method: 'POST', headers: { 'Idempotency-Key': 'renew-1' } })).status).toBe(200);
     expect(env.__state.periods).toHaveLength(count);
     expect((await request(`/subscriptions/${subscription.id}/cancel`, env, { method: 'POST' })).status).toBe(200);
+    const reactivated = await request(`/subscriptions/${subscription.id}/reactivate`, env, { method: 'POST' });
+    expect((await reactivated.json() as any)).toMatchObject({ status: 'active', cancelAtPeriodEnd: 0, effectiveStatus: 'active' });
+    const suspended = await request(`/subscriptions/${subscription.id}/suspend`, env, { method: 'POST' });
+    expect((await suspended.json() as any).effectiveStatus).toBe('suspended');
+    const historyLength = env.__state.periods.length;
+    const resumed = await request(`/subscriptions/${subscription.id}/reactivate`, env, { method: 'POST' });
+    expect((await resumed.json() as any).effectiveStatus).toBe('active');
+    expect(env.__state.periods).toHaveLength(historyLength);
     expect(env.__state.access.length).toBe(2);
+  });
+
+  it('extends the manual expiry while retaining the current period start', async () => {
+    const env = fixture();
+    const created = await request('/subscriptions', env, { method: 'POST', body: JSON.stringify({ plan_id: 'plan-month', experience_ids: ['exp-a'], starts_at: new Date().toISOString() }) });
+    const subscription = await created.json() as any;
+    const oldStart = subscription.currentPeriodStart;
+    const oldEnd = new Date(subscription.currentPeriodEnd);
+    const newEnd = new Date(oldEnd.getTime() + 31 * 24 * 60 * 60 * 1000);
+    const response = await request(`/subscriptions/${subscription.id}/grants`, env, { method: 'POST', body: JSON.stringify({ grant_type: 'support_extension', starts_at: oldEnd.toISOString(), ends_at: newEnd.toISOString(), note: 'Extensión manual' }) });
+    expect(response.status).toBe(201);
+    const refreshed = await request(`/subscriptions/${subscription.id}`, env);
+    expect(await refreshed.json()).toMatchObject({ currentPeriodStart: oldStart, currentPeriodEnd: newEnd.toISOString(), effectiveStatus: 'active' });
+    expect(env.__state.periods).toHaveLength(2);
   });
 
   it('accepts bank transfer offline payments and deduplicates retries', async () => {

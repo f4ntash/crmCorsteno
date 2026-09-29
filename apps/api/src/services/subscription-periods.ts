@@ -1,4 +1,6 @@
 export type BillingInterval = 'monthly' | 'yearly' | 'one_time';
+export type SubscriptionStatus = 'pending' | 'active' | 'suspended' | 'cancelled' | 'expired';
+export type EffectiveSubscriptionStatus = Exclude<SubscriptionStatus, 'pending'> | 'pending';
 
 export function addBillingInterval(value: Date, interval: BillingInterval, count: number, includedAccessDays?: number | null) {
   const result = new Date(value.getTime());
@@ -16,7 +18,18 @@ export function addBillingInterval(value: Date, interval: BillingInterval, count
   return result;
 }
 
-export function getEffectiveSubscriptionStatus(status: 'pending' | 'active' | 'cancelled' | 'expired', currentPeriodEnd: string, now = Date.now()) {
-  if (now >= new Date(currentPeriodEnd).getTime()) return 'expired' as const;
-  return status;
+export function getEffectiveSubscriptionStatus(
+  status: SubscriptionStatus,
+  startsAt: string,
+  currentPeriodStart: string,
+  currentPeriodEnd: string,
+  cancelAtPeriodEnd = 0,
+  now = Date.now(),
+): EffectiveSubscriptionStatus {
+  if (status === 'suspended') return 'suspended';
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'expired') return 'expired';
+  if (now < Math.max(new Date(startsAt).getTime(), new Date(currentPeriodStart).getTime())) return 'pending';
+  if (now >= new Date(currentPeriodEnd).getTime()) return cancelAtPeriodEnd ? 'cancelled' : 'expired';
+  return 'active';
 }

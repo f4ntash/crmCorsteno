@@ -168,7 +168,7 @@ experienceRoutes.post('/:id/claims/:claimId/redeem', async (c) => {
 const select = `SELECT id, organization_id organizationId, name, slug, type, status,
   application_id applicationId,
   schema_version schemaVersion, draft_config draftConfig, published_config publishedConfig,
-  starts_at startsAt, ends_at endsAt, created_at createdAt, updated_at updatedAt
+  starts_at startsAt, ends_at endsAt, commercial_access_required commercialAccessRequired, created_at createdAt, updated_at updatedAt
   FROM experiences`;
 
 export function parseJson(value: string | null): JsonValue | null {
@@ -196,7 +196,7 @@ function present(row: Record<string, unknown>): Experience {
 async function presentWithAccess(db: D1Database, row: Record<string, unknown>, organizationId: string) {
   const experience = present(row);
   const periods = await getExperienceAccessPeriods(db, String(row.id), organizationId);
-  return { ...experience, access_status: getEffectiveExperienceAccessStatus(periods) };
+  return { ...experience, access_status: getEffectiveExperienceAccessStatus(periods, Date.now(), Number(row.commercialAccessRequired) === 1) };
 }
 
 function datesValid(startsAt: string | null | undefined, endsAt: string | null | undefined) {
@@ -330,8 +330,8 @@ experienceRoutes.post('/:id/clone', async (c) => {
   }
   const id = crypto.randomUUID();
   const slug = crypto.randomUUID();
-  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
-    .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, null, null).run();
+  await c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at, commercial_access_required) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?, ?)`)
+    .bind(id, organizationId, `${String(source.name)} - Copia`, slug, source.type, source.schemaVersion, serializedConfig, null, null, source.type === 'roulette' ? 1 : 0).run();
   if (source.type === PRODUCT_CATALOG_TYPE) {
     try { await cloneCatalogProducts(c.env.DB, sourceId, organizationId, id); } catch {
       await c.env.DB.prepare('DELETE FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).run();
@@ -346,10 +346,10 @@ experienceRoutes.post('/:id/clone', async (c) => {
 experienceRoutes.get('/:id/access-periods', async (c) => {
   const organizationId = c.get('organization').id;
   const id = c.req.param('id');
-  const exists = await c.env.DB.prepare('SELECT id FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first();
+  const exists = await c.env.DB.prepare('SELECT id,commercial_access_required commercialAccessRequired FROM experiences WHERE id=? AND organization_id=?').bind(id, organizationId).first<{ id: string; commercialAccessRequired: number }>();
   if (!exists) return c.json({ error: { code: 'NOT_FOUND', message: 'Experience not found' } }, 404);
   const periods = await getExperienceAccessPeriods(c.env.DB, id, organizationId);
-  return c.json({ items: periods, status: getEffectiveExperienceAccessStatus(periods) });
+  return c.json({ items: periods, status: getEffectiveExperienceAccessStatus(periods, Date.now(), Number(exists.commercialAccessRequired) === 1) });
 });
 
 experienceRoutes.post('/:id/access-periods', async (c) => {
@@ -468,8 +468,8 @@ experienceRoutes.post('/', async (c) => {
   const slug = crypto.randomUUID();
   const organizationId = c.get('organization').id;
   const hostedChannel = delivery === 'hosted' ? await ensureOrganizationHostedChannel(c.env.DB, organizationId) : null;
-  const experienceInsert = c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?)`)
-    .bind(id, organizationId, name, slug, type, 1, draftConfig, startsAt ?? null, endsAt ?? null);
+  const experienceInsert = c.env.DB.prepare(`INSERT INTO experiences (id, organization_id, name, slug, type, status, schema_version, draft_config, published_config, starts_at, ends_at, commercial_access_required) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, NULL, ?, ?, ?)`)
+    .bind(id, organizationId, name, slug, type, 1, draftConfig, startsAt ?? null, endsAt ?? null, type === 'roulette' ? 1 : 0);
   if (hostedChannel) {
     const channelLink = c.env.DB.prepare('INSERT INTO experience_channels (id,organization_id,experience_id,channel_id,created_at) VALUES (?,?,?,?,?)')
       .bind(crypto.randomUUID(), organizationId, id, hostedChannel.id, Date.now());
