@@ -41,8 +41,8 @@ describe('Corsteno runtime Worker routes', () => {
     expect(upstreamRequest?.headers.get('cookie')).toBeNull();
     expect(upstreamRequest?.headers.get('origin')).toBeNull();
     expect(response.status).toBe(200);
-    expect(body).toContain('src="/h/assets/index.js?proxy=public-url-v2"');
-    expect(body).toContain('href="/h/assets/index.css?proxy=public-url-v2"');
+    expect(body).toContain('src="/h/assets-v2/index.js"');
+    expect(body).toContain('href="/h/assets-v2/index.css"');
     expect(response.headers.get('etag')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
@@ -55,7 +55,7 @@ describe('Corsteno runtime Worker routes', () => {
     ));
 
     const response = await handleRuntimeRequest(
-      new Request('https://corsteno.com/h/assets/main.js'),
+      new Request('https://corsteno.com/h/assets-v2/main.js'),
       { ASSETS: assets },
       fetchExternal,
     );
@@ -63,8 +63,8 @@ describe('Corsteno runtime Worker routes', () => {
     const body = await response.text();
 
     expect(upstreamRequest?.url).toBe('https://corsteno-treasure-hunt.pages.dev/assets/main.js');
-    expect(body).toContain('import("/h/assets/lazy-chunk.js")');
-    expect(body).toContain('"h/assets/TraceARDemo.css"');
+    expect(body).toContain('import("/h/assets-v2/lazy-chunk.js")');
+    expect(body).toContain('"h/assets-v2/TraceARDemo.css"');
     expect(response.headers.get('content-length')).toBeNull();
   });
 

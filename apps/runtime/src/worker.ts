@@ -11,6 +11,9 @@ type ExternalFetcher = (request: Request) => Promise<Response>;
 const HUNTER_RUNTIME_ORIGIN = 'https://corsteno-treasure-hunt.pages.dev';
 
 function upstreamPath(pathname: string) {
+  if (pathname === '/h/assets-v2' || pathname.startsWith('/h/assets-v2/')) {
+    return '/assets' + pathname.slice('/h/assets-v2'.length);
+  }
   return pathname === '/h/assets' || pathname.startsWith('/h/assets/')
     ? pathname.slice(2)
     : pathname;
@@ -18,16 +21,9 @@ function upstreamPath(pathname: string) {
 
 function rewrittenAssetBody(body: string) {
   return body
-    .replaceAll('/assets/', '/h/assets/')
-    .replaceAll('"assets/', '"h/assets/')
-    .replaceAll("'assets/", "'h/assets/");
-}
-
-function versionedHtmlAssets(body: string) {
-  return body.replace(
-    /(["'])\/h\/assets\/([^"'\s<>]+\.(?:js|css))\1/g,
-    (_match, quote: string, assetPath: string) => `${quote}/h/assets/${assetPath}?proxy=public-url-v2${quote}`,
-  );
+    .replaceAll('/assets/', '/h/assets-v2/')
+    .replaceAll('"assets/', '"h/assets-v2/')
+    .replaceAll("'assets/", "'h/assets-v2/");
 }
 
 export async function handleRuntimeRequest(
@@ -55,7 +51,7 @@ export async function handleRuntimeRequest(
     const redirectUrl = new URL(location, targetUrl);
     if (redirectUrl.origin === HUNTER_RUNTIME_ORIGIN) {
       redirectUrl.host = requestUrl.host;
-      if (redirectUrl.pathname.startsWith('/assets/')) redirectUrl.pathname = '/h' + redirectUrl.pathname;
+        if (redirectUrl.pathname.startsWith('/assets/')) redirectUrl.pathname = '/h/assets-v2/' + redirectUrl.pathname.slice('/assets/'.length);
       const headers = new Headers(upstreamResponse.headers);
       headers.set('Location', redirectUrl.toString());
       return new Response(upstreamResponse.body, {
@@ -75,9 +71,7 @@ export async function handleRuntimeRequest(
   }
 
   const originalBody = await upstreamResponse.clone().text();
-  const body = /text\/html/i.test(contentType)
-    ? versionedHtmlAssets(rewrittenAssetBody(originalBody))
-    : rewrittenAssetBody(originalBody);
+  const body = rewrittenAssetBody(originalBody);
   if (body === originalBody) return upstreamResponse;
 
   const headers = new Headers(upstreamResponse.headers);
