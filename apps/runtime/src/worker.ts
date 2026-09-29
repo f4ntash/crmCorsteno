@@ -19,8 +19,15 @@ function upstreamPath(pathname: string) {
 function rewrittenAssetBody(body: string) {
   return body
     .replaceAll('/assets/', '/h/assets/')
-    .replaceAll('"assets/', '"/h/assets/')
-    .replaceAll("'assets/", "'/h/assets/");
+    .replaceAll('"assets/', '"h/assets/')
+    .replaceAll("'assets/", "'h/assets/");
+}
+
+function versionedHtmlAssets(body: string) {
+  return body.replace(
+    /(["'])\/h\/assets\/([^"'\s<>]+\.(?:js|css))\1/g,
+    (_match, quote: string, assetPath: string) => `${quote}/h/assets/${assetPath}?proxy=public-url-v2${quote}`,
+  );
 }
 
 export async function handleRuntimeRequest(
@@ -68,11 +75,14 @@ export async function handleRuntimeRequest(
   }
 
   const originalBody = await upstreamResponse.clone().text();
-  const body = rewrittenAssetBody(originalBody);
+  const body = /text\/html/i.test(contentType)
+    ? versionedHtmlAssets(rewrittenAssetBody(originalBody))
+    : rewrittenAssetBody(originalBody);
   if (body === originalBody) return upstreamResponse;
 
   const headers = new Headers(upstreamResponse.headers);
-  for (const header of ['content-length', 'content-encoding', 'content-md5', 'etag']) headers.delete(header);
+  for (const header of ['content-length', 'content-encoding', 'content-md5', 'etag', 'last-modified']) headers.delete(header);
+  headers.set('Cache-Control', 'no-store');
   return new Response(body, {
     status: upstreamResponse.status,
     statusText: upstreamResponse.statusText,

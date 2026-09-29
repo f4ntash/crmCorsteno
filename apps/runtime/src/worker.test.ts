@@ -23,7 +23,7 @@ describe('Corsteno runtime Worker routes', () => {
   it('proxies the same Hunter path and query to Pages without forwarding cookies or origin', async () => {
     const assets = { fetch: vi.fn(async () => new Response('unexpected')) };
     const fetchExternal = vi.fn<(request: Request) => Promise<Response>>(async () => new Response(
-      '<script src="/assets/index.js"></script>',
+      '<script src="/assets/index.js"></script><link href="/assets/index.css">',
       { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', ETag: 'origin-etag' } },
     ));
 
@@ -35,13 +35,16 @@ describe('Corsteno runtime Worker routes', () => {
       fetchExternal,
     );
     const upstreamRequest = fetchExternal.mock.calls[0]?.[0];
+    const body = await response.text();
 
     expect(upstreamRequest?.url).toBe('https://corsteno-treasure-hunt.pages.dev/h/hunter-e2e-qa?source=pec');
     expect(upstreamRequest?.headers.get('cookie')).toBeNull();
     expect(upstreamRequest?.headers.get('origin')).toBeNull();
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('src="/h/assets/index.js"');
+    expect(body).toContain('src="/h/assets/index.js?proxy=public-url-v2"');
+    expect(body).toContain('href="/h/assets/index.css?proxy=public-url-v2"');
     expect(response.headers.get('etag')).toBeNull();
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('serves asset requests from Hunter Pages through the /h route', async () => {
@@ -61,7 +64,7 @@ describe('Corsteno runtime Worker routes', () => {
 
     expect(upstreamRequest?.url).toBe('https://corsteno-treasure-hunt.pages.dev/assets/main.js');
     expect(body).toContain('import("/h/assets/lazy-chunk.js")');
-    expect(body).toContain('"/h/assets/TraceARDemo.css"');
+    expect(body).toContain('"h/assets/TraceARDemo.css"');
     expect(response.headers.get('content-length')).toBeNull();
   });
 
